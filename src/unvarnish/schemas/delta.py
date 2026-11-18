@@ -19,7 +19,7 @@ DELTA_SCHEMA_VERSION = 1
 class DeltaStatus(StrEnum):
     new = "new"
     resolved = "resolved"
-    changed = "changed"        # the same finding, moved lines or re-rated
+    changed = "changed"        # the same finding, moved lines, re-rated, or a group's count
     persistent = "persistent"
     accepted = "accepted"      # listed in baseline.accepted: rendered "Risk accepted"
 
@@ -45,11 +45,16 @@ class BaselineSnapshot(BaseModel):
 class DeltaEntry(BaseModel):
     status: DeltaStatus
     finding: Finding                   # the current finding; the baseline's when resolved
-    matched_by: Literal["id", "title_path", "fingerprint"] | None = None
+    matched_by: Literal["id", "group", "title_path", "fingerprint"] | None = None
     previous_id: str | None = None
     previous_severity: Severity | None = None
     previous_path: str | None = None
     previous_line: int | None = None
+    # A grouped scanner finding matched with the baseline's (UNVAR-49): "<scanner>.<rule>", and
+    # how many files, functions or values the group held then and now (None when unknown).
+    group: str | None = None
+    previous_count: int | None = None
+    count: int | None = None
 
 
 class Delta(BaseModel):

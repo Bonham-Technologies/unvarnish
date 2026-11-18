@@ -18,6 +18,7 @@ from unvarnish.analysis.delta import (
     load_baseline,
     match_findings,
 )
+from unvarnish.analysis.languages import Classification
 from unvarnish.artifacts import read_artifact, write_artifact
 from unvarnish.cli import app
 from unvarnish.export.markdown import prepare_markdown
@@ -25,8 +26,20 @@ from unvarnish.model.budget import BudgetTracker
 from unvarnish.phases.base import PhaseRunner, PhaseStatus, build_context
 from unvarnish.phases.compare import run_comparison
 from unvarnish.phases.ingest import ingest_tool
+from unvarnish.scanners.base import ScanContext
+from unvarnish.scanners.hardcoded_infra import HardcodedInfraScanner
+from unvarnish.scanners.oversized_files import OversizedFilesScanner
 from unvarnish.schemas.delta import BaselineInfo, BaselineSnapshot, Delta
 from unvarnish.schemas.finding import Evidence, Finding
+from unvarnish.schemas.git import GitStats
+from unvarnish.schemas.inventory import (
+    Census,
+    CensusTotals,
+    Dependencies,
+    FileMetrics,
+    FileRecord,
+    Metrics,
+)
 from unvarnish.schemas.scan import ScannerFindings
 from unvarnish.schemas.verify import ModelFindings
 
@@ -136,6 +149,107 @@ def test_secrets_match_by_fingerprint_not_by_title():
     assert by_fp["fp-a"].status == "changed" and by_fp["fp-a"].matched_by == "fingerprint"
     assert by_fp["fp-c"].status == "new"  # same title and path, different value
     assert by_fp["fp-b"].status == "resolved"
+
+
+# --- grouped scanner findings (UNVAR-49) ----------------------------------------------------
+
+
+def _oversized(*sizes: tuple[str, int]) -> list[Finding]:
+    files = [FileMetrics(path=p, lines=n, bytes=1, metrics_method="lines") for p, n in sizes]
+    ctx = ScanContext(tool="t", source_root=Path("."),
+                      census=Census(tool="t", files=[], totals=CensusTotals()),
+                      metrics=Metrics(tool="t", files=files),
+                      git=GitStats(tool="t", available=False),
+                      dependencies=Dependencies(tool="t", dependencies=[]),
+                      options={"file_lines": 1500})
+    return OversizedFilesScanner().run(ctx)
+
+
+def _hardcoded(root: Path, text: str) -> list[Finding]:
+    root.mkdir()
+    (root / "a.py").write_text(text, encoding="utf-8")
+    rec = FileRecord(path="a.py", bytes=len(text), lines=text.count("\n"), language="python",
+                     classification=Classification.source, excluded=False,
+                     exclusion_reason=None)
+    ctx = ScanContext(tool="t", source_root=root,
+                      census=Census(tool="t", files=[rec], totals=CensusTotals()),
+                      metrics=Metrics(tool="t", files=[]),
+                      git=GitStats(tool="t", available=False),
+                      dependencies=Dependencies(tool="t", dependencies=[]))
+    return HardcodedInfraScanner().run(ctx)
+
+
+def _legacy(findings: list[Finding]) -> list[Finding]:
+    """The findings as a baseline written before UNVAR-49 holds them: no group tag."""
+    out = [f.model_copy(deep=True) for f in findings]
+    for f in out:
+        f.tags = [t for t in f.tags if not t.startswith("group:")]
+    return out
+
+
+def test_partly_fixed_oversized_group_is_changed_not_resolved_and_new():
+    base = _oversized(("big1.py", 4000), ("big2.py", 2000))
+    cur = _oversized(("big1.py", 900), ("big2.py", 2000))  # the larger file was shrunk
+    assert [f.title for f in base] == ["Oversized files"]
+    assert [f.title for f in cur] == ["Oversized file"]
+    for baseline in (_legacy(base), base):  # a snapshot from before UNVAR-49 matches too
+        entries = match_findings(baseline, cur, drift=50)
+        assert _counts(entries) == {"changed": 1}
+        e = entries[0]
+        assert e.matched_by == "group" and e.group == "oversized_files.file"
+        assert (e.previous_count, e.count) == (2, 1)
+        assert e.previous_id == base[0].id and e.finding.evidence[0].path == "big2.py"
+    assert {"group:file", "count:2"} <= set(base[0].tags)  # the scanner names its group
+
+
+def test_unchanged_group_with_reordered_members_is_persistent():
+    base = _oversized(("a.py", 4000), ("b.py", 2000))
+    cur = _oversized(("a.py", 2000), ("b.py", 4000))  # same files, the longest swapped
+    entries = match_findings(base, cur, drift=50)
+    assert [(e.status, e.matched_by) for e in entries] == [("persistent", "group")]
+
+
+def test_removing_one_of_two_hardcoded_urls_is_changed(tmp_path):
+    two = ('A = "https://api.acme-corp.com/v1"\n'
+           'B = "https://billing.acme-corp.com/v1"\n')
+    base = _hardcoded(tmp_path / "before", two)
+    cur = _hardcoded(tmp_path / "after", two.split("\n")[0] + "\n")
+    assert base[0].id == cur[0].id  # same title and first location: the id alone matches
+    for baseline in (_legacy(base), base):
+        entries = match_findings(baseline, cur, drift=50)
+        assert _counts(entries) == {"changed": 1}
+        assert (entries[0].previous_count, entries[0].count) == (2, 1)
+        assert entries[0].group == "hardcoded_infra.url"
+    assert {"group:url", "distinct:2"} <= set(base[0].tags)
+
+
+def test_grouped_hygiene_findings_match_whatever_the_first_path():
+    todo = "High density of TODO/FIXME/HACK markers"
+    base = _f(todo, "a.py", 3, severity="low")
+    base.scanner = "hygiene"
+    cur = _f(todo, "z.py", 400, severity="low")  # a.py's markers were resolved
+    cur.scanner, cur.tags = "hygiene", ["group:todo_density", "count:12"]
+    entries = match_findings([base], [cur], drift=50)
+    assert [(e.status, e.matched_by) for e in entries] == [("persistent", "group")]
+    assert (entries[0].previous_count, entries[0].count) == (None, 12)  # older: no count
+    cur.tags = ["group:todo_density", "count:many"]  # an edited artifact: no count
+    assert match_findings([base], [cur], drift=50)[0].count is None
+    # A model finding with a scanner's title is no group.
+    model = _f(todo, "z.py", 400, severity="low", source="model")
+    assert _counts(match_findings([base], [model], drift=50)) == {"new": 1, "resolved": 1}
+
+
+def test_changed_group_renders_old_and_new_counts():
+    from unvarnish.render.findings import delta_context
+
+    base = _oversized(("big1.py", 4000), ("big2.py", 2000))
+    cur = _oversized(("big2.py", 2000))
+    delta = compute_delta("t", _snap(base), ScannerFindings(tool="t", findings=cur), None,
+                          accepted=[], drift=50)
+    ctx = delta_context(delta)
+    assert ctx is not None and ctx["totals"]["changed"] == 1
+    assert ctx["changed"][0]["change"] == "count 2 → 1"
+    assert ctx["totals"]["new"] == ctx["totals"]["resolved"] == 0
 
 
 def _snap(findings, *, model=False, scanner=True) -> BaselineSnapshot:
@@ -415,7 +529,7 @@ def test_run_baseline_without_the_tool(tmp_path):
 
 
 def test_baseline_change_rerenders_without_rerunning_model_phases(engagement, synthetic_repo,
-                                                                 tmp_path):
+                                                                 tmp_path, monkeypatch):
     ingest_tool(engagement, "alpha", str(synthetic_repo), "repo")
     stub = _stub()
     ctx = build_context(engagement, "alpha", budget=BudgetTracker(None))
@@ -435,6 +549,13 @@ def test_baseline_change_rerenders_without_rerunning_model_phases(engagement, sy
     doc = ctx.paths.findings_doc.read_text(encoding="utf-8")
     assert f"## Since the previous review ({snap.info.reviewed_at:%Y-%m-%d}, commit " in doc
     assert "No findings resolved." in doc and "No new findings." in doc
+    # A matcher change alone re-renders the delta, still with no model call (UNVAR-49).
+    import unvarnish.phases.render as render_phase
+    monkeypatch.setattr(render_phase, "MATCH_VERSION", f"{render_phase.MATCH_VERSION}+")
+    results = PhaseRunner(_phases(stub)).run(ctx)
+    assert {r.phase: r.status for r in results if r.status != PhaseStatus.skipped} == {
+        "render": PhaseStatus.ok}
+    assert {k: stub.count(k) for k in before} == before
     # Removing the baseline removes the delta and the section.
     ctx.paths.baseline.unlink()
     PhaseRunner(_phases(stub)).run(ctx)

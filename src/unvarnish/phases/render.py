@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from unvarnish.analysis.delta import compute_delta
+from unvarnish.analysis.delta import MATCH_VERSION, compute_delta
 from unvarnish.analysis.effort import effort_days_part
 from unvarnish.artifacts import hash_files, hash_inputs, read_artifact, write_artifact
 from unvarnish.config import EngagementConfig, user_config_path
@@ -90,7 +90,7 @@ class RenderPhase:
         # It changes this phase's hash alone: a new baseline re-renders, no model phase reruns.
         b = ctx.config.baseline
         baseline_part = ([hash_files([ctx.paths.baseline]), ",".join(sorted(b.accepted)),
-                          str(b.line_drift), str(DELTA_SCHEMA_VERSION)]
+                          str(b.line_drift), str(DELTA_SCHEMA_VERSION), MATCH_VERSION]
                          if ctx.paths.baseline.exists() else [])
         return hash_inputs([
             hash_files(self._inputs(ctx)),

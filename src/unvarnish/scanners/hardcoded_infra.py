@@ -377,7 +377,7 @@ class HardcodedInfraScanner:
                          f"{plural(len(located), 'location')}, for example {sample}.{shown}"),
                 impact=IMPACT[kind], remediation=REMEDIATION, evidence=evidence,
                 source=Source.scanner, scanner=self.name,
-                tags=[f"hardcoded:{kind}", f"distinct:{len(values)}"],
+                tags=[f"hardcoded:{kind}", f"distinct:{len(values)}", f"group:{kind}"],
                 **rule_effort(ctx, self.name, kind),
             ))
         return findings

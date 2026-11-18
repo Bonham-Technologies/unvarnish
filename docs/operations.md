@@ -321,7 +321,9 @@ model phases rerun once to collect bands.
 
 Compare like with like: a scanner-only baseline against a model-analysed run compares scanner
 findings only, and the section says so. Model findings vary between runs, so a reworded one
-shows as resolved plus new; check those pairs before quoting the counts.
+shows as resolved plus new; check those pairs before quoting the counts. A grouped scanner
+finding (oversized files, hardcoded URLs and the like) matches whatever its count: partly
+fixing one shows as "changed" with "count 2 → 1", not as resolved plus new.
 
 ## Parallel tools
 

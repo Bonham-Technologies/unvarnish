@@ -109,6 +109,6 @@ class OversizedFilesScanner:
             tool=ctx.tool, category=self.category, severity=severity,
             title=titles[0] if n == 1 else titles[1], summary=summary, impact=impact,
             remediation=remediation, evidence=[evidence(fm) for fm in items[:MAX_LISTED]],
-            source=Source.scanner, scanner=self.name, tags=[f"count:{n}"],
+            source=Source.scanner, scanner=self.name, tags=[f"group:{rule}", f"count:{n}"],
             **rule_effort(ctx, self.name, rule),
         )
