@@ -919,6 +919,21 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   the fingerprint catches a secret that moved files. Two secrets with
   different fingerprints never match on title and path. "Changed" means moved or re-rated.
   *Cost if wrong:* a model finding reworded between runs shows as one resolved and one new.
+- **Grouped scanner findings match by scanner and rule (UNVAR-49)**, after the id and before
+  title and path. One finding stands for every oversized file or function, every hardcoded
+  value of a kind, every TODO or swallowed error; its title follows the count ("Oversized
+  file" or "files") and its id and path the first member, so partly fixing a group read as one
+  resolved plus a new finding of the same severity. Scanners now tag such a finding
+  `group:<rule>` and `count:<n>` (hardcoded_infra keeps `distinct:<n>`); findings written
+  before the tags are recognised by a frozen table of scanner and title, and by
+  `hardcoded:<kind>`, so existing baselines match with no schema bump. A matched group is
+  "changed" when its count or severity changed, never because its first member moved, and
+  `delta.json` entries gain optional `group`, `previous_count` and `count` fields (matched by
+  `group`); the document shows "count 2 → 1". The matching carries a version
+  (`MATCH_VERSION` in `analysis/delta.py`) in the render phase's inputs hash when there is a
+  baseline, so a change to it re-renders a resumed run's delta. *Cost if wrong:* a group whose members were
+  swapped one for one reads as persistent, and a scanner that adds a grouped finding without
+  the tag falls back to title and path matching.
 - **Line drift defaults to 50 lines** (`baseline.line_drift`): it covers an import block or a
   new function above the finding while keeping two same-titled findings in one file apart.
   *Cost if wrong:* a finding pushed further down shows as resolved plus new; raise the setting.

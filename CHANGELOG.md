@@ -205,6 +205,16 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   runs keep comparing with it; a baseline of another findings schema version is refused
   (exit 2). No model calls: only `render` and `render_comparison` rerun. Without a baseline
   the documents are unchanged (UNVAR-40).
+- A partly fixed grouped scanner finding no longer shows as one resolved plus a new finding of
+  the same severity. Oversized files and functions, hardcoded values of one kind, TODO
+  density and swallowed errors match the previous review's by scanner and rule, whatever
+  their count, title ("Oversized file" or "files") or first path, and show as "changed" with
+  "count 2 → 1" when the count moved; removing one of two hardcoded URLs is now credited
+  instead of reading as persistent. The scanners tag these findings `group:<rule>` and
+  `count:<n>`; baselines written before the tags still match, by scanner and title.
+  `delta.json` entries gain optional `group`, `previous_count` and `count` fields and the
+  `group` match. A change to the matching now re-renders a resumed run's delta on its own
+  (UNVAR-49).
 
 ### Remediation effort
 

@@ -1,8 +1,8 @@
 """Re-audit delta (UNVAR-40): this run's findings against a previous review's.
 
 No model calls. `load_baseline` resolves what `run --baseline` points at, per tool, into a
-snapshot; `compute_delta` matches findings by id, then by title and path within a line-drift
-tolerance, then by secret fingerprint.
+snapshot; `compute_delta` matches findings by id, then grouped scanner findings by scanner and
+rule, then by title and path within a line-drift tolerance, then by secret fingerprint.
 """
 
 from __future__ import annotations
@@ -142,6 +142,51 @@ def _snapshot(tool: str, info: BaselineInfo, findings: list[Finding]) -> Baselin
     return BaselineSnapshot(tool=tool, info=info, findings=out)
 
 
+# Part of the render phase's inputs hash when there is a baseline: bump it whenever a change to
+# the matching changes what a delta says, so a resumed run re-renders delta.json (UNVAR-49).
+MATCH_VERSION = "2026-11-13.1"
+
+# Findings written before scanners tagged their groups (UNVAR-49), recognised by scanner and
+# title: the oversized titles follow the count. hardcoded_infra's groups carry their kind in a
+# "hardcoded:<kind>" tag. Frozen: a new grouped finding carries "group:<rule>" instead.
+LEGACY_GROUPS: dict[tuple[str, str], str] = {
+    ("oversized_files", "Oversized file"): "file",
+    ("oversized_files", "Oversized files"): "file",
+    ("oversized_files", "Very large function"): "very_large_function",
+    ("oversized_files", "Very large functions"): "very_large_function",
+    ("oversized_files", "Oversized function"): "function",
+    ("oversized_files", "Oversized functions"): "function",
+    ("hygiene", "High density of TODO/FIXME/HACK markers"): "todo_density",
+    ("hygiene", "Swallowed errors"): "swallowed_errors",
+}
+
+
+def _tag(f: Finding, prefix: str) -> str | None:
+    return next((t[len(prefix):] for t in f.tags if t.startswith(prefix)), None)
+
+
+def group_of(f: Finding) -> str | None:
+    """"<scanner>.<rule>" for a scanner finding that stands for every file, function or value
+    over one rule. Its title can follow the count and its id and path the first member, so it
+    matches the baseline's by scanner and rule alone (UNVAR-49)."""
+    if f.source != Source.scanner or not f.scanner:
+        return None
+    rule = (_tag(f, "group:")
+            or (_tag(f, "hardcoded:") if f.scanner == "hardcoded_infra" else None)
+            or LEGACY_GROUPS.get((f.scanner, f.title)))
+    return f"{f.scanner}.{rule}" if rule else None
+
+
+def group_count(f: Finding) -> int | None:
+    """How many members a grouped finding holds: its "count:" tag, or hardcoded_infra's
+    "distinct:" (values); None when the artifact predates the tag."""
+    value = _tag(f, "count:") or _tag(f, "distinct:")
+    try:
+        return int(value) if value is not None else None
+    except ValueError:
+        return None
+
+
 def _line(f: Finding) -> int | None:
     return f.evidence[0].line_start
 
@@ -171,6 +216,17 @@ def _same_place(b: Finding, c: Finding, drift: int) -> int | None:
 
 def _pair(b: Finding, c: Finding, how: str) -> DeltaEntry:
     eb, ec = b.evidence[0], c.evidence[0]
+    group = group_of(b)
+    if group is not None and group == group_of(c):
+        # A group's first member is no location: it changed when its count or severity did.
+        before, now = group_count(b), group_count(c)
+        recounted = before is not None and now is not None and before != now
+        status = (DeltaStatus.changed if recounted or b.severity != c.severity
+                  else DeltaStatus.persistent)
+        return DeltaEntry(status=status, finding=c, matched_by=how,  # type: ignore[arg-type]
+                          previous_id=b.id, previous_severity=b.severity,
+                          previous_path=eb.path, previous_line=eb.line_start, group=group,
+                          previous_count=before, count=now)
     moved = (eb.path, eb.line_start) != (ec.path, ec.line_start)
     status = (DeltaStatus.changed if moved or b.severity != c.severity
               else DeltaStatus.persistent)
@@ -180,8 +236,9 @@ def _pair(b: Finding, c: Finding, how: str) -> DeltaEntry:
 
 
 def match_findings(base: list[Finding], cur: list[Finding], drift: int) -> list[DeltaEntry]:
-    """Pair each current finding with at most one baseline finding: by id, then by title and
-    path within `drift` lines (nearest pairs first), then by secret fingerprint."""
+    """Pair each current finding with at most one baseline finding: by id, then grouped
+    scanner findings by scanner and rule, then by title and path within `drift` lines
+    (nearest pairs first), then by secret fingerprint."""
     left: list[Finding | None] = list(base)
     entries: list[DeltaEntry | None] = [None] * len(cur)
 
@@ -195,6 +252,14 @@ def match_findings(base: list[Finding], cur: list[Finding], drift: int) -> list[
         j = next((j for j, b in enumerate(left) if b is not None and b.id == c.id), None)
         if j is not None:
             take(i, j, "id")
+    for i, c in enumerate(cur):
+        group = group_of(c)
+        if entries[i] is not None or group is None:
+            continue
+        j = next((j for j, b in enumerate(left) if b is not None and group_of(b) == group),
+                 None)
+        if j is not None:
+            take(i, j, "group")
     # Nearest pair first across every candidate, ties to the earlier current then baseline
     # finding, so the pairing does not depend on which current finding is looked at first.
     near = sorted((d, i, j) for i, c in enumerate(cur) if entries[i] is None

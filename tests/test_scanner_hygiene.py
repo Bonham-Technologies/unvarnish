@@ -70,6 +70,9 @@ def test_todo_density_and_empty_handlers(engagement: Engagement, tmp_path: Path)
     paths = sorted({e.path for e in empty.evidence})
     assert paths == ["a.py", "b.js", "c.go"]
     assert len(empty.evidence) == 5
+    # Grouped findings name their rule and count, so a re-audit matches them (UNVAR-49).
+    assert todo.tags == ["group:todo_density", "count:3"]
+    assert empty.tags == ["group:swallowed_errors", "count:5"]
 
 
 # --- fixes from the first real-repo run (ESCAPESUITE) -----------------------

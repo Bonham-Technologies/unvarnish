@@ -149,8 +149,10 @@ scanner findings and a fallback sentence in each prose block.
 
 `--baseline` takes a previous engagement folder, a tool folder, or one findings artifact
 (`scanner-findings.json` or `findings.json`), resolved per tool by name. Findings match by id,
-then by title and path within `baseline.line_drift` lines (default 50), then by secret
-fingerprint. Each tool gets `analysis/delta.json`, and `findings.md` opens with "Since the
+then grouped scanner findings (oversized files, hardcoded URLs and the like) by scanner and
+rule, then by title and path within `baseline.line_drift` lines (default 50), then by secret
+fingerprint; a group whose count changed shows as changed, with both counts. Each tool gets
+`analysis/delta.json`, and `findings.md` opens with "Since the
 previous review (date, commit)": counts by severity (resolved, new, changed, persistent, risk
 accepted), then tables of the resolved, new and changed findings. Exports carry the section,
 and `unvarnish compare` adds a per-tool trend column. No model calls are made; the delta only

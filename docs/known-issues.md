@@ -150,7 +150,18 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   grammar list outside the package.
 - [UNVAR-40] Model findings are not deterministic between runs: one reworded or moved more
   than `baseline.line_drift` lines shows in the delta as one resolved and one new. Scanner
-  findings match reliably.
+  findings match by id, title and path, or fingerprint; a grouped scanner finding (oversized
+  files and functions, hardcoded values of one kind, TODO density, swallowed errors) matches
+  by scanner and rule whatever its count or first path (UNVAR-49).
+- [UNVAR-49] Other scanner findings that list several places (dependency or build
+  directories, large binaries, unpinned dependencies, suppression files, bulk commits,
+  client-exposure groups) still match by title and first path: when the first listed place
+  changes, they show as one resolved and one new.
+- [UNVAR-49] A group's "changed" reflects its count and severity only: the same number of
+  members with one swapped for another reads as persistent. Swallowed errors count at most 20
+  (the evidence cap), so a change above 20 is not seen.
+- [UNVAR-49] A TODO-density or swallowed-errors finding in a baseline written before UNVAR-49
+  has no count, so a change in its count is not shown until the baseline is a newer review.
 - [UNVAR-40] A tool renamed between reviews has no delta: a baseline is resolved by tool
   name, in a findings artifact too (its `tool` field), and the run warns "not in the
   baseline".
