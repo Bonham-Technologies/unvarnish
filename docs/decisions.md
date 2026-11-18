@@ -1136,6 +1136,32 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   client laptop can't run Docker can't run Unvarnish at all; native support (option 2 on the
   ticket) is the follow-up if that happens.
 
+## Configuration errors (UNVAR-50)
+
+- **An invalid `tool.yaml` stops the command; a missing one does not.** A missing
+  `tool.yaml` (UNVAR-17) means the tool was dropped, so `run` carries on with the others. One
+  that is present but unreadable is a mistake to fix, and `status`, `run`, `export` and `ask`
+  refuse with the file, key and exit 2 before any work. *Cost if wrong:* one tool's broken
+  `tool.yaml` holds up a run of the others until the one line the error names is fixed.
+- **A bad value is blamed on `engagement.yaml` unless only the user config sets that key.**
+  The two files are merged before validation, so the error names the user config only when
+  `engagement.yaml` does not set the key itself. *Cost if wrong:* none in practice;
+  `engagement.yaml` always wins over the user config for keys it sets.
+- **Every configuration error and unknown-setting line is redacted; a shown value is also
+  shortened.** The value is what makes `got 'zero'` obvious, but a key pasted into the wrong
+  place can turn up in the value, the dotted key (a key used as a backend name) or a
+  validator's message (an effort band or rule name), so each whole line, and each
+  unknown-setting warning, goes through the secrets scanner's redaction. A shown value is
+  redacted before it is cut to 60 characters, since a key cut short is no longer recognised.
+  *Cost if wrong:* a secret no scanner rule recognises is still printed (a value at most its
+  first 57 characters) on the consultant's own terminal.
+- **Built-in scanner option types are checked by `config check`, not on load.** Scanner
+  options stay free-form (a plugin scanner reads its own), and refusing them on load would
+  stop every command, `status` included, for a value only one scanner reads. Types come from
+  `DEFAULT_SCANNER_OPTIONS`: a whole number where the default is one, any number where it is
+  a float, true or false, a string, or a list of strings. *Cost if wrong:* someone who skips
+  `config check` still sees the bad option only as a recorded scanner failure in `run`.
+
 ## One walk per syntax tree (UNVAR-54)
 
 - **Node kinds are matched by `kind_id`, with every id whose name is a wanted type.** Reading

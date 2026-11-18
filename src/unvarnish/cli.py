@@ -20,10 +20,16 @@ from unvarnish.ask.index import load_or_build_index
 from unvarnish.ask.loop import run_question, session_name, write_session
 from unvarnish.ask.tools import AskTools
 from unvarnish.config import (
+    ConfigError,
     EngagementConfig,
     Prices,
     UnsupportedSchemaVersion,
+    has_key,
+    read_yaml,
+    redact_secrets,
+    scanner_option_problems,
     unknown_keys,
+    user_config_path,
 )
 from unvarnish.engagement import Engagement, EngagementError, NotAnEngagement
 from unvarnish.export.exporter import DATA_FORMATS, DOC_NAMES, FORMATS, export_engagement
@@ -60,7 +66,7 @@ from unvarnish.phases.compare import (
     comparison_phases,
     run_comparison,
 )
-from unvarnish.phases.ingest import IngestError, ingest_tool
+from unvarnish.phases.ingest import IngestError, ingest_tool, load_tool_meta
 from unvarnish.scanners import load_scanners
 from unvarnish.schemas.analysis import ExtractState, UnitExtraction
 from unvarnish.schemas.cost import CostEntry, Usage, priced
@@ -124,10 +130,21 @@ def _warn_unmounted() -> None:
                           f"-v <your engagement folder>:{ENGAGEMENT_MOUNT}", soft_wrap=True)
 
 
+def _print_errors(problems: list[str]) -> None:
+    """One `error:` line per problem; redacted, and escaped so a value like [t1 is shown, not
+    eaten as markup."""
+    for line in problems:
+        err_console.print(f"[red]error:[/red] {escape(redact_secrets(line))}", soft_wrap=True,
+                          highlight=False)
+
+
 def _load_engagement(engagement: Path | None) -> Engagement:
     _warn_unmounted()
     try:
         return Engagement.find(engagement or Path.cwd())
+    except ConfigError as exc:  # invalid YAML or values (UNVAR-50)
+        _print_errors(exc.problems)
+        raise typer.Exit(code=2) from exc
     except (NotAnEngagement, UnsupportedSchemaVersion) as exc:
         err_console.print(f"[red]error:[/red] {escape(str(exc))}", soft_wrap=True)
         raise typer.Exit(code=2) from exc
@@ -219,8 +236,26 @@ def _missing_tool_yaml(eng: Engagement, names: list[str]) -> list[str]:
     return [n for n in names if not eng.tool_paths(n).meta_file.exists()]
 
 
+def _refuse_invalid_tools(eng: Engagement, names: list[str]) -> None:
+    """A tool.yaml that is there but cannot be read stops the command before any work: one
+    error line per problem, exit 2 (UNVAR-50). A missing one is _report_missing_tools's."""
+    problems: list[str] = []
+    for name in names:
+        paths = eng.tool_paths(name)
+        if paths.meta_file.exists():
+            try:
+                load_tool_meta(paths)
+            except ConfigError as exc:
+                problems += exc.problems
+    if problems:
+        _print_errors(problems)
+        raise typer.Exit(code=2)
+
+
 def _report_missing_tools(eng: Engagement, names: list[str]) -> list[str]:
-    """Print one error line per named tool whose tool.yaml is gone; return those tools."""
+    """Print one error line per named tool whose tool.yaml is gone; return those tools. A
+    tool.yaml that is there but invalid stops the command first (exit 2)."""
+    _refuse_invalid_tools(eng, names)
     missing = _missing_tool_yaml(eng, names)
     for name in missing:
         err_console.print(f"[red]error:[/red] {escape(name)}: {MISSING_TOOL_YAML}", soft_wrap=True)
@@ -741,6 +776,7 @@ def cost(engagement: Path | None = EngagementOption) -> None:
 def status(engagement: Path | None = EngagementOption) -> None:
     """Show phase progress for every tool, one row per phase."""
     eng = _load_engagement(engagement)
+    _refuse_invalid_tools(eng, eng.tool_names())
     phases = default_phases()
     table = Table("tool", "phase", "state", title=f"status: {eng.config.client or eng.root.name}")
     for name in eng.tool_names():
@@ -831,6 +867,9 @@ def scanners_list(engagement: Path | None = EngagementOption) -> None:
         cfg = Engagement.find(engagement or Path.cwd()).config
     except NotAnEngagement:
         cfg = EngagementConfig()
+    except ConfigError as exc:
+        _print_errors(exc.problems)
+        raise typer.Exit(code=2) from exc
     except UnsupportedSchemaVersion as exc:
         err_console.print(f"[red]error:[/red] {escape(str(exc))}", soft_wrap=True)
         raise typer.Exit(code=2) from exc
@@ -959,14 +998,23 @@ def config_check(
     eng = _load_engagement(engagement)
     raw = yaml.safe_load(eng.config_file.read_text(encoding="utf-8")) or {}
     for key in unknown_keys(raw):
-        err_console.print(f"[yellow]warning:[/yellow] unknown setting {escape(repr(key))} "
-                          "is ignored")
+        err_console.print(f"[yellow]warning:[/yellow] unknown setting "
+                          f"{escape(redact_secrets(repr(key)))} is ignored", highlight=False)
+    # Scanner options are free-form, so loading accepts a wrong type; the scanner would then
+    # fail on every run (UNVAR-50). Blamed like load_config: the user config only when it
+    # alone sets the key.
+    user_file = user_config_path()
+    user_raw = (read_yaml(user_file, str(user_file)) or {}) if user_file.exists() else {}
+    option_problems: list[str] = []
+    for key, problem in scanner_option_problems(eng.config.scanners):
+        only_user = not has_key(raw, key) and has_key(user_raw, key)
+        option_problems.append(f"{user_file if only_user else eng.config_file.name}: {problem}")
     # "other phases" resolves to models.default: every phase without an override uses it.
     phases = ["extract", *[p for p in eng.config.models.phases if p != "extract"],
               "other phases"]
     table = Table("phase", "backend", "model", "json_schema", "tool_calling", "context", "probe")
-    failed = False
-    errors: list[str] = []
+    failed = bool(option_problems)
+    errors: list[str] = list(option_problems)
     seen: set[tuple[str, str]] = set()
     for phase in phases:
         ref = resolve_model_ref(eng.config, phase)
@@ -1011,8 +1059,7 @@ def config_check(
                           "[red]error[/red]")
             errors.append(f"{phase}: {exc}")
     console.print(table)
-    for line in errors:
-        err_console.print(f"[red]error:[/red] {escape(line)}", soft_wrap=True)
+    _print_errors(errors)
     if failed:
         raise typer.Exit(code=2)
 

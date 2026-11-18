@@ -5,6 +5,9 @@ Practical notes for running Unvarnish on an engagement, from the live runs so fa
 ## Before the first engagement on a machine
 
 1. `unvarnish config check` probes every configured backend with the real extraction schema.
+   It also reports unknown keys and built-in scanner options of the wrong type; any command
+   names an invalid value in `engagement.yaml` or a `tool.yaml` by file and dotted key and
+   exits 2.
 2. Run `scripts/smoke.sh` with a real key once per machine and model. It ingests two small tools,
    runs every phase, compares, asks one question, and exports HTML. Two bugs that the offline
    suite could not see were found this way (see `docs/decisions.md`, live smoke test).

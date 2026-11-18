@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 log = logging.getLogger("unvarnish.config")
 
@@ -36,6 +36,71 @@ SUPPORTED_SCHEMA_VERSION = 1
 
 class UnsupportedSchemaVersion(ValueError):
     pass
+
+
+class ConfigError(ValueError):
+    """A configuration file that cannot be read or holds invalid values: one problem per line,
+    each naming the file and, for a bad value, the dotted key (UNVAR-50). Every line is
+    redacted: a key pasted into the wrong place can turn up in the dotted key, a validator's
+    message or the value shown."""
+
+    def __init__(self, problems: list[str]) -> None:
+        problems = [redact_secrets(p) for p in problems]
+        super().__init__("\n".join(problems))
+        self.problems = problems
+
+
+def redact_secrets(text: str) -> str:
+    """`text` with every secret the scanner rules recognise redacted: for any line that can
+    quote configuration back to the user (error lines, unknown-setting warnings)."""
+    from unvarnish.scanners.secrets import redact_text  # import cycle
+
+    return redact_text(text)
+
+
+def yaml_problem(label: str, exc: yaml.YAMLError) -> str:
+    """A YAML syntax error as one line: the file, where, and what."""
+    mark = getattr(exc, "problem_mark", None)
+    what = getattr(exc, "problem", None) or str(exc)
+    where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark is not None else ""
+    return f"{label}: invalid YAML{where}: {what}"
+
+
+def validation_problems(err: ValidationError, label: Any) -> list[str]:
+    """One line per invalid value: the file, the dotted key, the reason and the value given.
+    `label` is the file's name, or a function of the dotted key that returns it."""
+    out: list[str] = []
+    for e in err.errors():
+        key = ".".join(str(part) for part in e["loc"])
+        name = label(key) if callable(label) else label
+        line = f"{name}: {key}: {e['msg']}" if key else f"{name}: {e['msg']}"
+        value = e.get("input")
+        if isinstance(value, (str, int, float, bool)) and e["type"] != "missing":
+            line += f" (got {shown_value(value)})"
+        out.append(line)
+    return out
+
+
+def shown_value(value: Any) -> str:
+    """A value as an error line shows it, cut to 60 characters. Redacted before the cut: the
+    whole-line redaction could no longer recognise a key cut short."""
+    shown = redact_secrets(repr(value))
+    return shown if len(shown) <= 60 else shown[:57] + "..."
+
+
+def read_yaml(path: Path, label: str) -> Any:
+    """Parse a YAML file, turning a syntax error, a file that is not UTF-8 or one that cannot
+    be read into a ConfigError naming `label`."""
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ConfigError([yaml_problem(label, exc)]) from exc
+    except UnicodeDecodeError as exc:  # UTF-16 from Notepad or PowerShell, say
+        raise ConfigError([f"{label}: not UTF-8 text (byte {exc.start}); save it as UTF-8"]) \
+            from exc
+    except OSError as exc:
+        raise ConfigError([f"{label}: cannot be read ({exc.strerror or type(exc).__name__})"]) \
+            from exc
 
 
 class BackendCapabilities(BaseModel):
@@ -207,9 +272,11 @@ class EngagementConfig(BaseModel):
 
     @field_validator("scanners", mode="before")
     @classmethod
-    def _merge_scanner_defaults(cls, v: Any) -> dict[str, dict[str, Any]]:
+    def _merge_scanner_defaults(cls, v: Any) -> Any:
         from unvarnish.scanners.effort import validate_effort_overrides  # import cycle
 
+        if v is not None and not isinstance(v, dict):
+            return v  # the field's own type check names scanners (UNVAR-50)
         return validate_effort_overrides(deep_merge(copy.deepcopy(DEFAULT_SCANNER_OPTIONS),
                                                     v or {}))
 
@@ -220,17 +287,31 @@ def user_config_path() -> Path:
     return root / "config.yaml"
 
 
-def _load_yaml(path: Path) -> dict:
+def _load_yaml(path: Path, label: str) -> dict:
     if not path.exists():
         return {}
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = read_yaml(path, label) or {}
     if not isinstance(data, dict):
-        raise ValueError(f"{path} must contain a mapping at top level")
+        raise ConfigError([f"{label}: must contain a mapping at top level"])
     return data
 
 
+def has_key(data: Any, dotted: str) -> bool:
+    """Whether a parsed YAML mapping sets the dotted key itself."""
+    for part in dotted.split("."):
+        if not isinstance(data, dict) or part not in data:
+            return False
+        data = data[part]
+    return True
+
+
 def load_config(engagement_file: Path) -> EngagementConfig:
-    merged = deep_merge(_load_yaml(user_config_path()), _load_yaml(engagement_file))
+    """The engagement's configuration: the user config with engagement.yaml over it. A file
+    that cannot be parsed or a value that does not validate raises ConfigError."""
+    user_file = user_config_path()
+    user = _load_yaml(user_file, str(user_file))
+    own = _load_yaml(engagement_file, engagement_file.name)
+    merged = deep_merge(user, own)
     raw = merged.get("schema_version", 1)
     try:  # compare as a number whatever YAML type it arrived as ("2", 2.0, 2)
         version = float(raw)
@@ -242,11 +323,59 @@ def load_config(engagement_file: Path) -> EngagementConfig:
             f"this version supports {SUPPORTED_SCHEMA_VERSION}. Upgrade Unvarnish to work on "
             "this engagement.")
     for key in unknown_keys(merged):
-        log.warning("%s: unknown setting %r is ignored", engagement_file.name, key)
-    return EngagementConfig.model_validate(merged)
+        log.warning("%s: unknown setting %s is ignored", engagement_file.name,
+                    redact_secrets(repr(key)))
+    try:
+        return EngagementConfig.model_validate(merged)
+    except ValidationError as exc:
+        def blame(key: str) -> str:  # the user config, when only it sets the key
+            if key and not has_key(own, key) and has_key(user, key):
+                return str(user_file)
+            return engagement_file.name
+        raise ConfigError(validation_problems(exc, blame)) from exc
 
 
 FREE_FORM = {"scanners"}  # scanner options are each scanner's own
+
+
+def _option_type(default: Any) -> tuple[str, Any] | None:
+    """What a built-in scanner option must be, judged by its default: (description, check),
+    or None for a default of another type, which is not checked."""
+    if isinstance(default, bool):
+        return "true or false", lambda v: isinstance(v, bool)
+    if isinstance(default, int):
+        return "a whole number", lambda v: isinstance(v, int) and not isinstance(v, bool)
+    if isinstance(default, float):
+        return "a number", lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    if isinstance(default, list):
+        return "a list of strings", lambda v: isinstance(v, list) and all(
+            isinstance(x, str) for x in v)
+    if isinstance(default, str):
+        return "a string", lambda v: isinstance(v, str)
+    return None
+
+
+def scanner_option_problems(scanners: dict[str, Any]) -> list[tuple[str, str]]:
+    """Built-in scanner options whose value is not of the default's type, as (dotted key,
+    problem). Scanner options are free-form, so loading accepts them; a scanner given one then
+    fails at run time (UNVAR-50)."""
+    out: list[tuple[str, str]] = []
+    for scanner, defaults in DEFAULT_SCANNER_OPTIONS.items():
+        options = scanners.get(scanner)
+        if not isinstance(options, dict):
+            continue
+        for key, default in defaults.items():
+            if key not in options:
+                continue
+            kind = _option_type(default)
+            if kind is None:
+                continue
+            what, ok = kind
+            if not ok(options[key]):
+                dotted = f"scanners.{scanner}.{key}"
+                out.append((dotted, f"{dotted}: expected {what} "
+                                    f"(got {shown_value(options[key])})"))
+    return out
 
 
 def unknown_keys(data: Any, model: type[BaseModel] | None = None, prefix: str = "") -> list[str]:
