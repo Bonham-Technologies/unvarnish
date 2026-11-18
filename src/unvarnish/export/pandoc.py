@@ -36,6 +36,7 @@ def document_title(md: str, fallback: str) -> str:
 def build_pandoc_command(src: Path, fmt: str, out: Path, *, title: str, resource_dir: Path,
                          reference_docx: Path | None, css: Path | None,
                          pandoc: str = "pandoc", lang: str = "en",
+                         pdf_tagged: bool = True,
                          author: str | None = None) -> list[str]:
     # Model-written and scanned text comes from the client's untrusted code, so any HTML in it
     # (a quoted <script>, List<String>) must reach the reader as text. pandoc 3.1's gfm reader
@@ -56,6 +57,11 @@ def build_pandoc_command(src: Path, fmt: str, out: Path, *, title: str, resource
             cmd.append(f"--css={css}")
     elif fmt == "pdf":
         cmd += ["-t", "html5", "--standalone", "--pdf-engine=weasyprint"]
+        if pdf_tagged:
+            # PDF/UA-1 makes weasyprint tag the structure (headings, tables, lists) and mark the
+            # file as tagged, so assistive technology can follow it instead of one flat run of
+            # text. The exporter turns it off for a weasyprint that would hide the links.
+            cmd.append("--pdf-engine-opt=--pdf-variant=pdf/ua-1")
         if css is not None:
             cmd.append(f"--css={css}")
     else:
@@ -129,7 +135,8 @@ def export_markdown(md_path: Path, fmt: str, out: Path, *, diagrams: dict[str, D
                     render: Callable[[str, str], bytes] = render_with_dot,
                     pandoc: str = "pandoc",
                     runner: Callable[[list[str]], None] | None = None,
-                    lang: str = "en", author: str = DEFAULT_AUTHOR) -> list[str]:
+                    lang: str = "en", author: str = DEFAULT_AUTHOR,
+                    pdf_tagged: bool = True) -> list[str]:
     """Convert one rendered Markdown document; returns diagram failures (non-fatal)."""
     md_path, out, work_dir = md_path.resolve(), out.resolve(), work_dir.resolve()
     template = template.resolve() if template is not None else None
@@ -144,7 +151,8 @@ def export_markdown(md_path: Path, fmt: str, out: Path, *, diagrams: dict[str, D
     title = document_title(md, md_path.stem)
     cmd = build_pandoc_command(src, fmt, out, title=title,
                                resource_dir=work_dir, reference_docx=reference_docx, css=css,
-                               pandoc=pandoc, lang=lang, author=author or DEFAULT_AUTHOR)
+                               pandoc=pandoc, lang=lang, pdf_tagged=pdf_tagged,
+                               author=author or DEFAULT_AUTHOR)
     (runner or run_pandoc)(cmd)
     if fmt == "docx" and zipfile.is_zipfile(out):  # a test runner may stand in for pandoc
         try:

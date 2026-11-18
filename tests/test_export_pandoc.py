@@ -9,7 +9,14 @@ import pytest
 from unvarnish.config import BrandingConfig
 from unvarnish.export.markdown import prepare_markdown
 from unvarnish.export.pandoc import build_pandoc_command, bundled_asset, export_markdown
-from unvarnish.export.tools import INSTALL_HINTS, ToolsMissing, missing_tools
+from unvarnish.export.tools import (
+    INSTALL_HINTS,
+    MIN_WEASYPRINT_TAGGED,
+    ToolsMissing,
+    installed_weasyprint_version,
+    missing_tools,
+    untagged_pdf_reason,
+)
 from unvarnish.render.diagram import Diagram, Node
 
 SAMPLE = """# Sample: Findings
@@ -333,6 +340,169 @@ def test_build_pandoc_command_passes_lang(tmp_path: Path):
     default = build_pandoc_command(tmp_path / "a.md", "docx", tmp_path / "a.docx", title="T",
                                    resource_dir=tmp_path, reference_docx=None, css=None)
     assert "--metadata=lang:en" in default
+
+
+def test_pdf_command_asks_weasyprint_for_a_tagged_pdf(tmp_path: Path):
+    pdf = build_pandoc_command(tmp_path / "a.md", "pdf", tmp_path / "a.pdf", title="T",
+                               resource_dir=tmp_path, reference_docx=None, css=None)
+    assert "--pdf-engine-opt=--pdf-variant=pdf/ua-1" in pdf
+    for fmt in ("html", "docx"):
+        other = build_pandoc_command(tmp_path / "a.md", fmt, tmp_path / f"a.{fmt}", title="T",
+                                     resource_dir=tmp_path, reference_docx=None, css=None)
+        assert not any(a.startswith("--pdf-engine-opt") for a in other)
+
+
+def test_pdf_command_without_tagging_leaves_out_the_variant(tmp_path: Path):
+    pdf = build_pandoc_command(tmp_path / "a.md", "pdf", tmp_path / "a.pdf", title="T",
+                               resource_dir=tmp_path, reference_docx=None, css=None,
+                               pdf_tagged=False)
+    assert "--pdf-engine=weasyprint" in pdf
+    assert not any(a.startswith("--pdf-engine-opt") for a in pdf)
+
+
+@pytest.mark.parametrize(("output", "version"), [
+    (b"WeasyPrint version 70.0\n", (70, 0)),
+    (b"WeasyPrint version 61.1\n", (61, 1)),
+    (b"weasyprint version 66.0.1", (66, 0, 1)),
+    (b"something else entirely", None),
+])
+def test_installed_weasyprint_version_parses_its_banner(monkeypatch, output, version):
+    import subprocess
+
+    from unvarnish.export import tools
+
+    def fake_run(cmd, **kw):
+        assert cmd == ["weasyprint", "--version"]
+        return subprocess.CompletedProcess(cmd, 0, stdout=output, stderr=b"")
+
+    monkeypatch.setattr(tools.subprocess, "run", fake_run)
+    assert installed_weasyprint_version() == version
+
+
+def test_installed_weasyprint_version_is_none_when_it_cannot_run(monkeypatch):
+    from unvarnish.export import tools
+
+    def broken(cmd, **kw):
+        raise FileNotFoundError(cmd[0])
+
+    monkeypatch.setattr(tools.subprocess, "run", broken)
+    assert installed_weasyprint_version() is None
+
+
+def test_untagged_pdf_reason_names_the_version_and_the_way_out():
+    assert MIN_WEASYPRINT_TAGGED == (66, 0)
+    assert untagged_pdf_reason((66, 0)) is None
+    assert untagged_pdf_reason((70, 0)) is None
+    old = untagged_pdf_reason((61, 1))
+    assert old is not None
+    assert "61.1" in old and "66.0" in old and "untagged" in old and "Docker image" in old
+    unknown = untagged_pdf_reason(None)
+    assert unknown is not None and "untagged" in unknown and "66.0" in unknown
+
+
+def _pdf_objects(pdf: bytes) -> list[bytes]:
+    """The file and every stream that inflates: weasyprint puts the catalog and the
+    annotations in compressed object streams."""
+    import zlib
+
+    streams = [pdf]
+    for m in re.finditer(rb"stream\r?\n(.*?)endstream", pdf, re.DOTALL):
+        try:
+            streams.append(zlib.decompress(m.group(1)))
+        except zlib.error:
+            continue
+    return streams
+
+
+def _top_level(data: bytes, start: int) -> bytes:
+    """The dictionary opening at `start`, with its nested dictionaries cut out."""
+    depth, i, out = 0, start, bytearray()
+    while i < len(data):
+        pair = data[i:i + 2]
+        if pair == b"<<":
+            depth += 1
+            i += 2
+            continue
+        if pair == b">>":
+            depth -= 1
+            i += 2
+            if depth == 0:
+                break
+            continue
+        if depth == 1:
+            out.append(data[i])
+        i += 1
+    return bytes(out)
+
+
+def _link_annotation_flags(streams: list[bytes]) -> list[int]:
+    """The /F value of every link annotation (0 when it has none)."""
+    flags: list[int] = []
+    for s in streams:
+        for m in re.finditer(rb"/Subtype\s*/Link\b", s):
+            depth, i = 0, m.start()
+            while i > 0:  # walk back to the << that opens this annotation
+                i -= 1
+                if s[i:i + 2] == b">>":
+                    depth += 1
+                elif s[i:i + 2] == b"<<" and (i == 0 or s[i - 1:i] != b"<"):
+                    if depth == 0:
+                        break
+                    depth -= 1
+            own = _top_level(s, i)
+            f = re.search(rb"/F\s+(\d+)", own)
+            flags.append(int(f.group(1)) if f else 0)
+    return flags
+
+
+PDF_TOOLCHAIN = pytest.mark.skipif(
+    shutil.which("pandoc") is None or shutil.which("dot") is None
+    or shutil.which("weasyprint") is None, reason="pdf toolchain needed")
+
+
+def _export_linked_pdf(tmp_path: Path, *, pdf_tagged: bool) -> list[bytes]:
+    md = tmp_path / "architecture.md"
+    md.write_text(SAMPLE.replace("Done.", "See [pandoc](https://pandoc.org/) for more."),
+                  encoding="utf-8")
+    diagrams = {"context": Diagram(title="t: context", nodes=[Node(id="a", label="x")])}
+    failures = export_markdown(md, "pdf", tmp_path / "out.pdf", diagrams=diagrams,
+                               branding=BrandingConfig(), template=None,
+                               work_dir=tmp_path / "work", lang="de", pdf_tagged=pdf_tagged)
+    assert failures == []
+    return _pdf_objects((tmp_path / "out.pdf").read_bytes())
+
+
+@PDF_TOOLCHAIN
+def test_pdf_export_is_tagged_and_its_links_stay_visible(tmp_path: Path):
+    version = installed_weasyprint_version()
+    if untagged_pdf_reason(version) is not None:
+        pytest.skip(f"weasyprint {version} predates tagged PDFs with visible links")
+    streams = _export_linked_pdf(tmp_path, pdf_tagged=True)
+    for marker in (rb"/MarkInfo\s*<<\s*/Marked\s+true", rb"/StructTreeRoot",
+                   rb"/Lang\s*\(de\)"):
+        assert any(re.search(marker, s) for s in streams), marker
+    flags = _link_annotation_flags(streams)
+    assert flags, "no link annotation in the PDF"
+    assert not any(f & 2 for f in flags), f"a link annotation is Hidden: /F {flags}"
+
+
+@PDF_TOOLCHAIN
+def test_pdf_export_from_an_older_weasyprint_is_untagged_with_visible_links(tmp_path: Path):
+    version = installed_weasyprint_version()
+    if untagged_pdf_reason(version) is None:
+        pytest.skip(f"weasyprint {version} tags PDFs")
+    streams = _export_linked_pdf(tmp_path, pdf_tagged=False)
+    assert not any(re.search(rb"/StructTreeRoot", s) for s in streams)
+    assert any(re.search(rb"/Lang\s*\(de\)", s) for s in streams)
+    flags = _link_annotation_flags(streams)
+    assert flags and not any(f & 2 for f in flags), flags
+
+
+def test_link_annotation_flags_reads_only_the_annotation_itself():
+    data = (b"<</Type /Annot /Subtype /Link /Rect [0 0 1 1] /BS <</W 0>> "
+            b"/A <</S /URI /URI (x) /F 7>> /F 2>> "
+            b"<</Type /Annot /Subtype /Link /A <</F 2>> >>")
+    assert _link_annotation_flags([data]) == [2, 0]
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None or shutil.which("dot") is None,

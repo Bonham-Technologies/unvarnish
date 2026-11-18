@@ -311,6 +311,15 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ### Fixes
 
+- PDF exports are tagged (PDF/UA-1): weasyprint writes the structure tree and marks the file
+  as tagged, so screen readers can follow headings, lists and tables instead of one flat run
+  of text, and client accessibility policies that require tagged PDFs are met. Links stay
+  clickable: weasyprint before 66.0 hid every link annotation in a tagged file, so the Docker
+  image now installs weasyprint 70.0 from PyPI (pinned with hashes in `docker/weasyprint.txt`,
+  in its own venv) instead of Debian's 62.3, and `unvarnish export` checks the installed
+  version. With a weasyprint older than 66.0, or one whose version it can't read, PDFs are
+  still exported, untagged, with a warning that names the version and how to upgrade
+  (UNVAR-22).
 - A typo in `engagement.yaml`, the user config or a `tools/<name>/tool.yaml` no longer prints
   a 70-line traceback. Every command prints one `error:` line per problem, naming the file and
   the dotted key with the value given (`error: engagement.yaml: pipeline.concurrency: Input

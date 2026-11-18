@@ -17,7 +17,11 @@ from unvarnish.engagement import Engagement
 from unvarnish.export.findings_data import csv_text, load_findings, sarif_documents
 from unvarnish.export.graphviz import render_with_dot
 from unvarnish.export.pandoc import DEFAULT_AUTHOR, export_markdown, run_pandoc
-from unvarnish.export.tools import check_toolchain
+from unvarnish.export.tools import (
+    check_toolchain,
+    installed_weasyprint_version,
+    untagged_pdf_reason,
+)
 from unvarnish.render.diagram import Diagram
 from unvarnish.schemas.diagrams import DiagramSet
 
@@ -39,6 +43,7 @@ class ExportItem(BaseModel):
 
 class ExportReport(BaseModel):
     items: list[ExportItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)  # about the whole export, shown once
 
     @property
     def ok(self) -> list[ExportItem]:
@@ -156,12 +161,21 @@ def export_engagement(eng: Engagement, *, formats: Sequence[str], docs: Sequence
     branding, template = resolve_branding(eng, template, formats)
     if formats:  # sarif and csv are written here, without pandoc
         check_toolchain(formats, which=shutil.which)
+    report = ExportReport()
+    pdf_tagged = True
+    if "pdf" in formats:  # an old weasyprint still exports, untagged, rather than failing
+        reason = untagged_pdf_reason(installed_weasyprint_version())
+        if reason is not None:
+            # Debug, not warning: export configures no handler, so a warning would also reach
+            # Python's last-resort handler and print twice; the CLI shows report.warnings.
+            log.debug("%s", reason)
+            report.warnings.append(reason)
+            pdf_tagged = False
     # Naming tools exports their documents; the engagement comparison only when asked for.
     docs = list(docs or (DOC_NAMES if tools is None else
                          [d for d in DOC_NAMES if d != "comparison"]))
     tools = list(tools or eng.tool_names())
     stamp = timestamp or datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    report = ExportReport()
     eng.exports_dir.mkdir(parents=True, exist_ok=True)
     for doc, tool, md, diagrams_path in _sources(eng, docs, tools):
         for fmt in formats:
@@ -179,7 +193,8 @@ def export_engagement(eng: Engagement, *, formats: Sequence[str], docs: Sequence
                         work_dir=Path(tmp), render=render, pandoc=pandoc,
                         # run_pandoc is looked up here so tests can patch this module
                         runner=run_pandoc, lang=eng.config.report.lang,
-                        author=eng.config.consultant or DEFAULT_AUTHOR)
+                        author=eng.config.consultant or DEFAULT_AUTHOR,
+                        pdf_tagged=pdf_tagged)
                 except Exception as exc:  # one failed conversion never kills the export
                     log.exception("export %s/%s/%s failed", doc, tool, fmt)
                     item.status, item.detail = "failed", str(exc)[:300]

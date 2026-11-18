@@ -12,7 +12,9 @@ uv run unvarnish --help       # the CLI
 ```
 
 Exports need pandoc (3.1 or newer), Graphviz, and WeasyPrint on PATH (`brew install pandoc
-graphviz weasyprint`, or the Debian packages of the same names). The Docker image bundles
+graphviz weasyprint`, or the Debian packages of the same names). Tagged PDFs need WeasyPrint 66
+or later (`pip install 'weasyprint>=66'`); with the Debian package the tagged-PDF test skips
+and PDFs export untagged. The Docker image bundles
 them: `docker build -t unvarnish .`. Live model tests need an `ANTHROPIC_API_KEY`;
 `scripts/smoke.sh` runs one end to end. The unit suite never calls a model.
 

@@ -9,8 +9,10 @@ FROM ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb22
 
 FROM python:3.13-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 
+# weasyprint itself comes from PyPI below; these are the libraries it loads (pango, harfbuzz).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git pandoc graphviz weasyprint fonts-dejavu-core fonts-inter fonts-liberation2 \
+        git pandoc graphviz libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 \
+        fonts-dejavu-core fonts-inter fonts-liberation2 \
     && rm -rf /var/lib/apt/lists/* \
     && git config --system --add safe.directory '*'
 
@@ -29,6 +31,16 @@ RUN mkdir -p /opt/osv/osv-scalibr && for eco in $OSV_ECOSYSTEMS; do \
     && chmod -R a+rX /opt/osv
 
 COPY --from=uv /uv /usr/local/bin/uv
+
+# The PDF engine, pinned and hash-checked in docker/weasyprint.txt, in a venv of its own so its
+# libraries never meet Unvarnish's. Debian's weasyprint (62.3) hides every link in a tagged
+# (PDF/UA) file; 66.0 and later leave them clickable (UNVAR-22).
+COPY docker/weasyprint.txt /tmp/weasyprint.txt
+RUN uv venv --python /usr/local/bin/python3 /opt/weasyprint \
+    && uv pip install --python /opt/weasyprint --compile-bytecode \
+        --require-hashes -r /tmp/weasyprint.txt \
+    && ln -s /opt/weasyprint/bin/weasyprint /usr/local/bin/weasyprint \
+    && weasyprint --version && rm -rf /tmp/weasyprint.txt /root/.cache
 WORKDIR /app
 # Dependencies first, so a source change does not reinstall them.
 COPY pyproject.toml uv.lock README.md LICENSE NOTICE ./

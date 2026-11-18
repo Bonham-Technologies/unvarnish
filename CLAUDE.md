@@ -34,7 +34,8 @@ analysis with cited sources; `export` converts Markdown to DOCX, HTML, and PDF.
   `build-reference-docx.py` (Word export style).
 - `branding/bonham/`: editable export style. `examples/`: on-prem engagement config.
 - `site/`: unvarnish.com, static HTML deployed by its own Vercel project; see `site/README.md`.
-- `Dockerfile`: the distributable image (scanners, pandoc, fonts, optional offline advisories).
+- `Dockerfile`: the distributable image (scanners, pandoc, fonts, optional offline advisories);
+  `docker/weasyprint.txt` pins its PDF engine with hashes.
 
 ## Commands
 

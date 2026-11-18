@@ -1,0 +1,4 @@
+# The PDF engine in the Docker image (UNVAR-22). 66.0 is the first release whose PDF/UA mode
+# leaves link annotations visible; regenerate weasyprint.txt after changing this pin:
+#   uvx --from uv==0.13.7 uv pip compile --universal --python-version 3.13 --generate-hashes docker/weasyprint.in -o docker/weasyprint.txt
+weasyprint==70.0
