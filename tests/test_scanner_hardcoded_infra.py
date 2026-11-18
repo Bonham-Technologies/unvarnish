@@ -1,0 +1,214 @@
+import json
+from pathlib import Path
+
+from tests.conftest import LEAKED_DB_URL
+from unvarnish.artifacts import read_artifact
+from unvarnish.phases.base import PhaseRunner, PhaseStatus, build_context
+from unvarnish.phases.git import GitPhase
+from unvarnish.phases.inventory import InventoryPhase
+from unvarnish.phases.scan import ScanPhase
+from unvarnish.scanners import builtin_scanners
+from unvarnish.scanners.base import ScanContext
+from unvarnish.scanners.hardcoded_infra import HardcodedInfraScanner, find_infra, mask_userinfo
+from unvarnish.schemas.git import GitStats
+from unvarnish.schemas.inventory import Census, Dependencies, Metrics
+from unvarnish.schemas.scan import ScannerFindings
+
+SAMPLE = """API = "https://api.acme-corp.com/v1/users"
+DB_HOST = "db.internal:5432"
+PROXY = "10.0.12.7:3128"
+CONFIG = "/home/deploy/app/config.yaml"
+OPS = "ops@acme-corp.com"
+"""
+
+
+def test_find_infra_kinds_and_lines():
+    found = find_infra(SAMPLE)
+    assert ("url", "https://api.acme-corp.com/v1/users", 1) in found
+    assert ("host", "db.internal:5432", 2) in found
+    assert ("ip", "10.0.12.7:3128", 3) in found
+    assert ("path", "/home/deploy/app/config.yaml", 4) in found
+    assert ("email", "ops@acme-corp.com", 5) in found
+    assert len(found) == 5  # the host inside the URL is not counted twice
+
+
+def test_benign_values_are_ignored():
+    text = "\n".join([
+        'a = "http://localhost:8080/x"', 'b = "127.0.0.1"', 'c = "0.0.0.0"',
+        '<svg xmlns="http://www.w3.org/2000/svg">', 'd = "https://example.com/docs"',
+        '"$schema": "https://json-schema.org/draft/2020-12/schema"',
+        'version = "1.2.3.4"', 'e = "someone@example.org"', 'f = "/usr/bin/env"',
+        'g = "https://pypi.org/project/x"', 'remote = "git@github.com:acme/x.git"',
+    ])
+    assert find_infra(text) == []
+
+
+def test_mask_userinfo():
+    assert mask_userinfo(LEAKED_DB_URL) == "postgres://***@db.internal:5432/expenses"
+    assert mask_userinfo("https://api.acme.com/x") == "https://api.acme.com/x"
+
+
+def _scan(engagement, synthetic_repo, files: dict[str, str]):
+    from unvarnish.phases.ingest import ingest_tool
+
+    ingest_tool(engagement, "alpha", str(synthetic_repo), "repo")
+    ctx = build_context(engagement, "alpha")
+    for rel, body in files.items():
+        path = ctx.paths.source / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body)
+    assert all(r.status == PhaseStatus.ok
+               for r in PhaseRunner([InventoryPhase(), GitPhase(), ScanPhase()]).run(ctx))
+    findings = read_artifact(ctx.paths.scanner_findings, ScannerFindings).data.findings
+    return ctx, [f for f in findings if f.scanner == "hardcoded_infra"]
+
+
+def test_url_credentials_are_masked(engagement, synthetic_repo):
+    ctx, findings = _scan(engagement, synthetic_repo, {"settings.py": f'DB = "{LEAKED_DB_URL}"\n'})
+    blob = json.dumps([f.model_dump(mode="json") for f in findings])
+    assert "hunter2" not in blob
+    assert "postgres://***@db.internal:5432/expenses" in blob
+
+
+def test_findings_group_by_kind_and_cap_evidence(engagement, synthetic_repo):
+    ips = "".join(f'H{i} = "10.1.0.{i}"\n' for i in range(1, 31))
+    ctx, findings = _scan(engagement, synthetic_repo, {"hosts.py": ips})
+    f = next(f for f in findings if f.title == "Hardcoded IP addresses")
+    assert len(f.evidence) == 25 and "distinct:30" in f.tags and "hardcoded:ip" in f.tags
+    assert "30 distinct" in f.summary and "first 25" in f.summary
+    assert f.evidence[0].note.startswith("value: 10.1.0.")
+
+
+def test_tests_are_skipped_unless_enabled(engagement, synthetic_repo):
+    ctx, findings = _scan(engagement, synthetic_repo,
+                          {"tests/test_api.py": 'URL = "https://api.acme-corp.com"\n'})
+    assert findings == []
+    census = read_artifact(ctx.paths.census, Census).data
+    sctx = ScanContext(tool="alpha", source_root=ctx.source_root, census=census,
+                       metrics=Metrics(tool="alpha", files=[]),
+                       git=GitStats(tool="alpha", available=False),
+                       dependencies=Dependencies(tool="alpha", dependencies=[]),
+                       options={"include_tests": True})
+    assert [f.title for f in HardcodedInfraScanner().run(sctx)] == ["Hardcoded URLs"]
+
+
+def test_documents_show_hardcoded_infrastructure(engagement, synthetic_repo):
+    from tests.test_render_documents import _stub
+    from unvarnish.model.budget import BudgetTracker
+    from unvarnish.phases.extract import ExtractPhase
+    from unvarnish.phases.ingest import ingest_tool
+    from unvarnish.phases.render import RenderPhase
+    from unvarnish.phases.rollup_modules import RollupModulesPhase
+    from unvarnish.phases.rollup_tool import RollupToolPhase
+    from unvarnish.phases.split import SplitPhase
+    from unvarnish.phases.verify import VerifyPhase
+
+    ingest_tool(engagement, "alpha", str(synthetic_repo), "repo")
+    ctx = build_context(engagement, "alpha", budget=BudgetTracker(None))
+    (ctx.paths.source / "settings.py").write_text(f'DB = "{LEAKED_DB_URL}"\n')
+    stub = _stub()
+    phases = [InventoryPhase(), GitPhase(), ScanPhase(), SplitPhase(), ExtractPhase(backend=stub),
+              RollupModulesPhase(backend=stub), RollupToolPhase(backend=stub),
+              VerifyPhase(backend=stub), RenderPhase(backend=stub)]
+    assert all(r.status == PhaseStatus.ok for r in PhaseRunner(phases).run(ctx))
+    findings_md = ctx.paths.findings_doc.read_text()
+    assert "| Hardcoded infrastructure | 1 URL" in findings_md
+    arch = ctx.paths.architecture_doc.read_text()
+    assert "**Hardcoded in source (scanner)**" in arch
+    assert "postgres://***@db.internal:5432/expenses" in arch and "hunter2" not in arch
+
+
+def test_registered():
+    assert "hardcoded_infra" in {s.name for s in builtin_scanners()}
+
+
+def test_scanner_reads_with_utf8(tmp_path: Path):
+    (tmp_path / "x.py").write_bytes('U = "https://café.acme-corp.com/x"\n'.encode())
+    assert find_infra((tmp_path / "x.py").read_text(encoding="utf-8"))[0][0] == "url"
+
+
+PYPROJECT = """[project]
+name = "acme-tool"
+dependencies = ["requests"]
+
+[project.urls]
+"Bug Tracker" = "https://github.com/acme/tool/issues"
+Homepage = "https://github.com/acme/tool"
+Repository = "https://github.com/acme/tool.git"
+
+[[tool.uv.index]]
+name = "corp"
+url = "https://nexus.acme-corp.com/simple"
+
+[tool.poetry]
+homepage = "https://acme-tool.dev"
+repository = "https://gitlab.acme-corp.com/acme/tool"
+documentation = "https://acme-tool.dev/docs"
+"api url" = "https://api2.acme-corp.com"
+
+[tool.acme]
+endpoint = "https://api.acme-corp.com/v1"
+"""
+
+PACKAGE_JSON = """{
+  "name": "acme-tool",
+  "homepage": "https://acme-tool.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/acme/tool.git"
+  },
+  "bugs": {"url": "https://github.com/acme/tool/issues"},
+  "funding": [
+    "https://github.com/sponsors/acme"
+  ],
+  "config": {"repository": "https://api.acme-corp.com/v1"}
+}
+"""
+
+CARGO = """[package]
+name = "acme-tool"
+homepage = "https://acme-tool.dev"
+repository = "https://github.com/acme/tool"
+documentation = "https://docs.rs/acme-tool"
+
+[package.metadata.acme]
+endpoint = "https://api.acme-corp.com/v1"
+"""
+
+SETUP_CFG = """[metadata]
+name = acme-tool
+url = https://github.com/acme/tool
+project_urls =
+    Bug Tracker = https://github.com/acme/tool/issues
+    Source = https://github.com/acme/tool
+
+[options.entry_points]
+acme.endpoint = https://api.acme-corp.com/v1
+"""
+
+ISSUE_CONFIG = """blank_issues_enabled: false
+contact_links:
+  - name: Questions
+    url: https://github.com/acme/tool/discussions
+"""
+
+
+def test_package_metadata_urls_are_not_infrastructure():
+    def urls(text: str, path: str) -> list[str]:
+        return [value for kind, value, _ in find_infra(text, path) if kind == "url"]
+
+    assert urls(PYPROJECT, "pyproject.toml") == ["https://nexus.acme-corp.com/simple",
+                                                 "https://api2.acme-corp.com",
+                                                 "https://api.acme-corp.com/v1"]
+    assert urls(PACKAGE_JSON, "web/package.json") == ["https://api.acme-corp.com/v1"]
+    minified = ('\ufeff{"name":"x","homepage":"https://x.dev","repository":{"type":"git"},'
+                '"x":{"vcs":"git","api":"https://api.acme-corp.com/v1"}}')
+    assert urls(minified, "package.json") == ["https://api.acme-corp.com/v1"]
+    assert urls(CARGO, "Cargo.toml") == ["https://api.acme-corp.com/v1"]
+    assert urls(SETUP_CFG, "setup.cfg") == ["https://api.acme-corp.com/v1"]
+    assert find_infra(ISSUE_CONFIG, ".github/ISSUE_TEMPLATE/config.yml") == []
+    # the same lines anywhere else are still reported
+    assert len(urls(PYPROJECT, "notes.toml")) == 9
+    assert len(urls(ISSUE_CONFIG, "deploy/config.yml")) == 1
+    assert len(urls(ISSUE_CONFIG, "foo.github/ISSUE_TEMPLATE/config.yml")) == 1
+    assert len(urls(ISSUE_CONFIG, ".github/ISSUE_TEMPLATE/fetch.py")) == 1

@@ -1,0 +1,17 @@
+# CODEOWNERS - Auto-assign reviewers to pull requests
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @mrbonha
+
+# Per-directory ownership
+/.github/ @mrbonha
+/.claude/ @mrbonha
+/site/ @mrbonha
+/src/ @mrbonha
+/tests/ @mrbonha
+/docs/ @mrbonha
+/scripts/ @mrbonha
+/branding/ @mrbonha
+/examples/ @mrbonha
+/Dockerfile @mrbonha

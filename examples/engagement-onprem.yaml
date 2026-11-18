@@ -1,0 +1,21 @@
+# Model settings for an air-gapped engagement. After `unvarnish init`, copy the backends,
+# models, pipeline, and scanners sections below into the engagement's engagement.yaml and
+# adjust base_url, model, and context_window to the client's model server.
+backends:
+  onprem:
+    type: openai_compatible
+    base_url: http://llm.client.internal:8000/v1   # vLLM, Ollama, LM Studio, a gateway
+    api_key_env: ONPREM_LLM_KEY                     # remove if the server needs no key
+    unit_tokens: 4000
+    timeout_s: 1800                                 # 7200 on CPU-only servers
+    capabilities: { json_schema: true, tool_calling: false, context_window: 32768 }
+    # extra_body: { ... }                         # sent with every request (vLLM guided decoding)
+models:
+  default: { backend: onprem, model: qwen2.5-coder-32b-instruct }
+pipeline:
+  concurrency: 1          # one request at a time on a single GPU or CPU server
+scanners:
+  dependencies:
+    offline: true         # the image carries the advisory database; no network needed
+# report:
+#   effort_days: { S: 0.5, M: 2, L: 5, XL: 15 }   # engineer-day estimate beside effort bands

@@ -1,0 +1,156 @@
+# {{ client or "Engagement" }}: Tool Comparison
+
+**Prepared by:** {{ consultant or "—" }} · **Generated:** {{ generated_at }} · **Tools:** {% for t in tools %}`{{ t }}`{{ ", " if not loop.last }}{% endfor %}
+
+{{ "" }}
+> Rendered from `comparison/comparison.json`. Prose sections are model-written ({{ analysis_mode }});
+> every table and diagram is generated directly from the per-tool analysis. Tools without a model
+> analysis appear in the risk table only.
+{% if cmp.tools_not_run %}
+
+**Not run, so not compared:** {% for t in cmp.tools_not_run %}`{{ t }}`{{ ", " if not loop.last }}{% endfor %}. Run `unvarnish run` on them and `unvarnish compare` again.
+{% endif %}
+{% if cmp.skipped_reason %}
+
+Skipped: {{ cmp.skipped_reason }}.
+{% endif %}
+
+## 1. Tools reviewed
+
+{% prose "tools_reviewed" %}{{ "" }}
+
+| Tool | Purpose | Actors | Capabilities | Source lines | Model analysis |{% if trends %} Since the previous review |{% endif %}{{ "" }}
+|---|---|---|---:|---:|---|{% if trends %}---|{% endif %}{{ "" }}
+{% for s in cmp.summaries %}
+| `{{ s.tool }}` | {{ s.purpose | first_sentence | cell if s.purpose else "*not model-analysed*" }} | {{ s.actors | join(", ") | cell if s.actors else "—" }} | {{ s.capabilities }} | {{ s.source_lines | fmt_int }} | {{ "yes" if s.model_analysed else "**no**" }} |{% if trends %} {{ trends.get(s.tool, "—") }} |{% endif %}{{ "" }}
+{% endfor %}
+
+## 2. Capability matrix
+
+{% if not matrix_rows %}
+No capability matrix{% if cmp.skipped_reason %} ({{ cmp.skipped_reason }}){% endif %}.
+{% else %}
+| Capability | Actor | {% for t in matrix_tools %}{{ t }} | {% endfor %}Covered by |
+|---|---|{% for t in matrix_tools %}---|{% endfor %}---:|
+{% for r in matrix_rows %}
+| {{ r.name | cell }}{{ " \\*" if r.unmapped else "" }} | {{ r.actor | cell }} | {% for c in r.cells %}{{ c | cell }} | {% endfor %}{{ r.covered }} |
+{% endfor %}
+{% if cmp.unmapped_capabilities %}
+
+{% if cmp.normalised %}
+\* {{ cmp.unmapped_capabilities }} capabilit{{ "y" if cmp.unmapped_capabilities == 1 else "ies" }} could not be grouped with anything in another tool and {{ "is" if cmp.unmapped_capabilities == 1 else "are" }} listed on {{ "its" if cmp.unmapped_capabilities == 1 else "their" }} own.
+{% else %}
+\* Capability matching did not run{% if cmp.skipped_reason %} ({{ cmp.skipped_reason }}){% endif %}, so all {{ cmp.unmapped_capabilities }} capabilities are listed per tool.
+{% endif %}
+{% endif %}
+{% if cmp.dropped_references %}
+
+{{ cmp.dropped_references | plural("reference") }} the model made to capabilities that do not exist {{ "was" if cmp.dropped_references == 1 else "were" }} dropped.
+{% endif %}
+{% endif %}
+
+## 3. Integration and data map
+
+<!-- unvarnish-diagram: integration -->
+```mermaid
+{{ integration_mermaid }}
+```
+
+| System | Category | Tools | Details |
+|---|---|---|---|
+{% for r in cmp.integration_map %}
+| {{ r.name | cell }} | {{ r.category | replace("_", " ") }} | {{ r.tools | join(", ") }} | {% for e in r.entries %}{{ e.tool }}: {{ e.kind }}{% if e.direction %} {{ e.direction }}{% endif %}{{ "; " if not loop.last }}{% endfor %} |
+{% else %}
+| — | — | — | No stores or external systems identified |
+{% endfor %}
+
+## 4. Risk comparison
+
+| Measure | {% for t in tools %}{{ t }} | {% endfor %}{{ "" }}
+|---|{% for t in tools %}---:|{% endfor %}{{ "" }}
+{% for m in risk_measures %}
+| {{ m.label }} | {% for v in m.cells %}{{ v }} | {% endfor %}{{ "" }}
+{% endfor %}
+
+## 5. Consolidation proposal
+
+> This proposal is a starting point for the consultant's architecture work, generated from the
+> matrix, the integration map, and the tool models. It is not a design.
+
+{% if cmp.consolidation %}
+{% prose "consolidation_proposal" %}{{ "" }}
+
+{% if cmp.constraints %}
+### Consultant constraints
+
+{% if cmp.constraints.target_platform %}
+- Target platform: {{ cmp.constraints.target_platform | cell }}
+{% endif %}
+{% if cmp.constraints.approved_stack %}
+- Approved stack: {{ cmp.constraints.approved_stack | join(", ") | cell }}
+{% endif %}
+{% if cmp.constraints.must_keep %}
+- Must keep: {{ cmp.constraints.must_keep | join("; ") | cell }}
+{% endif %}
+{% if cmp.constraints.retire %}
+- Retire: {{ cmp.constraints.retire | join("; ") | cell }}
+{% endif %}
+{% if cmp.constraints.notes %}
+- Notes: {{ cmp.constraints.notes | cell }}
+{% endif %}
+{{ "" }}
+### Conflicts with the constraints
+
+{% for c in cmp.consolidation.constraint_conflicts %}
+- {{ c | cell }}
+{% else %}
+- None found.
+{% endfor %}
+{{ "" }}
+{% endif %}
+### Union of capabilities
+
+{% for c in cmp.consolidation.union_capabilities %}
+- {{ c | cell }}
+{% else %}
+- None listed.
+{% endfor %}
+
+### Abstract requirements
+
+| Requirement | Serves users of |
+|---|---|
+{% for r in cmp.consolidation.abstract_requirements %}
+| {{ r.statement | cell }} | {{ (r.serves | join(", ")) | cell if r.serves else "—" }} |
+{% else %}
+| None listed | — |
+{% endfor %}
+
+### Recommended approach per capability
+
+| Capability | Keep the approach of | Why |
+|---|---|---|
+{% for r in cmp.consolidation.recommended_approach %}
+| {{ r.capability | cell }} | {{ r.recommended_tool | cell }} | {{ r.rationale | cell }} |
+{% else %}
+| None listed | — | — |
+{% endfor %}
+
+### Gaps and conflicts
+
+{% for g in cmp.consolidation.gaps %}
+- {{ g | cell }}
+{% else %}
+- None listed.
+{% endfor %}
+
+### Open questions
+
+{% for q in cmp.consolidation.open_questions %}
+- {{ q | cell }}
+{% else %}
+- None listed.
+{% endfor %}
+{% else %}
+No consolidation proposal{% if cmp.skipped_reason %}: {{ cmp.skipped_reason }}{% endif %}.
+{% endif %}

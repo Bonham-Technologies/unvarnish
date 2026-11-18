@@ -1,0 +1,58 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+# Least privilege: every job only reads the repository. A job that needs more asks for it.
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Nothing after checkout pushes or fetches, so the token need not stay in .git/config
+          # where every later step, the tests included, could read it (UNVAR-70).
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          enable-cache: true
+      - run: uv python install 3.13
+      - run: uv sync --locked --all-groups
+      # Tree-sitter grammars download from GitHub releases at first use (UNVAR-45): fetch them
+      # once, with retries, so a release-asset outage fails here and not in unrelated tests.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/tree-sitter-language-pack
+          key: tree-sitter-${{ runner.os }}-${{ hashFiles('uv.lock', 'src/unvarnish/analysis/languages.py', 'src/unvarnish/analysis/treesitter.py') }}
+          restore-keys: tree-sitter-${{ runner.os }}-
+      - run: uv run unvarnish grammars fetch --attempts 5
+      - run: uv run ruff check .
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc graphviz weasyprint
+      - run: uv run pytest -q
+      - run: uv build
+
+  # Aggregate job: the single required check. List EVERY other job in `needs`.
+  # A skipped job is allowed (some jobs run on pull requests only); a failed
+  # or cancelled one fails the gate.
+  ci-status:
+    # The runner RUNS_ON names (self-hosted today) serves only pull requests from branches of
+    # this repo; a fork's pull request, a push and any other event use a hosted runner (UNVAR-70).
+    runs-on: ${{ vars.RUNS_ON && github.event.pull_request.head.repo.full_name == github.repository && fromJSON(vars.RUNS_ON) || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    needs: [test]          # every other job, no exceptions
+    if: always()
+    concurrency:
+      group: ci-status-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Check CI status
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if echo "$NEEDS" | jq -e 'any(.[]; .result == "failure" or .result == "cancelled")' >/dev/null; then
+            echo "One or more CI jobs failed or were cancelled"
+            exit 1
+          fi

@@ -1,0 +1,22 @@
+# gitleaks false positives: test fixtures for Unvarnish's own secrets scanner, and one copy of
+# a fixture in an implementation plan. None is a real credential; the owner confirmed each one
+# on UNVAR-14 (2026-11-13). They live only in git history: the working tree builds every
+# credential-shaped fixture from fragments (UNVAR-36), and tests/test_repo_hygiene.py keeps
+# whole tokens out of tracked files. Format: <commit>:<path>:<rule>:<line>.
+49bbbbda7153f9b6f18838eb4c11b32af1d066f2:tests/conftest.py:generic-api-key:28
+49bbbbda7153f9b6f18838eb4c11b32af1d066f2:tests/test_scanner_secrets.py:private-key:60
+49bbbbda7153f9b6f18838eb4c11b32af1d066f2:tests/test_scanner_secrets.py:private-key:254
+38a6eeffec63cd2160f8921c7befdc8807ae650b:tests/test_scanner_secrets.py:generic-api-key:247
+49bbbbda7153f9b6f18838eb4c11b32af1d066f2:tests/test_backlog_scanners.py:private-key:21
+5dba819f28ff3b243e74bf4296796622a5ec6159:tests/test_backlog_scanners.py:private-key:21
+5dba819f28ff3b243e74bf4296796622a5ec6159:tests/test_backlog_scanners.py:aws-access-token:43
+c0fa978b3181245218d704deecd2bf006d7f0249:tests/test_evidence_grounding.py:stripe-access-token:70
+c0fa978b3181245218d704deecd2bf006d7f0249:tests/test_evidence_grounding.py:stripe-access-token:124
+c0fa978b3181245218d704deecd2bf006d7f0249:tests/test_evidence_grounding.py:generic-api-key:175
+a05f23f6ce1eec701166178d606f1c645d66b1a9:tests/test_gitleaks.py:stripe-access-token:20
+f4c977775b464fd6092d14d4c2ce51ed37658ff7:docs/superpowers/plans/2026-10-18-unvarnish-slice7-scanners-hardening.md:stripe-access-token:1241
+24bdadea58975c4b076cb97c7d1ad78e6c7d0e10:tests/test_slice7_review_fixes.py:slack-webhook-url:29
+24bdadea58975c4b076cb97c7d1ad78e6c7d0e10:tests/test_slice7_review_fixes.py:gitlab-pat:37
+24bdadea58975c4b076cb97c7d1ad78e6c7d0e10:tests/test_slice7_review_fixes.py:gitlab-pat:38
+24bdadea58975c4b076cb97c7d1ad78e6c7d0e10:tests/test_slice7_review_fixes.py:gitlab-pat:74
+24bdadea58975c4b076cb97c7d1ad78e6c7d0e10:tests/test_slice7_review_fixes.py:gitlab-pat:81

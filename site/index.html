@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unvarnish | The unvarnished truth about internally built software</title>
+    <meta name="description" content="Unvarnish is a command-line tool for vetting internally built, often AI-generated tools. Point it at a repository or a pile of files and get evidence-backed findings, architecture and requirements documents, every claim traceable to a file and line.">
+    <meta name="theme-color" content="#0a0a0b">
+    <link rel="canonical" href="https://unvarnish.com/">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+    <meta property="og:title" content="Unvarnish | Code review for the tools nobody reviewed">
+    <meta property="og:description" content="Evidence-backed findings for internally built and AI-generated tools. Runs on your machine, online or air-gapped.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://unvarnish.com/">
+    <meta property="og:image" content="https://unvarnish.com/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Unvarnish: the unvarnished truth about internally built software">
+    <meta property="og:site_name" content="Unvarnish">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Unvarnish | Code review for the tools nobody reviewed">
+    <meta name="twitter:description" content="Evidence-backed findings for internally built and AI-generated tools. Runs on your machine, online or air-gapped.">
+    <meta name="twitter:image" content="https://unvarnish.com/og-image.png">
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Unvarnish",
+        "url": "https://unvarnish.com/",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Linux, macOS, Docker",
+        "description": "A command-line tool for vetting internally built, often AI-generated tools: evidence-backed findings, architecture and requirements documents, and a cross-tool comparison.",
+        "publisher": {
+            "@type": "Organization",
+            "name": "Bonham Technologies, LLC",
+            "url": "https://bonham.tech/"
+        }
+    }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&amp;family=Geist+Mono:wght@400;600&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="top">
+    <div class="container bar">
+        <a class="logo" href="/">UNVARNISH<span>.</span>COM</a>
+        <nav aria-label="Main">
+            <ul class="nav-links">
+                <li><a href="#finds">What it finds</a></li>
+                <li><a href="#how">How it works</a></li>
+                <li><a href="#run">Run it</a></li>
+                <li><a href="/demo/">Demo</a></li>
+            </ul>
+        </nav>
+    </div>
+</header>
+
+<main id="main">
+    <section class="hero">
+        <div class="container">
+            <p class="eyebrow">Agentic code review · from Bonham Technologies</p>
+            <h1>The <em>unvarnished</em> truth about internally built software</h1>
+            <p class="lede">Companies are full of tools that nobody reviewed: the expense bot a
+                manager built with an AI assistant, the spreadsheet macro that became a web app,
+                the script that quietly runs payroll. Unvarnish reads them the way a careful
+                engineer would, finds what a rushed reviewer misses, and says so plainly, with a
+                file and line for every claim.</p>
+            <div class="cta">
+                <a class="btn btn-primary" href="/demo/">See a real report</a>
+                <a class="btn btn-ghost" href="#how">How it works</a>
+            </div>
+        </div>
+    </section>
+
+    <section id="who" class="section">
+        <div class="container">
+            <p class="eyebrow">Who it's for</p>
+            <h2>For the tools that grew up without an engineering team</h2>
+            <div class="grid three">
+                <article class="card">
+                    <h3>Consultants vetting a client's tools</h3>
+                    <p>Run it unattended across every internal tool at a client. Each tool gets
+                        an architecture document, a findings document and a requirements
+                        document; across tools you get a comparison and a consolidation
+                        proposal to start your own architecture work from.</p>
+                </article>
+                <article class="card">
+                    <h3>Teams inheriting AI-built tools</h3>
+                    <p>Before you rely on a tool someone generated, find the embedded secrets,
+                        the hardcoded servers, the 300-line functions, the missing tests and the
+                        single person who understands it.</p>
+                </article>
+                <article class="card">
+                    <h3>Traditional codebases too</h3>
+                    <p>It works on code in any language: a repository with its full git
+                        history, or a pile of files copied off a shared drive.</p>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <section id="finds" class="section alt">
+        <div class="container">
+            <p class="eyebrow">What it finds</p>
+            <h2>Deterministic scanners first, no model needed</h2>
+            <p class="section-lede">Ten scanners run before any model sees the code. Their
+                findings are reproducible and carry their evidence. Without a model configured,
+                Unvarnish still writes the scanner-based findings document.</p>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">Unvarnish scanners and what they find</caption>
+                    <thead><tr><th scope="col">Scanner</th><th scope="col">Finds</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>secrets</code></td><td>Keys, tokens, passwords, connection strings and private keys, in the working tree and the full git history, plus gitleaks results when it is installed. Always redacted.</td></tr>
+                        <tr><td><code>dependencies</code></td><td>Published advisories through osv-scanner (offline by default), and unpinned dependencies without a lockfile.</td></tr>
+                        <tr><td><code>hardcoded_infra</code></td><td>URLs, internal hostnames, IP addresses, absolute paths and emails, with credentials masked.</td></tr>
+                        <tr><td><code>oversized_files</code></td><td>Files and functions over size thresholds, and large inline scripts in HTML.</td></tr>
+                        <tr><td><code>hygiene</code></td><td>Missing tests, CI, README, licence or linter config; TODO density; swallowed errors.</td></tr>
+                        <tr><td><code>bus_factor</code></td><td>Code concentrated in a single author.</td></tr>
+                        <tr><td><code>vendored_bulk</code></td><td>Dependency or build directories and large binaries committed with the source.</td></tr>
+                        <tr><td><code>generated_bulk</code></td><td>Single commits over a line threshold, noting AI co-author trailers.</td></tr>
+                        <tr><td><code>client_exposure</code></td><td>What AI-built web apps ship to the browser: service-role keys and secret-named public variables in client code, database tables without row level security, CORS open to any origin with credentials, credentials in committed <code>.env</code> and MCP config files, and route handlers with no authentication check nearby. Values redacted.</td></tr>
+                        <tr><td><code>end_of_life</code></td><td>Runtimes, base images and frameworks past their end of life or close to it, checked against a dated offline copy of endoflife.date.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section id="how" class="section">
+        <div class="container">
+            <p class="eyebrow">How it works</p>
+            <h2>A pipeline of narrow roles, each checking the last</h2>
+            <p class="section-lede">Each tool goes through nine phases. Every phase writes a
+                JSON artifact with a hash of its inputs, so a rerun skips finished work and
+                resumes after a stop. Every number, table and diagram in the documents comes
+                from those artifacts; the model writes only the prose.</p>
+            <ol class="steps">
+                <li><span class="step-name">Inventory, history, scan</span>
+                    <span class="step-text">A census of every file and language, the git
+                    history (authors, bulk commits, AI tooling indicators) and the deterministic
+                    scanners.</span></li>
+                <li><span class="step-name">Split</span>
+                    <span class="step-text">The code is cut into units along function and
+                    statement boundaries with tree-sitter, sized for the model's
+                    context.</span></li>
+                <li><span class="step-name">Extractor</span>
+                    <span class="step-text">A model reads each unit and returns structured
+                    output: its purpose, the data it touches, the systems it calls, and
+                    findings with the lines that prove them.</span></li>
+                <li><span class="step-name">Summarisers</span>
+                    <span class="step-text">Units roll up into modules, and modules into the
+                    tool: what it is for, who uses it, how it is deployed and how it was
+                    built.</span></li>
+                <li><span class="step-name">Verifier</span>
+                    <span class="step-text">Each high or critical model finding goes to a
+                    verifier that sees only the claim and the cited lines. What it can't
+                    confirm is downgraded or rejected, what it can't check is marked
+                    unverified, and rejections are listed.</span></li>
+                <li><span class="step-name">Writer</span>
+                    <span class="step-text">Architecture, findings and requirements documents,
+                    with diagrams, exportable to Word, HTML and PDF in your own branding.
+                    Findings also export to SARIF for GitHub code scanning and to CSV for a
+                    Jira import.</span></li>
+            </ol>
+            <div class="grid three after-steps">
+                <article class="card">
+                    <h3>Compare</h3>
+                    <p><code>unvarnish compare</code> groups every tool's capabilities into one
+                        matrix, maps their shared data and integrations, compares their risk, and
+                        proposes a consolidation, listing every place it conflicts with the
+                        constraints you give it.</p>
+                </article>
+                <article class="card">
+                    <h3>Ask</h3>
+                    <p><code>unvarnish ask "Which tool talks to Stripe, and from where?"</code>
+                        answers from the analysis with cited sources. An answer that cites
+                        nothing is printed with an "unverified" warning.</p>
+                </article>
+                <article class="card">
+                    <h3>Re-audit</h3>
+                    <p><code>unvarnish run --baseline ../acme-2026-04</code> compares a follow-up
+                        review with the last one. Each findings document opens with what was
+                        resolved, what is new and what changed since then, without another
+                        model call.</p>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <section id="run" class="section alt">
+        <div class="container">
+            <p class="eyebrow">Run it</p>
+            <h2>On your machine, with your models</h2>
+            <p class="section-lede">Unvarnish is a command-line tool you run yourself; there
+                is no hosted service. The code under review stays on the machine that runs it,
+                and goes only to the model backend you configure.</p>
+            <div class="grid three">
+                <article class="card">
+                    <h3>Online</h3>
+                    <p>Use Anthropic's models with your own API key, read from an environment
+                        variable or the keychain and never written to disk. Set a token budget;
+                        <code>run --dry-run</code> estimates spend first.</p>
+                </article>
+                <article class="card">
+                    <h3>On-prem</h3>
+                    <p>Point it at any OpenAI-compatible model server: vLLM, Ollama, LM Studio
+                        or a gateway. Per-phase models, timeouts and context sizes are
+                        configurable for slow CPU-only servers.</p>
+                </article>
+                <article class="card">
+                    <h3>Air-gapped</h3>
+                    <p>A site kit carries the Docker image with gitleaks, osv-scanner, pandoc,
+                        Graphviz and dated offline advisory databases, plus checksums and a
+                        runbook, to a network with no internet access.</p>
+                </article>
+            </div>
+            <pre class="term" tabindex="0" aria-label="Example commands"><code><span class="prompt">$</span> unvarnish init acme-2026-10 --client "Acme Corp" --consultant "Your Firm"
+<span class="prompt">$</span> cd acme-2026-10
+<span class="prompt">$</span> unvarnish add expense-bot --repo https://github.com/acme/expense-bot.git
+<span class="prompt">$</span> unvarnish add receipt-ocr --files ~/Downloads/receipt-ocr
+<span class="prompt">$</span> unvarnish run
+<span class="prompt">$</span> unvarnish compare
+<span class="prompt">$</span> unvarnish export --format docx</code></pre>
+            <p class="note">Requires Python 3.13+ and git; exports also need pandoc, Graphviz and
+                weasyprint, or use the Docker image, which bundles them.</p>
+        </div>
+    </section>
+
+    <section id="demo" class="section">
+        <div class="container demo-teaser">
+            <div>
+                <p class="eyebrow">Demo</p>
+                <h2>A real report, not a mock-up</h2>
+                <p class="section-lede">We ran Unvarnish on OWASP NodeGoat, a deliberately
+                    insecure training application, and published the walkthrough and the
+                    findings document exactly as it came out.</p>
+                <a class="btn btn-primary" href="/demo/">Open the demo</a>
+            </div>
+            <dl class="stats">
+                <div><dt>findings</dt><dd>164</dd></div>
+                <div><dt>critical</dt><dd>34</dd></div>
+                <div><dt>secrets only in history</dt><dd>19</dd></div>
+                <div><dt>commits read</dt><dd>499</dd></div>
+            </dl>
+        </div>
+    </section>
+
+    <section id="licence" class="section alt">
+        <div class="container narrow">
+            <p class="eyebrow">Licence</p>
+            <h2>Apache-2.0, once it goes public</h2>
+            <!-- launch: when the repository is public, link it here and in the footer. -->
+            <p class="section-lede">Unvarnish will be published under the Apache License 2.0
+                when its repository goes public. Until then the source is private; ask
+                <a href="https://bonham.tech/#contact">Bonham Technologies</a> for early
+                access.</p>
+        </div>
+    </section>
+</main>
+
+<footer class="foot">
+    <div class="container foot-bar">
+        <p>© 2026 Bonham Technologies, LLC</p>
+        <p><a href="https://bonham.tech/">bonham.tech</a></p>
+    </div>
+</footer>
+</body>
+</html>

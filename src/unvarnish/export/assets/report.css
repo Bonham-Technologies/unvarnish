@@ -1,0 +1,98 @@
+/* Unvarnish report style: neutral and print-ready (HTML, and PDF through weasyprint).
+   To brand it, copy this file, change the variables and the @page text below, and set
+   report.branding.html_css in engagement.yaml. Fonts must be installed locally: exports run
+   offline, so web fonts are never fetched. */
+
+:root {
+  --ink: #1f2933;        /* body text */
+  --muted: #52606d;      /* secondary text, captions */
+  --rule: #d9e2ec;       /* table and section rules */
+  --wash: #f5f7fa;       /* table headers, quotes, code */
+  --accent: #243b53;     /* headings and the title rule */
+  --link: #2f5f8f;
+  --font: "Inter", "Helvetica Neue", "Liberation Sans", Arial, "DejaVu Sans", sans-serif;
+  --mono: "DejaVu Sans Mono", Menlo, Consolas, monospace;
+}
+
+html { font-size: 10.5pt; }
+body {
+  font-family: var(--font); color: var(--ink); line-height: 1.5;
+  max-width: 56em; margin: 2.5em auto; padding: 0 1.5em;
+  font-feature-settings: "tnum" 1;  /* aligned figures in tables */
+}
+
+h1, h2, h3, h4 { color: var(--accent); line-height: 1.25; font-weight: 650; }
+h1 {
+  font-size: 2em; margin: 0 0 .6em; padding-bottom: .35em;
+  border-bottom: 3px solid var(--accent); string-set: doctitle content();
+}
+h2 { font-size: 1.45em; margin: 2.2em 0 .6em; padding-bottom: .2em;
+     border-bottom: 1px solid var(--rule); }
+h3 { font-size: 1.18em; margin: 1.8em 0 .5em; }
+h4 { font-size: 1.02em; margin: 1.5em 0 .4em; }
+h2, h3, h4 { page-break-after: avoid; break-after: avoid; }
+
+/* Severity headings in findings.md ("High (17)") */
+h3[id^="critical"] { color: #9b1c1c; }
+h3[id^="high"] { color: #b54708; }
+h3[id^="medium"] { color: #8d6a00; }
+h3[id^="low"], h3[id^="info"] { color: var(--muted); }
+
+p, li { orphans: 3; widows: 3; }
+a { color: var(--link); text-decoration: underline; }  /* not colour alone (WCAG 1.4.1) */
+strong { font-weight: 650; }
+
+blockquote {
+  margin: 1em 0; padding: .6em 1em; background: var(--wash);
+  border-left: 3px solid var(--accent); color: var(--muted); font-size: .95em;
+}
+blockquote p { margin: .2em 0; }
+
+table {
+  border-collapse: collapse; width: 100%; margin: 1em 0 1.4em; font-size: .88em;
+  page-break-inside: auto;
+}
+thead { display: table-header-group; }  /* repeat headers on every printed page */
+th {
+  background: var(--wash); color: var(--accent); font-weight: 600; text-align: left;
+  border-bottom: 2px solid var(--accent); padding: .45em .6em; vertical-align: bottom;
+}
+/* Row headers (th scope="row", first column of HTML summary tables) look like data cells */
+td, tbody th {
+  border-bottom: 1px solid var(--rule); padding: .4em .6em; vertical-align: top;
+  overflow-wrap: break-word;
+}
+tbody th { background: none; color: inherit; font-weight: normal; }
+tr { page-break-inside: avoid; break-inside: avoid; }
+tbody tr:nth-child(even) td, tbody tr:nth-child(even) th { background: #fafbfc; }
+
+code {
+  font-family: var(--mono); font-size: .86em; background: var(--wash);
+  padding: .05em .3em; border-radius: 2px;
+}
+pre {
+  font-family: var(--mono); font-size: .82em; background: var(--wash);
+  padding: .8em 1em; overflow-x: auto; border: 1px solid var(--rule); border-radius: 3px;
+}
+pre code { background: none; padding: 0; }
+
+img { max-width: 100%; display: block; margin: 1em auto; }
+hr { border: none; border-top: 1px solid var(--rule); margin: 2em 0; }
+
+/* Print and PDF */
+@page {
+  size: Letter;          /* use A4 outside North America */
+  margin: 22mm 18mm 20mm 18mm;
+  @top-left { content: string(doctitle); font-family: "Inter", "Liberation Sans", sans-serif;
+              font-size: 8pt; color: #52606d; }
+  @top-right { content: "Confidential"; font-family: "Inter", "Liberation Sans", sans-serif;
+               font-size: 8pt; color: #52606d; }
+  @bottom-right { content: "Page " counter(page) " of " counter(pages);
+                  font-family: "Inter", "Liberation Sans", sans-serif; font-size: 8pt;
+                  color: #52606d; }
+}
+@page :first { @top-left { content: none; } }
+@media print {
+  body { margin: 0; max-width: none; padding: 0; }
+  a { color: var(--ink); }  /* still underlined: print has no colour cue */
+}

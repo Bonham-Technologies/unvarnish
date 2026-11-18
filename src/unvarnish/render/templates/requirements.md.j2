@@ -1,0 +1,85 @@
+# {{ tool.name }}: Requirements Inventory
+
+**Client:** {{ client or "—" }} · **Prepared by:** {{ consultant or "—" }} · **Generated:** {{ generated_at }}\
+**Source:** {{ tool.origin_kind }} `{{ tool.origin }}`{% if tool.commit %} at `{{ tool.commit[:12] }}`{% endif %}
+
+{{ "" }}
+> Reverse-engineered from the code by Unvarnish ({{ analysis_mode }}). This is what the tool does today,
+> not what anyone asked it to do. Capabilities marked *implicit* exist only as hardcoded rules. Treat
+> every row as a question for the people who own and use the tool.
+
+## 1. Actors
+
+{% for a in req.actors %}
+- **{{ a.name | cell }}**: {{ a.description | cell }}
+{% else %}
+- None identified.
+{% endfor %}
+
+## 2. Capability inventory
+
+{{ capabilities | length }} capabilities, {{ implicit_count }} implicit.
+
+| Actor | Can | Object | Implicit | Implementing modules | Data touched |
+|---|---|---|---|---|---|
+{% for c in capabilities | cap %}
+| {{ c.actor | cell }} | {{ c.action | cell }} | {{ c.object | cell }} | {{ "yes" if c.implicit else "" }} | {% for e in c.evidence %}`{{ e.path }}`{{ ", " if not loop.last }}{% else %}*no implementing module identified*{% endfor %} | {{ c.data_touched | join(", ") | cell if c.data_touched else "—" }} |
+{% else %}
+| — | — | — | — | None identified | — |
+{% endfor %}
+{% if more(capabilities) %}
+
+{{ more(capabilities) }}
+{% endif %}
+
+{% for c in capabilities | cap %}
+- **{{ c.actor | cell }} can {{ c.action | cell }} {{ c.object | cell }}**{% if c.implicit %} *(implicit)*{% endif %}: {{ c.description | cell }}
+{% endfor %}
+{% if more(capabilities) %}
+
+{{ more(capabilities) }}
+{% endif %}
+
+## 3. Data inventory
+
+| Name | Kind | Description | Used by |
+|---|---|---|---|
+{% for r in data_rows | cap %}
+| {{ r.name | cell }} | {{ r.kind | cell }} | {{ r.description | cell }} | {{ r.used_by | join("; ") | cell if r.used_by else "—" }} |
+{% else %}
+| — | — | No stores or external systems identified | — |
+{% endfor %}
+{% if more(data_rows) %}
+
+{{ more(data_rows) }}
+{% endif %}
+
+## 4. Business rules found in code
+
+| Rule | Kind | Module |
+|---|---|---|
+{% for r in req.business_rules | cap %}
+| {{ r.description | cell }} | {{ r.kind }} | `{{ r.module }}` |
+{% else %}
+| — | — | None identified |
+{% endfor %}
+{% if more(req.business_rules) %}
+
+{{ more(req.business_rules) }}
+{% endif %}
+
+## 5. Open questions for stakeholder interviews
+
+{% prose "open_questions" %}{{ "" }}
+
+{% if req.open_questions %}
+Raised directly by the analysis:
+
+{% for q in req.open_questions | cap %}
+- {{ q | cell }}
+{% endfor %}
+{% if more(req.open_questions) %}
+
+{{ more(req.open_questions) }}
+{% endif %}
+{% endif %}

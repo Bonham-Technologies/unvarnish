@@ -1,0 +1,79 @@
+[project]
+name = "unvarnish"
+version = "0.1.1"
+description = "Unattended vetting of vibe-coded internal tools."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Environment :: Console",
+  "Intended Audience :: Information Technology",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+  "typer>=0.12",
+  "rich>=13.7",
+  "pydantic>=2.7",
+  "pyyaml>=6.0",
+  "pathspec>=0.12",
+  "tree-sitter>=0.23,!=0.26.0,<0.27",  # 0.26.0 segfaults freeing large trees; 0.26.1 is fine
+  "tree-sitter-language-pack>=0.4",
+  "jinja2>=3.1",
+  "anthropic>=1.0",
+  "openai>=1.50",
+  "regex>=2026.9,<2027",  # calendar versions; has the per-call timeout ask's grep needs
+]
+
+[project.scripts]
+unvarnish = "unvarnish.cli:app"
+unv = "unvarnish.cli:app"
+
+[project.urls]
+Homepage = "https://unvarnish.com"
+Repository = "https://github.com/Bonham-Technologies/Unvarnish"
+
+[build-system]
+requires = ["hatchling>=1.27"]  # PEP 639 license-files as a list
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unvarnish"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-cov>=6",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Coverage runs on every `uv run pytest -q`, so the verify command and CI both enforce the
+# floor below. A partial run (one file, -k) is below the floor by design: add --no-cov.
+addopts = "--cov --cov-report=term-missing:skip-covered"
+
+[tool.coverage.run]
+source = ["unvarnish"]
+branch = true
+
+[tool.coverage.report]
+# The measured total rounded down (94.2% on 2026-11-05). Raise it, never lower it:
+# docs/operations.md says how.
+fail_under = 94
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+extend-exclude = [".claude"]  # vendored from bonham-ops; edit it there
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/unvarnish/cli.py" = ["B008"]  # typer declares options via calls in defaults

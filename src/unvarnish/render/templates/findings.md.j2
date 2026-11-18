@@ -1,0 +1,312 @@
+# {{ tool.name }}: Findings
+
+**Client:** {{ client or "—" }} · **Prepared by:** {{ consultant or "—" }} · **Generated:** {{ generated_at }}\
+**Source:** {{ tool.origin_kind }} `{{ tool.origin }}`{% if tool.commit %} at `{{ tool.commit[:12] }}`{% endif %}
+
+{{ "" }}
+{% if numbers.model_findings is none %}
+> Produced by Unvarnish's deterministic scanners. Every finding below is reproducible and traceable to a
+> file and line. Model-assisted analysis was not run for this document.
+{% else %}
+> Produced by Unvarnish's deterministic scanners and model-assisted analysis ({{ numbers.analysis_mode }}).
+> Every finding is traceable to a file and line. Model findings rated high or critical were checked by an
+> independent verification pass that saw only the claim and the cited lines; each shows its status.
+{% endif %}
+
+{% if delta %}
+## {{ delta.heading }}
+
+Compared with the previous review ({{ delta.compared }}): {{ delta.totals.resolved }} resolved, {{ delta.totals.new }} new, {{ delta.totals.changed }} changed (moved or re-rated), {{ delta.totals.persistent }} persistent{% if delta.totals.accepted %}, {{ delta.totals.accepted }} risk accepted{% endif %}.
+
+| Severity | Resolved | New | Changed | Persistent | Risk accepted |
+|---|---:|---:|---:|---:|---:|
+{% for sev, c in delta.by_severity %}
+| {{ sev }} | {{ c.resolved }} | {{ c.new }} | {{ c.changed }} | {{ c.persistent }} | {{ c.accepted }} |
+{% endfor %}
+| **Total** | {{ delta.totals.resolved }} | {{ delta.totals.new }} | {{ delta.totals.changed }} | {{ delta.totals.persistent }} | {{ delta.totals.accepted }} |
+
+{% if delta.resolved %}
+### Resolved ({{ delta.resolved | length }})
+
+| Finding | Severity | Source | Was at | Id |
+|---|---|---|---|---|
+{% for r in delta.resolved %}
+| {{ r.title | cell }} | {{ r.severity }} | {{ r.source }} | `{{ r.location | cell }}` | `{{ r.id }}` |
+{% endfor %}
+{% else %}
+No findings resolved.
+{% endif %}
+
+{% if delta.new %}
+### New ({{ delta.new | length }})
+
+| Finding | Severity | Source | Location | Id |
+|---|---|---|---|---|
+{% for r in delta.new %}
+| {{ r.title | cell }} | {{ r.severity }} | {{ r.source }} | `{{ r.location | cell }}` | `{{ r.id }}` |
+{% endfor %}
+{% else %}
+No new findings.
+{% endif %}
+{% if delta.changed %}
+
+### Changed ({{ delta.changed | length }})
+
+| Finding | Severity | Location | Change |
+|---|---|---|---|
+{% for r in delta.changed %}
+| {{ r.title | cell }} | {{ r.severity }} | `{{ r.location | cell }}` | {{ r.change | cell }} |
+{% endfor %}
+{% endif %}
+{% if delta.accepted %}
+
+### Risk accepted ({{ delta.accepted | length }})
+
+The client accepted these risks (`baseline.accepted` in `engagement.yaml`); they are not counted as resolved.
+
+| Finding | Severity | Location | Now |
+|---|---|---|---|
+{% for r in delta.accepted %}
+| {{ r.title | cell }} | {{ r.severity }} | `{{ r.location | cell }}` | {{ r.change | cell }} |
+{% endfor %}
+{% endif %}
+
+Findings match by id, then by title and path within {{ delta.line_drift }} lines, then by secret fingerprint.{% for n in delta.notes %} {{ n }}{% endfor %}{{ "" }}
+
+{% endif %}
+## Executive summary
+
+{% prose "executive_summary" %}{{ "" }}
+
+## Summary
+
+{{ numbers.total_findings | plural("finding") }}{% if numbers.by_severity %}: {% for sev, n in numbers.by_severity %}{{ n }} {{ sev }}{{ ", " if not loop.last }}{% endfor %}{% endif %}.
+{% if numbers.model_findings is not none %}
+Scanner findings: {{ numbers.scanner_findings }}. Model findings: {{ numbers.model_findings }} ({{ numbers.verification.confirmed }} confirmed, {{ numbers.verification.downgraded }} downgraded, {{ numbers.verification.unverified }} unverified; {{ numbers.verification.rejected }} rejected on verification and excluded).
+{% endif %}
+{% if numbers.critical_or_high %}
+
+**{{ numbers.critical_or_high | plural("finding") }} {{ numbers.critical_or_high | is_are }} critical or high severity and {{ "needs" if numbers.critical_or_high == 1 else "need" }} action before this tool is relied on further.**
+{% endif %}
+
+## By the numbers
+
+| Measure | Value |
+|---|---|
+| Files analysed / total | {{ numbers.analysed_files | fmt_int }} / {{ census.totals.files | fmt_int }} |
+| Source lines | {{ numbers.source_lines | fmt_int }} |
+{% if numbers.largest_file %}
+| Largest source file | `{{ numbers.largest_file.path }}` ({{ numbers.largest_file.lines | fmt_int }} lines) |
+{% endif %}
+{% if numbers.longest_function %}
+| Longest source function | `{{ numbers.longest_function.max_function_name }}` in `{{ numbers.longest_function.path }}` ({{ numbers.longest_function.max_function_lines | fmt_int }} lines) |
+{% endif %}
+| Languages (source lines) | {% for lang, n in numbers.languages %}{{ lang }} {{ n | fmt_int }}{{ "; " if not loop.last }}{% else %}—{% endfor %} |
+| Frameworks | {{ census.frameworks | join(", ") if census.frameworks else "none detected" }} |
+| Automated tests | {{ "present" if numbers.tests_present else "**none**" }} |
+| Secrets (current / history only) | {{ numbers.secrets_current }} / {{ numbers.secrets_history }} |
+| Client-exposed credentials / open tables | {% if numbers.client_exposure is none %}not checked{% else %}{{ numbers.client_exposure.credentials }} / {{ numbers.client_exposure.open_tables }}{% endif %} |
+| Dependencies declared | {{ deps.dependencies | length }} |
+| Dependency vulnerabilities | {% if deps.advisories_checked %}{{ vulnerabilities }}{% if deps.advisories_note %}; {{ deps.advisories_note }}{% endif %}{% else %}not checked ({{ deps.advisories_note or "advisory database unavailable" }}){% endif %} |
+| End-of-life runtimes and frameworks | {% if numbers.end_of_life is none %}not checked{% elif not numbers.end_of_life.date %}not checked (no end-of-life data bundle){% else %}{{ numbers.end_of_life.past }} past end of life, {{ numbers.end_of_life.near }} near it; endoflife.date data dated {{ numbers.end_of_life.date }}{% if numbers.end_of_life.stale %} ({{ numbers.end_of_life.stale }}: refresh it){% endif %}{% endif %} |
+{% if numbers.hardcoded %}
+| Hardcoded infrastructure | {{ numbers.hardcoded.get("url", 0) | plural("URL") }} · {{ numbers.hardcoded.get("host", 0) | plural("internal host") }} · {{ numbers.hardcoded.get("ip", 0) | plural("IP") }} · {{ numbers.hardcoded.get("path", 0) | plural("path") }} · {{ numbers.hardcoded.get("email", 0) | plural("email") }} |
+{% endif %}
+{% if numbers.model_findings is not none %}
+| Model findings (after verification) | {{ numbers.model_findings }} ({{ numbers.verification.rejected }} rejected) |
+{% endif %}
+{% if git.available %}
+| Commits · authors · active days | {{ git.commit_count | fmt_int }} · {{ git.authors | length }} · {{ git.active_days }} |
+| History span | {{ git.first_commit.date() }} to {{ git.last_commit.date() }} |
+| Top author share · bus factor | {{ git.top_author_share | pct }} · {{ git.bus_factor }} |
+| Commits over {{ git.large_commit_threshold | fmt_int }} lines | {{ git.large_commits | length }} |
+{% else %}
+| Git history | unavailable ({{ git.reason }}) |
+{% endif %}
+| AI tooling indicators | {{ numbers.ai_indicators | join("; ") if numbers.ai_indicators else "none found" }} |
+
+{% if numbers.largest_files %}
+### Largest source files
+
+| File | Lines | Longest function |
+|---|---:|---|
+{% for m in numbers.largest_files %}
+| `{{ m.path }}` | {{ m.lines | fmt_int }} | {% if m.max_function_name %}`{{ m.max_function_name }}` ({{ m.max_function_lines | fmt_int }}){% else %}—{% endif %} |
+{% endfor %}
+{% endif %}
+
+{% if outlook.total %}
+## Remediation outlook
+
+Findings by remediation effort: S up to half a day, M up to two days, L up to a week, XL weeks. Scanner findings carry a fixed band per rule; model findings carry the model's band, adjusted by the verifier where it checked the finding. The bands are an input to the consultant's judgment, not a quote.
+
+| Severity | S | M | L | XL | Not estimated | Total |
+|---|---:|---:|---:|---:|---:|---:|
+{% for r in outlook.rows %}
+| {{ r.severity }} | {% for b in outlook.bands %}{{ r.counts[b] }} | {% endfor %}{{ r.counts.none }} | {{ r.total }} |
+{% endfor %}
+| **Total** | {% for b in outlook.bands %}{{ outlook.totals[b] }} | {% endfor %}{{ outlook.totals.none }} | {{ outlook.total }} |
+{% if outlook.days %}
+
+**Estimated effort: {{ outlook.days.low }}–{{ outlook.days.high }} engineer-days.** This is an estimate from the bands and `report.effort_days` (days at the top of each band: {{ outlook.days.mapping }}){% if outlook.days.not_estimated %}; the {{ outlook.days.not_estimated | plural("finding") }} not estimated {{ outlook.days.not_estimated | is_are }} not included{% endif %}.
+{% endif %}
+
+{% endif %}
+## Findings
+
+{% if not severity_groups %}
+No findings.
+{% endif %}
+{% for sev, group in severity_groups %}
+### {{ sev | capitalize }} ({{ group | length }})
+
+{% if sev in compact_severities %}
+One row per finding. Impact, remediation, and excerpts for each are in
+`analysis/findings.json`, and `unvarnish ask` can explain any of them.
+
+| Finding | Category | Source | Effort | Location |
+|---|---|---|---|---|
+{% for f in group %}
+| {{ f.title | cell }} | {{ f.category }} | {% if f.source == "scanner" %}scanner{% else %}model{% endif %} | {{ f.effort or "not estimated" }} | `{{ f.evidence[0].path | cell }}{% if f.evidence[0].line_start %}:{{ f.evidence[0].line_start }}{% endif %}`{% if f.evidence | length > 1 %} (+{{ f.evidence | length - 1 }}){% endif %} |{{ "" }}
+{% endfor %}
+{{ "" }}
+{% else %}
+{% for f in group %}
+#### {{ f.title | cell }}
+
+`{{ f.category }}` · source: {% if f.source == "scanner" %}scanner ({{ f.scanner }}){% else %}model{% if f.verification %} · verification: {{ f.verification }}{% else %} · **unverified**{% endif %}{% endif %} · effort: {{ f.effort or "not estimated" }} · id `{{ f.id }}`
+
+{{ f.summary }}
+
+**Impact.** {{ f.impact }}
+
+**Remediation.** {{ f.remediation }}
+{% if f.effort_note %}
+
+**Effort.** {{ f.effort or "not estimated" }}: {{ f.effort_note }}
+{% endif %}
+{% if f.verification_note %}
+
+**Verifier.** {{ f.verification_note }}
+{% endif %}
+
+**Evidence.**
+{% for e in f.evidence %}
+- `{{ e.path }}{% if e.line_start %}:{{ e.line_start }}{% if e.line_end and e.line_end != e.line_start %}-{{ e.line_end }}{% endif %}{% endif %}`{% if e.excerpt %} — {{ e.excerpt | code_span }}{% endif %}{% if e.note %} ({{ e.note }}){% endif %}{{ "" }}
+{% endfor %}
+{{ "" }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+## Not analysed
+
+{% if not_analysed %}
+Excluded from analysis but counted in totals:
+
+{% for group in not_analysed %}
+- **{{ group.reason }}**: {{ group.count | plural("file") }}{% if group.examples %} — e.g. {% for p in group.examples %}`{{ p }}`{{ ", " if not loop.last }}{% endfor %}{% endif %}{{ "" }}
+{% endfor %}
+
+{% if not_analysed | selectattr("reason", "equalto", "gitignore") | list %}
+The secrets scanner still read gitignored text files, except tool caches such as `.pytest_cache`, vendored directories and files over 5 MB, because a gitignored `.env` can hold a live credential. A secret found in one that git does not track is marked "gitignored": the file is in the copy Unvarnish was given, not in the repository. Without git history, whether such a file is tracked is unknown, and the secret is marked "matches a .gitignore rule" instead.
+
+{% endif %}
+{% endif %}
+{% if skipped_at_ingest %}
+Directories skipped when the repository was copied, as untracked dependency or build output (not counted in totals): {% for p in skipped_at_ingest[:10] %}`{{ p }}`{{ ", " if not loop.last }}{% endfor %}{% if skipped_at_ingest | length > 10 %}, and {{ skipped_at_ingest | length - 10 }} more{% endif %}.
+
+{% endif %}
+{% if tracked_despite_gitignore %}
+Analysed although a `.gitignore` rule matches them, because they are tracked in git ({{ tracked_despite_gitignore | length }}): {% for p in tracked_despite_gitignore[:10] %}`{{ p }}`{{ ", " if not loop.last }}{% endfor %}{% if tracked_despite_gitignore | length > 10 %}, and {{ tracked_despite_gitignore | length - 10 }} more{% endif %}.
+
+{% endif %}
+{% if binaries %}
+Binary files ({{ binaries | length }}): {% for p in binaries[:10] %}`{{ p }}`{{ ", " if not loop.last }}{% endfor %}{% if binaries | length > 10 %}, …{% endif %}{{ "" }}
+
+{% endif %}
+{% if census.failures %}
+Files that could not be read or measured:
+
+{% for f in census.failures %}
+- {{ f }}
+{% endfor %}
+
+{% endif %}
+{% if census.notes %}
+Measurement notes:
+
+{% for n in census.notes %}
+- {{ n }}
+{% endfor %}
+
+{% endif %}
+{% if scan.notes %}
+Scanner notes:
+
+{% for n in scan.notes %}
+- {{ n }}
+{% endfor %}
+
+{% endif %}
+{% if scan.skipped %}
+Scanners that failed and were skipped:
+
+{% for s in scan.skipped %}
+- **{{ s.name }}**: `{{ s.error }}`
+{% endfor %}
+
+{% endif %}
+{% if model_gaps.skipped_split %}
+Files not split for model analysis ({{ model_gaps.skipped_split | length }}):
+
+{% for s in model_gaps.skipped_split %}
+- `{{ s.path }}`: {{ s.reason }}
+{% endfor %}
+
+{% endif %}
+{% if model_gaps.too_large %}
+Files too large to scan (over 5 MB; the secrets, hygiene, and hardcoded-infrastructure scanners and model analysis did not read them; they still count in totals): {% for f in model_gaps.too_large %}`{{ f.path }}` ({{ f.size }}){{ ", " if not loop.last }}{% endfor %}.
+
+{% endif %}
+{% if numbers.hardcoded %}
+Hardcoded-infrastructure scanning reads the first 4,000 characters of each line.
+
+{% endif %}
+{% if model_gaps.windowed.count %}
+Windowed regions: {{ model_gaps.windowed.count | plural("unit") }} {{ "was" if model_gaps.windowed.count == 1 else "were" }} analysed as fixed-size windows because no structural boundary fit, so findings there may lack context — e.g. {% for p in model_gaps.windowed.examples %}`{{ p }}`{{ ", " if not loop.last }}{% endfor %}.
+
+{% endif %}
+{% if model_gaps.failed_units %}
+Units the model could not analyse ({{ model_gaps.failed_units_count }}{% if model_gaps.failed_units_count > model_gaps.failed_units | length %}, first {{ model_gaps.failed_units | length }} shown{% endif %}):
+
+{% for u in model_gaps.failed_units %}
+- `{{ u.path }}`: {{ u.error }}
+{% endfor %}
+
+{% endif %}
+{% if model_gaps.failed_modules %}
+Files whose module rollup failed: {% for p in model_gaps.failed_modules %}`{{ p }}`{{ ", " if not loop.last }}{% endfor %}.
+
+{% endif %}
+{% if model_gaps.modules_without_units %}
+Files with no analysed units (every unit failed or was skipped): {% for p in model_gaps.modules_without_units %}`{{ p }}`{{ ", " if not loop.last }}{% endfor %}.
+
+{% endif %}
+{% if model_gaps.failed_chunks %}
+Directory chunks whose rollup failed (their modules did not reach the tool-level analysis): {% for p in model_gaps.failed_chunks %}`{{ p }}`{{ ", " if not loop.last }}{% endfor %}.
+
+{% endif %}
+{% if model_gaps.tool_rollup_failed %}
+The tool-level rollup failed, so no architecture or requirements document was produced for this run; the failure is recorded in `analysis/failures.json` and the next run retries it.
+
+{% endif %}
+{% if model_gaps.rejected %}
+{{ model_gaps.rejected | plural("model finding") }} {{ "was" if model_gaps.rejected == 1 else "were" }} rejected on verification and {{ "is" if model_gaps.rejected == 1 else "are" }} excluded above; {{ "it remains" if model_gaps.rejected == 1 else "they remain" }} in `analysis/findings.json` for inspection.
+
+{% endif %}
+{% if not git.available %}
+Git history was not analysed: {{ git.reason }}.
+{% endif %}
+{% if everything_analysed %}
+Everything in the source tree was analysed.
+{% endif %}

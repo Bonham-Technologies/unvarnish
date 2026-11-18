@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an improvement or new capability
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation where you wanted this, not just the feature itself.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you use today, or other shapes this could take.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which component?
+      options:
+        - CLI
+        - Scanners
+        - Model layer
+        - Analysis pipeline
+        - Documents and export
+        - Comparison
+        - Ask mode
+        - Docker and site kit

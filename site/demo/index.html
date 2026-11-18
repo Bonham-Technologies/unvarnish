@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo: Unvarnish on OWASP NodeGoat | Unvarnish</title>
+    <meta name="description" content="A real Unvarnish run on OWASP NodeGoat, a deliberately insecure training app: the commands, their output, and the findings document exactly as produced.">
+    <meta name="theme-color" content="#0a0a0b">
+    <link rel="canonical" href="https://unvarnish.com/demo/">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <meta property="og:title" content="Demo: Unvarnish on OWASP NodeGoat">
+    <meta property="og:description" content="The commands, their output, and the findings document exactly as produced.">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://unvarnish.com/demo/">
+    <meta property="og:image" content="https://unvarnish.com/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Unvarnish: the unvarnished truth about internally built software">
+    <meta property="og:site_name" content="Unvarnish">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&amp;family=Geist+Mono:wght@400;600&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="top">
+    <div class="container bar">
+        <a class="logo" href="/">UNVARNISH<span>.</span>COM</a>
+        <nav aria-label="Main">
+            <ul class="nav-links">
+                <li><a href="/#finds">What it finds</a></li>
+                <li><a href="/#how">How it works</a></li>
+                <li><a href="/#run">Run it</a></li>
+                <li><a href="/demo/" aria-current="page">Demo</a></li>
+            </ul>
+        </nav>
+    </div>
+</header>
+
+<main id="main">
+    <section class="page-head">
+        <div class="container">
+            <p class="eyebrow">Demo · recorded 14 November 2026</p>
+            <h1>Unvarnish on <em>OWASP NodeGoat</em></h1>
+            <p class="lede"><a href="https://github.com/OWASP/NodeGoat">NodeGoat</a> is an
+                OWASP training application that is insecure on purpose, so a review should find
+                plenty. Below is a real run, command by command, with its output unedited apart
+                from local paths, and the findings document it wrote.</p>
+            <div class="downloads">
+                <a class="btn btn-primary" href="/demo/nodegoat-findings.html">Read the findings document</a>
+                <a class="btn btn-ghost" href="/demo/nodegoat-findings.pdf">PDF</a>
+                <a class="btn btn-ghost" href="/demo/nodegoat-findings.md">Markdown</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <h2>The walkthrough</h2>
+            <ol class="walk">
+                <li>
+                    <h3>Start an engagement</h3>
+                    <p>An engagement is a folder that holds the tools under review and every
+                        artifact the run writes.</p>
+                    <pre class="term" tabindex="0"><code><span class="prompt">$</span> unvarnish init nodegoat-review --client &quot;Demo client&quot; --consultant &quot;Unvarnish demo&quot;
+<span class="out">Created engagement at ./nodegoat-review</span>
+<span class="out">Next: unvarnish add &lt;name&gt; --repo &lt;url|path&gt; from inside it.</span></code></pre>
+                </li>
+                <li>
+                    <h3>Let the dependency scanner look advisories up online</h3>
+                    <p>osv-scanner runs offline by default, for air-gapped sites. For this public
+                        demo we let it query osv.dev, with one line in
+                        <code>engagement.yaml</code>:</p>
+                    <pre class="term" tabindex="0"><code><span class="out">scanners:
+  dependencies:
+    offline: false</span></code></pre>
+                </li>
+                <li>
+                    <h3>Add the tool</h3>
+                    <p>Unvarnish clones the repository with its full history, so the secrets
+                        scanner can search every commit and the git phase can measure who wrote
+                        what.</p>
+                    <pre class="term" tabindex="0"><code><span class="prompt">$</span> unvarnish add nodegoat --repo https://github.com/OWASP/NodeGoat.git
+<span class="out">Added nodegoat (repo) at tools/nodegoat/source</span>
+<span class="out">  commit c5cb68a7084e on master</span></code></pre>
+                </li>
+                <li>
+                    <h3>Run it</h3>
+                    <p>This run had no model configured, so the four model phases were
+                        skipped and the findings document comes from the deterministic scanners
+                        alone. The whole run took about twelve seconds.</p>
+                    <pre class="term" tabindex="0"><code><span class="prompt">$</span> unvarnish run
+<span class="out">[11/14/26 10:11:23] INFO     split nodegoat: 106 units across 85 files (0 skipped)</span>
+<span class="out">[11/14/26 10:11:24] INFO     render nodegoat: wrote findings.md</span>
+<span class="out">                                            run</span>
+<span class="out">┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓</span>
+<span class="out">┃ tool     ┃ phase          ┃ status  ┃ detail                                            ┃</span>
+<span class="out">┡━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩</span>
+<span class="out">│ nodegoat │ inventory      │ ok      │ 111 files, 73 measured                            │</span>
+<span class="out">│ nodegoat │ git            │ ok      │ 499 commits                                       │</span>
+<span class="out">│ nodegoat │ scan           │ ok      │ 164 findings from 10 scanners                     │</span>
+<span class="out">│ nodegoat │ split          │ ok      │ 106 units in 85 files, 0 skipped                  │</span>
+<span class="out">│ nodegoat │ extract        │ skipped │ skipped: no model configured (set models.default) │</span>
+<span class="out">│ nodegoat │ rollup_modules │ skipped │ skipped: no model configured (set models.default) │</span>
+<span class="out">│ nodegoat │ rollup_tool    │ skipped │ skipped: no model configured (set models.default) │</span>
+<span class="out">│ nodegoat │ verify         │ skipped │ skipped: no model configured (set models.default) │</span>
+<span class="out">│ nodegoat │ render         │ ok      │ wrote findings.md                                 │</span>
+<span class="out">└──────────┴────────────────┴─────────┴───────────────────────────────────────────────────┘</span>
+<span class="out">Log: logs/run-20261114-101112.log</span></code></pre>
+                </li>
+                <li>
+                    <h3>Check where it stands</h3>
+                    <p>Every phase records a hash of its inputs. A second <code>run</code> skips
+                        fresh phases and resumes where a stopped run left off.</p>
+                    <pre class="term" tabindex="0"><code><span class="prompt">$</span> unvarnish status
+<span class="out">             status: Demo client</span>
+<span class="out">┏━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓</span>
+<span class="out">┃ tool         ┃ phase             ┃ state   ┃</span>
+<span class="out">┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩</span>
+<span class="out">│ nodegoat     │ inventory         │ fresh   │</span>
+<span class="out">│ nodegoat     │ git               │ fresh   │</span>
+<span class="out">│ nodegoat     │ scan              │ fresh   │</span>
+<span class="out">│ nodegoat     │ split             │ fresh   │</span>
+<span class="out">│ nodegoat     │ extract           │ missing │</span>
+<span class="out">│ nodegoat     │ rollup_modules    │ missing │</span>
+<span class="out">│ nodegoat     │ rollup_tool       │ missing │</span>
+<span class="out">│ nodegoat     │ verify            │ missing │</span>
+<span class="out">│ nodegoat     │ render            │ 1 docs  │</span>
+<span class="out">│ nodegoat     │ last run          │ clean   │</span>
+<span class="out">├──────────────┼───────────────────┼─────────┤</span>
+<span class="out">│ (engagement) │ compare           │ missing │</span>
+<span class="out">│ (engagement) │ render_comparison │ missing │</span>
+<span class="out">└──────────────┴───────────────────┴─────────┘</span></code></pre>
+                </li>
+                <li>
+                    <h3>Read the findings</h3>
+                    <p>The summary at the top of <code>findings.md</code>:</p>
+                    <pre class="term md" tabindex="0"><code>## Summary
+
+164 finding(s): 34 critical, 86 high, 37 medium, 7 low.
+
+**120 finding(s) are critical or high severity and need action before this tool is relied on further.**
+
+## By the numbers
+
+| Measure | Value |
+|---|---|
+| Files analysed / total | 92 / 111 |
+| Source lines | 4,956 |
+| Largest source file | `app/views/tutorial/a1.html` (409 lines) |
+| Longest source function | `SessionHandler` in `app/routes/session.js` (268 lines) |
+| Languages (source lines) | html 2,933; javascript 2,005; dockerfile 18 |
+| Frameworks | Express |
+| Automated tests | present |
+| Secrets (current / history only) | 6 / 19 |
+| Client-exposed credentials / open tables | 0 / 0 |
+| Dependencies declared | 36 |
+| Dependency vulnerabilities | 311 (33 critical, 170 high, 94 medium, 14 low) |
+| End-of-life runtimes and frameworks | 1 past end of life, 0 near it; endoflife.date data dated 2026-11-14 |
+| Hardcoded infrastructure | 33 URLs · 0 internal host(s) · 1 IP(s) · 0 path(s) · 0 email(s) |
+| Commits · authors · active days | 499 · 40 · 204 |
+| History span | 2013-10-21 to 2023-06-21 |
+| Top author share · bus factor | 49% · 2 |
+| Commits over 2,000 lines | 7 |
+| AI tooling indicators | none found |</code></pre>
+                    <p>Then the remediation outlook: every finding carries an effort band, and
+                        the bands are an input to your judgment, not a quote:</p>
+                    <pre class="term md" tabindex="0"><code>## Remediation outlook
+
+Findings by remediation effort: S up to half a day, M up to two days, L up to a week, XL weeks. Scanner findings carry a fixed band per rule; model findings carry the model's band, adjusted by the verifier where it checked the finding. The bands are an input to the consultant's judgment, not a quote.
+
+| Severity | S | M | L | XL | Not estimated | Total |
+|---|---:|---:|---:|---:|---:|---:|
+| critical | 34 | 0 | 0 | 0 | 0 | 34 |
+| high | 66 | 19 | 1 | 0 | 0 | 86 |
+| medium | 31 | 4 | 2 | 0 | 0 | 37 |
+| low | 7 | 0 | 0 | 0 | 0 | 7 |
+| **Total** | 138 | 23 | 3 | 0 | 0 | 164 |</code></pre>
+                    <p>And the first critical finding. Secret values are always redacted and
+                        identified by fingerprint:</p>
+                    <pre class="term md" tabindex="0"><code>#### Private key material
+
+`security` · source: scanner (secrets) · effort: S · id `7a8c5a682b3ae372`
+
+Private key material found in artifacts/cert/server.key. The value is redacted here and identified by fingerprint.
+
+**Impact.** Anyone who can read this code or its history holds a working credential. Rotation is required regardless of whether the file is still present.
+
+**Remediation.** Rotate the credential now. Move it to a secret manager or environment variable. Purge it from git history (git filter-repo) before the repository moves anywhere.
+
+**Effort.** S: rotate one credential and move it to configuration (scanner rule secrets.credential)
+
+**Evidence.**
+- `artifacts/cert/server.key:1` — `…[redacted 31 chars]` (fingerprint 71960cee9226; also appears in 1 commit(s) in git history)</code></pre>
+                    <p><a href="/demo/nodegoat-findings.html">The full document</a> lists all
+                        164 findings with their evidence, then what was not analysed and
+                        why.</p>
+                </li>
+            </ol>
+        </div>
+    </section>
+
+    <section class="section alt">
+        <div class="container narrow">
+            <h2>What this demo does not show</h2>
+            <ul class="caveats">
+                <li>No model ran. With one configured, the same run adds model findings checked
+                    by the verifier, an executive summary, and the architecture and requirements
+                    documents.</li>
+                <li>One tool only, so there is no cross-tool comparison.</li>
+                <li>A first review, so there is no "Since the previous review" section; a
+                    follow-up run with <code>--baseline</code> adds one.</li>
+                <li>The run used gitleaks 8.30.1 and osv-scanner 2.7.1 from their release pages,
+                    and end-of-life dates fetched with <code>unvarnish eol refresh</code> before
+                    the run; without that data the end-of-life check is reported as not run. The
+                    Docker image bundles all three.</li>
+                <li>One medium finding is a heuristic: it lists route handlers with no
+                    authentication identifier nearby, and here it includes routes guarded by
+                    NodeGoat's <code>isLoggedIn</code> middleware. With a model configured,
+                    extraction is asked to confirm each one.</li>
+                <li>NodeGoat is meant to be insecure. These findings describe a training
+                    application, not a product anyone runs in production.</li>
+            </ul>
+        </div>
+    </section>
+</main>
+
+<footer class="foot">
+    <div class="container foot-bar">
+        <p>© 2026 Bonham Technologies, LLC</p>
+        <p><a href="https://bonham.tech/">bonham.tech</a></p>
+    </div>
+</footer>
+</body>
+</html>

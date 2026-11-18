@@ -1,0 +1,327 @@
+{
+  "attribution": "Data from endoflife.date (https://endoflife.date), MIT licence",
+  "fetched": "2026-11-01",
+  "format": 1,
+  "products": {
+    "debian": {
+      "cycles": [
+        {
+          "codename": "Bookworm",
+          "cycle": "12",
+          "eol_from": "2028-06-30",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": "Buster",
+          "cycle": "10",
+          "eol_from": "2024-06-30",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        }
+      ],
+      "label": "Debian"
+    },
+    "django": {
+      "cycles": [
+        {
+          "codename": null,
+          "cycle": "5.2",
+          "eol_from": "2028-04-30",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "3.2",
+          "eol_from": "2024-04-01",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        }
+      ],
+      "label": "Django"
+    },
+    "dotnet": {
+      "cycles": [
+        {
+          "codename": null,
+          "cycle": "10",
+          "eol_from": "2028-11-14",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "8",
+          "eol_from": "2026-11-10",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "6",
+          "eol_from": "2024-11-12",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "3.1",
+          "eol_from": "2022-12-13",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        }
+      ],
+      "label": "Microsoft .NET"
+    },
+    "eclipse-temurin": {
+      "cycles": [
+        {
+          "codename": null,
+          "cycle": "21",
+          "eol_from": "2029-12-31",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "16",
+          "eol_from": "2021-09-30",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        }
+      ],
+      "label": "Eclipse Temurin"
+    },
+    "go": {
+      "cycles": [
+        {
+          "codename": null,
+          "cycle": "1.25",
+          "eol_from": null,
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "1.20",
+          "eol_from": "2024-02-06",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        }
+      ],
+      "label": "Go"
+    },
+    "nodejs": {
+      "cycles": [
+        {
+          "codename": null,
+          "cycle": "24",
+          "eol_from": "2028-04-30",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "22",
+          "eol_from": "2027-04-30",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "20",
+          "eol_from": "2026-04-30",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "18",
+          "eol_from": "2025-04-30",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "14",
+          "eol_from": "2023-04-30",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "3",
+          "eol_from": null,
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        }
+      ],
+      "label": "Node.js"
+    },
+    "php": {
+      "cycles": [
+        {
+          "codename": null,
+          "cycle": "8.4",
+          "eol_from": "2028-12-31",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "7.4",
+          "eol_from": "2022-11-28",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        }
+      ],
+      "label": "PHP"
+    },
+    "python": {
+      "cycles": [
+        {
+          "codename": null,
+          "cycle": "3.13",
+          "eol_from": "2029-10-31",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": "3.13.9"
+        },
+        {
+          "codename": null,
+          "cycle": "3.12",
+          "eol_from": "2028-10-31",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "3.10",
+          "eol_from": "2026-10-31",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "3.9",
+          "eol_from": "2025-10-31",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "3.7",
+          "eol_from": "2023-06-27",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "3.6",
+          "eol_from": "2021-12-23",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        }
+      ],
+      "label": "Python"
+    },
+    "react": {
+      "cycles": [
+        {
+          "codename": null,
+          "cycle": "19",
+          "eol_from": null,
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "17",
+          "eol_from": null,
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        }
+      ],
+      "label": "React"
+    },
+    "ruby": {
+      "cycles": [
+        {
+          "codename": null,
+          "cycle": "3.4",
+          "eol_from": "2028-03-31",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "2.7",
+          "eol_from": "2023-03-31",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        },
+        {
+          "codename": null,
+          "cycle": "2.6",
+          "eol_from": "2022-04-12",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        }
+      ],
+      "label": "Ruby"
+    },
+    "ubuntu": {
+      "cycles": [
+        {
+          "codename": "Noble Numbat",
+          "cycle": "24.04",
+          "eol_from": "2029-05-31",
+          "is_eol": false,
+          "is_maintained": true,
+          "latest": null
+        },
+        {
+          "codename": "Focal Fossa",
+          "cycle": "20.04",
+          "eol_from": "2025-05-29",
+          "is_eol": true,
+          "is_maintained": false,
+          "latest": null
+        }
+      ],
+      "label": "Ubuntu"
+    }
+  },
+  "source": "https://endoflife.date/api/v1/products"
+}

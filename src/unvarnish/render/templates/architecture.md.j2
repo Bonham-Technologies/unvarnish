@@ -1,0 +1,164 @@
+# {{ tool.name }}: Architecture
+
+**Client:** {{ client or "—" }} · **Prepared by:** {{ consultant or "—" }} · **Generated:** {{ generated_at }}\
+**Source:** {{ tool.origin_kind }} `{{ tool.origin }}`{% if tool.commit %} at `{{ tool.commit[:12] }}`{% endif %}
+
+{{ "" }}
+> Rendered from Unvarnish's analysis artifacts. Prose sections are model-written from those artifacts
+> ({{ analysis_mode }}); every table, list, and diagram is generated directly from the data.
+
+## 1. Purpose and users
+
+{% prose "purpose_and_users" %}{{ "" }}
+
+**Actors**
+
+{% for a in tm.actors %}
+- **{{ a.name | cell }}**: {{ a.description | cell }}
+{% else %}
+- None identified.
+{% endfor %}
+
+**Entry points**
+
+| Entry point | Kind | Module | Description |
+|---|---|---|---|
+{% for e in tm.entry_points | cap %}
+| {{ e.name | cell }} | {{ e.kind }} | `{{ e.module }}` | {{ e.description | cell }} |
+{% else %}
+| — | — | — | None identified |
+{% endfor %}
+{% if more(tm.entry_points) %}
+
+{{ more(tm.entry_points) }}
+{% endif %}
+
+## 2. Context
+
+<!-- unvarnish-diagram: context -->
+```mermaid
+{{ context_mermaid }}
+```
+
+**External systems**
+
+| System | Kind | Direction | Description | Modules |
+|---|---|---|---|---|
+{% for s in tm.external_systems | cap %}
+| {{ s.name | cell }} | {{ s.kind }} | {{ s.direction }} | {{ s.description | cell }} | {% for m in s.modules %}`{{ m }}`{{ ", " if not loop.last }}{% else %}—{% endfor %} |
+{% else %}
+| — | — | — | None identified | — |
+{% endfor %}
+{% if more(tm.external_systems) %}
+
+{{ more(tm.external_systems) }}
+{% endif %}
+
+{% if hardcoded %}
+**Hardcoded in source (scanner)**
+
+| Kind | Value | Location |
+|---|---|---|
+{% for h in hardcoded %}
+| {{ h.kind }} | {{ h.value | code_span }} | `{{ h.location }}` |
+{% endfor %}
+
+{% endif %}
+## 3. Internal stack
+
+| Layer | Value |
+|---|---|
+| Languages (source lines) | {% for lang, n in languages %}{{ lang }} {{ n | fmt_int }}{{ "; " if not loop.last }}{% else %}—{% endfor %} |
+| Frameworks (detected) | {{ census.frameworks | join(", ") if census.frameworks else "none detected" }} |
+| Stack (from code) | {{ tm.internal_stack | join("; ") | cell if tm.internal_stack else "—" }} |
+| Dependencies declared | {{ deps.dependencies | length }} |
+
+## 4. Module map and interactions
+
+<!-- unvarnish-diagram: modules -->
+```mermaid
+{{ module_mermaid }}
+```
+{% if module_diagram_note %}
+
+{{ module_diagram_note }}
+{% endif %}
+
+| Module | Role | Depends on | Units | Lines | Findings |
+|---|---|---|---:|---:|---:|
+{% for m in module_rows %}
+| `{{ m.path }}` | {{ m.role | cell }} | {% for d in m.depends_on %}`{{ d }}`{{ ", " if not loop.last }}{% else %}—{% endfor %} | {{ m.units | fmt_int }} | {{ m.lines | fmt_int }} | {{ m.findings | fmt_int }} |
+{% else %}
+| — | None identified | — | — | — | — |
+{% endfor %}
+
+## 5. Data stores and flows
+
+| Store | Kind | Description | Modules |
+|---|---|---|---|
+{% for s in tm.data_stores | cap %}
+| {{ s.name | cell }} | {{ s.kind }} | {{ s.description | cell }} | {% for m in s.modules %}`{{ m }}`{{ ", " if not loop.last }}{% else %}—{% endfor %} |
+{% else %}
+| — | — | None identified | — |
+{% endfor %}
+{% if more(tm.data_stores) %}
+
+{{ more(tm.data_stores) }}
+{% endif %}
+
+| From | To | Data | Via |
+|---|---|---|---|
+{% for f in tm.data_flows | cap %}
+| {{ f.source | cell }} | {{ f.target | cell }} | {{ f.data | cell }} | {{ f.via | cell if f.via else "—" }} |
+{% else %}
+| — | — | No data flows identified | — |
+{% endfor %}
+{% if more(tm.data_flows) %}
+
+{{ more(tm.data_flows) }}
+{% endif %}
+
+## 6. Deployment and runtime assumptions
+
+{% prose "deployment" %}{{ "" }}
+
+{% for a in tm.deployment_assumptions | cap %}
+- {{ a | cell }}
+{% else %}
+- No deployment assumptions were identified in the code.
+{% endfor %}
+{% if more(tm.deployment_assumptions) %}
+
+{{ more(tm.deployment_assumptions) }}
+{% endif %}
+
+## 7. How this was built
+
+{% prose "build_history" %}{{ "" }}
+
+{% if git.available %}
+| Measure | Value |
+|---|---|
+| Commits · authors · active days | {{ git.commit_count | fmt_int }} · {{ git.authors | length }} · {{ git.active_days }} |
+| History span | {{ git.first_commit.date() }} to {{ git.last_commit.date() }} |
+| Top author share · bus factor | {{ git.top_author_share | pct }} · {{ git.bus_factor }} |
+| Commits over {{ git.large_commit_threshold | fmt_int }} lines | {{ git.large_commits | length }} |
+| AI tooling indicators | {{ ai_indicators | join("; ") if ai_indicators else "none found" }} |
+{% else %}
+Git history unavailable ({{ git.reason }}).
+{% endif %}
+
+## 8. Analysis coverage
+
+| Measure | Value |
+|---|---|
+| Units analysed / total | {{ coverage.units_done | fmt_int }} / {{ coverage.units_total | fmt_int }} |
+| Windowed units | {{ coverage.windowed | fmt_int }} |
+| Units failed | {{ coverage.units_failed | fmt_int }} |
+| Modules rolled up / failed / without units | {{ coverage.modules_rolled }} / {{ coverage.modules_failed }} / {{ coverage.modules_without_units }} |
+| Tool rollup | {% if tm.hierarchical %}hierarchical, {{ tm.chunks }} of {{ tm.chunks_attempted }} directory chunks{% else %}single pass{% endif %} covering {{ tm.modules_covered }} of {{ coverage.modules_rolled }} modules |
+{% if tm.chunks_failed %}
+| Directory chunks failed | {% for p in tm.chunks_failed %}`{{ p }}`{{ ", " if not loop.last }}{% endfor %} (their modules are missing from the sections above) |
+{% endif %}
+| Files not split | {{ coverage.skipped_split }} |
+| Model confidence (tool rollup) | {{ tm.confidence | pct }} |
