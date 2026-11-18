@@ -428,9 +428,9 @@ in the grammar fetch or apt step (UNVAR-65).
 
 `ci.yml` reads the repository variable `RUNS_ON` (a JSON runner label or list) for the
 `ci-status` job, but only on a pull request from a branch of this repo; everything else,
-fork pull requests included, runs on the hosted `ubuntu-24.04` (UNVAR-70). Before the repo
-goes public, set `RUNS_ON` to a hosted label or delete it, and keep any self-hosted runner
-group closed to public repositories. Checkout runs with `persist-credentials: false`; a step
+fork pull requests included, runs on the hosted `ubuntu-24.04` (UNVAR-70). The repository is
+public (UNVAR-37, 2026-11-18), so `RUNS_ON` stays unset or names a hosted label, and any
+self-hosted runner group stays closed to public repositories. Checkout runs with `persist-credentials: false`; a step
 that ever needs to push passes its own token.
 
 ## Coverage floor

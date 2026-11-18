@@ -30,7 +30,7 @@ repository while `LICENSE` is still the proprietary notice.
 
 ## Owner steps before it goes live
 
-1. Create the Vercel project from `Bonham-Technologies/Unvarnish` with **Root Directory**
+1. Create the Vercel project from `Bonham-Technologies/unvarnish` with **Root Directory**
    `site`, framework preset **Other**, no build command, output directory `.`.
 2. Production branch `main` only; keep **Git Fork Protection** on.
 3. Add `unvarnish.com` and `www.unvarnish.com` to the project (redirect `www` to the apex);
@@ -42,12 +42,11 @@ repository while `LICENSE` is still the proprietary notice.
 6. After the first deploy, check that `https://unvarnish.com/README.md` returns 404
    (`.vercelignore` keeps it off the site) and that the response headers match `vercel.json`.
 
-## On launch day (after UNVAR-37)
+## Since launch
 
-- Add the repository link where `index.html` says `<!-- launch: ... -->`, and in both footers.
-- Change the licence sentence to say it is Apache-2.0 now, once `LICENSE` is.
-- `test_no_github_link_until_the_repository_is_public` skips itself once `LICENSE` no longer
-  says proprietary.
+The repository went public on 2026-11-18 (UNVAR-37). The licence section and both footers link
+`https://github.com/Bonham-Technologies/unvarnish`, and
+`test_every_page_links_the_public_repository` keeps it that way.
 
 ## Refreshing the demo
 

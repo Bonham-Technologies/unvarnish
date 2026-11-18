@@ -33,7 +33,7 @@ unv = "unvarnish.cli:app"
 
 [project.urls]
 Homepage = "https://unvarnish.com"
-Repository = "https://github.com/Bonham-Technologies/Unvarnish"
+Repository = "https://github.com/Bonham-Technologies/unvarnish"
 
 [build-system]
 requires = ["hatchling>=1.27"]  # PEP 639 license-files as a list
