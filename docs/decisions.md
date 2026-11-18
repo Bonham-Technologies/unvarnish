@@ -1177,6 +1177,12 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   else. *Cost if wrong:* an irregular noun passed without its plural reads wrongly; the
   documents are English-only.
 
+## CI time limit (UNVAR-65)
+
+- **The `test` job's limit is 45 minutes**, about seven times a normal run and above the
+  32 minutes a slow apt mirror once took. *Cost if wrong:* a legitimately slow run is
+  cancelled and fails `ci-status`, and needs a rerun.
+
 ## Fork pull requests and the self-hosted runner (UNVAR-70)
 
 - **`vars.RUNS_ON` applies only to a pull request whose head is a branch of this repo.** A
