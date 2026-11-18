@@ -14,8 +14,11 @@ DISABLE_ENV = "UNVARNISH_DISABLE_GITLEAKS"
 GITLEAKS_FLAGS = ["--report-format", "json", "--report-path", "-", "--no-banner", "--redact",
                   "--exit-code", "0", "--ignore-gitleaks-allow"]
 # Passed with --config so a .gitleaks.toml in the vetted repo cannot replace or allowlist the
-# default rules. (gitleaks still reads the repo's .gitleaksignore; the secrets scanner
-# reports that file instead.)
+# default rules. gitleaks 8.30.1 reads .gitleaksignore from the scanned directory (always, even
+# with --gitleaks-ignore-path set) and from its working directory (the flag's default, `.`).
+# The scanned tree's file still applies, and the secrets scanner reports it; the working
+# directory is the scanner's own empty temp folder, so a file in the folder Unvarnish was
+# started from never applies (UNVAR-66).
 GITLEAKS_CONFIG = 'title = "unvarnish"\n\n[extend]\nuseDefault = true\n'
 
 
@@ -51,14 +54,17 @@ def run_gitleaks(root: Path, *, history: bool,
         env = git_env(root)
     except GitError as exc:
         return [], [], f"gitleaks not run: {exc}"[:300]
+    root = root.resolve()  # gitleaks runs in its own folder, so a relative root would break
     reports: list[list[dict]] = []
     with tempfile.TemporaryDirectory(prefix="unvarnish-gitleaks-") as tmp:
         config = Path(tmp) / "gitleaks.toml"
         config.write_text(GITLEAKS_CONFIG, encoding="utf-8")
+        cwd = Path(tmp) / "cwd"  # empty: no .gitleaksignore of the caller's applies
+        cwd.mkdir()
         procs = []
         for cmd in gitleaks_commands(root, history, config):
             try:
-                procs.append(run(cmd, capture_output=True, timeout=1800, env=env))
+                procs.append(run(cmd, capture_output=True, timeout=1800, env=env, cwd=cwd))
             except (OSError, subprocess.SubprocessError) as exc:
                 return [], [], f"gitleaks failed: {exc}"[:300]
     for proc in procs:

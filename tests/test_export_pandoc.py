@@ -403,6 +403,100 @@ def test_links_are_underlined_on_screen_and_in_print(css_path: Path):
     assert re.search(r"(?<![\w-])a\s*\{[^}]*text-decoration\s*:\s*underline", screen)
 
 
+def test_build_pandoc_command_passes_author_to_html_and_pdf_only(tmp_path: Path):
+    def cmd(fmt: str) -> list[str]:
+        return build_pandoc_command(tmp_path / "a.md", fmt, tmp_path / f"a.{fmt}", title="T",
+                                    resource_dir=tmp_path, reference_docx=None, css=None,
+                                    author="Dana Q. Consultant")
+    assert "--metadata=author:Dana Q. Consultant" in cmd("html")
+    assert "--metadata=author:Dana Q. Consultant" in cmd("pdf")
+    # the docx writer would print author metadata as an Author paragraph above the H1
+    assert not any(a.startswith("--metadata=author") for a in cmd("docx"))
+
+
+def _body(html: str) -> str:
+    return html.split("<body", 1)[1]
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None or shutil.which("dot") is None,
+                    reason="pandoc and graphviz needed")
+def test_html_export_carries_author_meta_without_a_byline(tmp_path: Path):
+    md = tmp_path / "findings.md"
+    md.write_text(SAMPLE)
+    export_markdown(md, "html", tmp_path / "out.html", diagrams={}, branding=BrandingConfig(),
+                    template=None, work_dir=tmp_path / "work", author='Dana "Q" & <Co>')
+    html = (tmp_path / "out.html").read_text()
+    assert '<meta name="author" content="Dana &quot;Q&quot; &amp; &lt;Co&gt;" />' in html
+    assert "Dana" not in _body(html) and 'class="author"' not in html
+    assert "title-block-header" not in html
+    export_markdown(md, "html", tmp_path / "default.html", diagrams={},
+                    branding=BrandingConfig(), template=None, work_dir=tmp_path / "w2")
+    default = (tmp_path / "default.html").read_text()
+    assert '<meta name="author" content="Unvarnish" />' in default
+    assert "Unvarnish" not in _body(default)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc needed")
+def test_pdf_source_html_has_no_visible_author_line(tmp_path: Path):
+    # the PDF is weasyprint's rendering of this exact command's HTML, so check that HTML
+    src = tmp_path / "doc.md"
+    src.write_text(SAMPLE)
+    out = tmp_path / "pdf-source.html"
+    cmd = build_pandoc_command(src, "pdf", out, title="Sample: Findings",
+                               resource_dir=tmp_path, reference_docx=None,
+                               css=bundled_asset("report.css"), author="Dana Q. Consultant")
+    from unvarnish.export.pandoc import run_pandoc
+    run_pandoc(cmd)
+    html = out.read_text()
+    assert '<meta name="author" content="Dana Q. Consultant" />' in html
+    assert "Dana" not in _body(html) and 'class="author"' not in html
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc needed")
+def test_author_metadata_keeps_yaml_like_values_verbatim(tmp_path: Path):
+    # pandoc reads a --metadata value as a YAML boolean or a string; nothing else is parsed
+    src = tmp_path / "doc.md"
+    src.write_text("# T\n\ntext\n")
+    from unvarnish.export.pandoc import run_pandoc
+    for i, author in enumerate(["null", "~", "1.0", "[a]", "a: b", "a=b", "-x", "*Dana*"]):
+        out = tmp_path / f"{i}.html"
+        run_pandoc(build_pandoc_command(src, "html", out, title="T", resource_dir=tmp_path,
+                                        reference_docx=None, css=None, author=author))
+        assert f'<meta name="author" content="{author}" />' in out.read_text(), author
+
+def _pdf_objects(pdf: bytes) -> list[bytes]:
+    import zlib
+
+    objects = [pdf]  # weasyprint may put the Info dictionary in a compressed object stream
+    for m in re.finditer(rb"stream\r?\n(.*?)endstream", pdf, re.DOTALL):
+        try:
+            objects.append(zlib.decompress(m.group(1)))
+        except zlib.error:
+            continue
+    return objects
+
+
+def _pdf_has_author(pdf: bytes, author: str) -> bool:
+    literal = re.escape(b"(" + author.encode("latin-1") + b")")
+    utf16 = ("FEFF" + author.encode("utf-16-be").hex()).encode()
+    return any(re.search(rb"/Author\s*" + literal, o)
+               or re.search(rb"/Author\s*<" + utf16 + rb">", o, re.IGNORECASE)
+               for o in _pdf_objects(pdf))
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None or shutil.which("dot") is None
+                    or shutil.which("weasyprint") is None, reason="pdf toolchain needed")
+def test_pdf_export_carries_author_in_info(tmp_path: Path):
+    md = tmp_path / "findings.md"
+    md.write_text(SAMPLE)
+    export_markdown(md, "pdf", tmp_path / "out.pdf", diagrams={}, branding=BrandingConfig(),
+                    template=None, work_dir=tmp_path / "work", author="Dana Q. Consultant")
+    assert _pdf_has_author((tmp_path / "out.pdf").read_bytes(), "Dana Q. Consultant")
+    export_markdown(md, "pdf", tmp_path / "default.pdf", diagrams={},
+                    branding=BrandingConfig(), template=None, work_dir=tmp_path / "w2")
+    assert _pdf_has_author((tmp_path / "default.pdf").read_bytes(), "Unvarnish")
+
+
 @pytest.mark.parametrize("css_path", [
     bundled_asset("report.css"),
     Path(__file__).resolve().parents[1] / "branding" / "bonham" / "report.css",

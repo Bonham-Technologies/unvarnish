@@ -1127,6 +1127,23 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   ignore a warning on every report; too long, and a report presents months-old data as
   current with only its date as a hint. Either is one setting in the engagement file.
 
+## Export author in HTML and PDF (UNVAR-60)
+
+- **HTML and PDF get the author as pandoc `author` metadata; Word keeps its post-pandoc
+  rewrite.** The value is the one Word gets (`consultant`, else "Unvarnish"). pandoc's html5
+  template prints `author` as a visible byline only inside the title block, which it emits
+  only when `title` is set; the exporter sets `pagetitle` and never `title`, so `author`
+  becomes `<meta name="author">` alone, and weasyprint turns that into the PDF's `/Author`.
+  `author` metadata rather than an `author-meta` variable because pandoc escapes metadata
+  for the attribute (`"`, `&`, `<`), while a variable is inserted raw. Tests check the meta
+  tag, the PDF's `/Author`, and that neither the HTML nor the PDF's source HTML has the
+  author in its body. *Cost if wrong:* a later pandoc template that prints authors outside
+  the title block would add a visible byline; `test_html_export_carries_author_meta_without_a_byline`
+  fails on it. A consultant named `true` or `false` (also `True`, `TRUE`, `False`, `FALSE`)
+  is read by pandoc as a YAML boolean and the author is left out; every other string,
+  including `null`, `~`, `1.0`, `[a]` and values with colons, reaches the meta tag verbatim
+  (known-issues.md).
+
 ## Native Windows (UNVAR-35)
 
 - **Docker only on Windows; the CLI refuses native Windows with a clear message.** The owner
@@ -1202,6 +1219,31 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   `-es` after a sibilant, `-ies` after a consonant `-y`, and an explicit plural for anything
   else. *Cost if wrong:* an irregular noun passed without its plural reads wrongly; the
   documents are English-only.
+
+## gitleaks working directory (UNVAR-66)
+
+- **gitleaks runs in an empty temp folder of its own**, not in the folder Unvarnish was started
+  from. gitleaks 8.30.1 reads `.gitleaksignore` from the scanned directory and from
+  `--gitleaks-ignore-path`, which defaults to `.`; an ignore file in the consultant's working
+  directory suppressed client findings (tree and history) with no trace. Verified with real
+  8.30.1: setting the working directory, or pointing `--gitleaks-ignore-path` at an empty
+  folder, both stop the working-directory file and both keep the scanned tree's own file in
+  force (the flag adds a lookup, it does not replace the scan-root one). The working directory
+  was chosen because it also covers any other `.`-relative default gitleaks has or adds, and
+  needs no flag. The scan root is resolved first so a relative root still works. *Cost if
+  wrong:* a gitleaks release that reads ignore files from somewhere else (the home directory, an
+  environment variable) would bring the gap back; the real-gitleaks test catches only the
+  working-directory case.
+- **No scanner text version bump.** The fix changes no wording, and a scan is affected only if
+  it ran from a folder whose `.gitleaksignore` listed that client's fingerprints (commit, path,
+  rule, line). Upgrades from 0.1.0 already rescan once for UNVAR-57. *Cost if wrong:* a scan
+  made on unreleased `main` from such a folder keeps the hidden finding until its next rescan.
+
+## CI time limit (UNVAR-65)
+
+- **The `test` job's limit is 45 minutes**, about seven times a normal run and above the
+  32 minutes a slow apt mirror once took. *Cost if wrong:* a legitimately slow run is
+  cancelled and fails `ci-status`, and needs a rerun.
 
 ## Fork pull requests and the self-hosted runner (UNVAR-70)
 
