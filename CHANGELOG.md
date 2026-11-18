@@ -8,6 +8,13 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Public repository
+
+- The repository went public with a fresh history on 2026-11-18 (UNVAR-37), under the
+  lowercase name `Bonham-Technologies/unvarnish`. The site's licence section and both footers
+  now link it, and the package metadata, SECURITY.md, the issue template and the CI runner
+  notes use the new name and present tense.
+
 ### Export author
 
 - HTML and PDF exports now carry the engagement's consultant (or "Unvarnish") as their author,

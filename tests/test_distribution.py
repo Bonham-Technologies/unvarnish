@@ -61,7 +61,7 @@ def test_dockerfile_installs_a_weasyprint_that_tags_pdfs():
 
 def test_pyproject_metadata():
     text = (ROOT / "pyproject.toml").read_text()
-    assert "[project.urls]" in text and "Bonham-Technologies/Unvarnish" in text
+    assert "[project.urls]" in text and "Bonham-Technologies/unvarnish" in text
     assert "Programming Language :: Python :: 3.13" in text
     assert re.search(r'^unv = "unvarnish.cli:app"$', text, re.M)
 

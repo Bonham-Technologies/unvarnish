@@ -1,9 +1,9 @@
 blank_issues_enabled: true
 contact_links:
-  # When the repo goes public and Discussions is on, add above the next entry:
+  # If Discussions is turned on, add above the next entry:
   # - name: Questions & ideas
-  #   url: https://github.com/Bonham-Technologies/Unvarnish/discussions
+  #   url: https://github.com/Bonham-Technologies/unvarnish/discussions
   #   about: Ask questions or float ideas in Discussions before opening an issue.
   - name: Security reports
-    url: https://github.com/Bonham-Technologies/Unvarnish/security/advisories/new
+    url: https://github.com/Bonham-Technologies/unvarnish/security/advisories/new
     about: Please report vulnerabilities privately - see SECURITY.md.
