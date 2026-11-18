@@ -1127,6 +1127,23 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   ignore a warning on every report; too long, and a report presents months-old data as
   current with only its date as a hint. Either is one setting in the engagement file.
 
+## Export author in HTML and PDF (UNVAR-60)
+
+- **HTML and PDF get the author as pandoc `author` metadata; Word keeps its post-pandoc
+  rewrite.** The value is the one Word gets (`consultant`, else "Unvarnish"). pandoc's html5
+  template prints `author` as a visible byline only inside the title block, which it emits
+  only when `title` is set; the exporter sets `pagetitle` and never `title`, so `author`
+  becomes `<meta name="author">` alone, and weasyprint turns that into the PDF's `/Author`.
+  `author` metadata rather than an `author-meta` variable because pandoc escapes metadata
+  for the attribute (`"`, `&`, `<`), while a variable is inserted raw. Tests check the meta
+  tag, the PDF's `/Author`, and that neither the HTML nor the PDF's source HTML has the
+  author in its body. *Cost if wrong:* a later pandoc template that prints authors outside
+  the title block would add a visible byline; `test_html_export_carries_author_meta_without_a_byline`
+  fails on it. A consultant named `true` or `false` (also `True`, `TRUE`, `False`, `FALSE`)
+  is read by pandoc as a YAML boolean and the author is left out; every other string,
+  including `null`, `~`, `1.0`, `[a]` and values with colons, reaches the meta tag verbatim
+  (known-issues.md).
+
 ## Native Windows (UNVAR-35)
 
 - **Docker only on Windows; the CLI refuses native Windows with a clear message.** The owner

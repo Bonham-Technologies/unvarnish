@@ -8,6 +8,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Export author
+
+- HTML and PDF exports now carry the engagement's consultant (or "Unvarnish") as their author,
+  the same value Word exports get: a `<meta name="author">` in the HTML and `/Author` in the
+  PDF's document information. Both were missing. No byline is added to the body (UNVAR-60).
+
 ### gitleaks ignores the consultant's folder
 
 - gitleaks now runs in an empty temp folder of Unvarnish's own. gitleaks 8.30.1 also reads
