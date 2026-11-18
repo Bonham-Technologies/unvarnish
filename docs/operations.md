@@ -183,17 +183,19 @@ The scale rehearsal is repeatable without spending tokens:
 - Disable with `scanners.secrets.use_gitleaks: false`.
 - gitleaks runs with Unvarnish's own config (the default rules) and `--ignore-gitleaks-allow`, so
   a `.gitleaks.toml` allowlist or `gitleaks:allow` comment in the client's repo has no effect.
-  A `.gitleaksignore` file still does; gitleaks always reads it from the scanned directory,
-  and also from the directory Unvarnish runs in.
+  A `.gitleaksignore` file in the scanned tree still does; gitleaks 8.30.1 always reads it from
+  the scanned directory. gitleaks would also read one from its working directory, so Unvarnish
+  runs it in an empty temp folder of its own: a `.gitleaksignore` in the folder you start
+  Unvarnish from has no effect (UNVAR-66).
   Look for the "Scanner suppression files in the source" finding and review its entries.
 - This repository's own `.gitleaksignore` lists the 17 history-only scanner fixtures the owner
   confirmed fake (UNVAR-14). Check the repo with `gitleaks git . --redact` and
   `gitleaks dir . --redact`; both should say "no leaks found" (a shallow clone scans only what
   it has, so fetch full history first). Run `gitleaks dir` on a clean checkout: it ignores
   `.gitignore`, and after a test run the bytecode in `__pycache__` holds fixtures whole, because
-  Python joins string fragments when it compiles them. The file's entries are pinned to
-  Unvarnish's own commits, so when Unvarnish runs from this checkout they cannot hide a
-  client's findings. A new finding means a new leak or a whole-token
+  Python joins string fragments when it compiles them. Unvarnish never reads this file when
+  it scans a client, even when it runs from this checkout, and its entries are pinned to
+  Unvarnish's own commits anyway. A new finding means a new leak or a whole-token
   fixture: fragment the fixture as UNVAR-36 did rather than adding to the file. Unvarnish run
   on itself reports the file as a "Scanner suppression files in the source" finding, as it
   would for a client.

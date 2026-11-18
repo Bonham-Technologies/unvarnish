@@ -76,6 +76,28 @@ def test_run_gitleaks_notes(tmp_path, monkeypatch):
     assert run_gitleaks(tmp_path, history=False)[2] == "disabled by UNVARNISH_DISABLE_GITLEAKS"
 
 
+def test_gitleaks_runs_in_its_own_empty_directory(tmp_path, monkeypatch):
+    # gitleaks also reads .gitleaksignore from its working directory (UNVAR-66): the
+    # consultant's folder must never be it.
+    here = tmp_path / "consultant"
+    here.mkdir()
+    (here / ".gitleaksignore").write_text("anything\n", encoding="utf-8")
+    monkeypatch.chdir(here)
+    calls = []
+
+    def run(cmd, **kwargs):
+        cwd = Path(kwargs["cwd"])
+        calls.append((cmd, cwd, sorted(p.name for p in cwd.iterdir())))
+        return subprocess.CompletedProcess(cmd, 0, b"[]", b"")
+
+    tree, history, note = run_gitleaks(tmp_path, history=True, which=lambda t: t, run=run)
+    assert (tree, history, note) == ([], [], None)
+    assert [c[0][1] for c in calls] == ["dir", "git"]
+    for _cmd, cwd, contents in calls:
+        assert cwd.resolve() != here.resolve() and contents == []
+        assert not cwd.exists()  # the scanner's own temp directory, removed afterwards
+
+
 def test_gitleaks_adds_what_the_built_in_rules_missed(engagement, synthetic_repo, monkeypatch,
                                                        tmp_path):
     src_hist = item("old.py", 4, commit="c" * 40)
@@ -140,3 +162,34 @@ def test_real_gitleaks_finds_a_stripe_key(engagement, tmp_path, monkeypatch):
     findings = read_artifact(ctx.paths.scanner_findings, ScannerFindings).data.findings
     assert any("gitleaks" in f.tags and f.evidence[0].path == "pay.py" for f in findings)
     assert STRIPE not in ctx.paths.scanner_findings.read_text()
+
+
+def _commit_stripe_repo(repo: Path) -> None:
+    repo.mkdir()
+    env = {**os.environ, "GIT_AUTHOR_NAME": "a", "GIT_AUTHOR_EMAIL": "a@a.io",
+           "GIT_COMMITTER_NAME": "a", "GIT_COMMITTER_EMAIL": "a@a.io"}
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, env=env)
+    (repo / "pay.py").write_text(f'CHARGE = "{STRIPE}"\n')
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, env=env)
+    subprocess.run(["git", "-C", str(repo), "-c", "commit.gpgsign=false", "commit", "-qm", "x"],
+                   check=True, env=env)
+
+
+@pytest.mark.skipif(shutil.which("gitleaks") is None, reason="gitleaks not installed")
+def test_real_gitleaks_ignores_a_gitleaksignore_in_the_working_directory(tmp_path,
+                                                                         monkeypatch):
+    repo = tmp_path / "repo"
+    _commit_stripe_repo(repo)
+    tree, history, note = run_gitleaks(repo, history=True)
+    assert note is None and len(tree) == 1 and len(history) == 1
+    fingerprints = [e["Fingerprint"] for e in tree + history]
+    # A .gitleaksignore in the folder Unvarnish runs from no longer hides client findings.
+    here = tmp_path / "consultant"
+    here.mkdir()
+    (here / ".gitleaksignore").write_text("\n".join(fingerprints) + "\n", encoding="utf-8")
+    monkeypatch.chdir(here)
+    tree, history, note = run_gitleaks(repo, history=True)
+    assert note is None and len(tree) == 1 and len(history) == 1
+    # The scanned tree's own .gitleaksignore still applies (the suppression finding names it).
+    (repo / ".gitleaksignore").write_text("\n".join(fingerprints) + "\n", encoding="utf-8")
+    assert run_gitleaks(repo, history=True) == ([], [], None)
