@@ -138,18 +138,21 @@ def test_vercel_config_sets_security_headers_and_skips_unrelated_deploys():
 
 def test_internal_notes_are_not_served():
     # With Root Directory site/, every file in it is public unless .vercelignore drops it;
-    # README.md holds the owner's setup notes and names the private repository.
+    # README.md holds the owner's setup notes, which are not for the public site.
     ignored = (SITE / ".vercelignore").read_text(encoding="utf-8").split()
     assert "README.md" in ignored
 
 
-def test_no_github_link_until_the_repository_is_public():
-    # UNVAR-38 AC2: link the repo only once it is public (UNVAR-37). LICENSE became
-    # Apache-2.0 before launch (UNVAR-36), so it no longer tells us the repository is
-    # private: the guard holds until the launch thread deletes this test and adds the link.
+def test_every_page_links_the_public_repository():
+    # The repository went public on 2026-11-18 (UNVAR-37): every page's footer links it, and
+    # it is the only Bonham Technologies repository the pages link (the demo also links the
+    # project it scanned).
     for rel in PAGES:
-        text = (SITE / rel).read_text(encoding="utf-8").lower()
-        assert "github.com/bonham-technologies/unvarnish" not in text, rel
+        text = (SITE / rel).read_text(encoding="utf-8")
+        assert 'href="https://github.com/Bonham-Technologies/unvarnish"' in text, rel
+        assert "will be published" not in text and "once it goes public" not in text, rel
+        ours = re.findall(r'href="(https://github\.com/bonham-technologies/[^"]*)"', text, re.I)
+        assert set(ours) == {"https://github.com/Bonham-Technologies/unvarnish"}, rel
 
 
 def test_demo_numbers_match_the_published_report():

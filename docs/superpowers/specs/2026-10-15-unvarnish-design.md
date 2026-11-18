@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-15
 **Status:** Draft for review
-**Repo:** https://github.com/Bonham-Technologies/Unvarnish
+**Repo:** https://github.com/Bonham-Technologies/unvarnish
 **Domain:** unvarnish.com
 
 ---
