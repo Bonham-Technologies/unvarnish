@@ -122,6 +122,15 @@ def test_workflow_actions_pinned_by_sha(path: Path):
     assert not unpinned, f"{path.name}: not pinned to a commit SHA: {unpinned}"
 
 
+@pytest.mark.parametrize("path", WORKFLOWS, ids=lambda p: p.name)
+def test_every_job_has_a_time_limit(path: Path):
+    # GitHub's default is six hours: a hung download would hold a runner and every PR's
+    # ci-status that long (UNVAR-65).
+    missing = [name for name, job in _workflow(path).get("jobs", {}).items()
+               if "uses" not in job and "timeout-minutes" not in job]
+    assert not missing, f"{path.name}: no timeout-minutes on {missing}"
+
+
 # A fork's pull request must never reach the self-hosted runner `vars.RUNS_ON` names
 # (UNVAR-70): only a same-repo head may use it, everything else falls back to a hosted runner.
 SAME_REPO_HEAD = "github.event.pull_request.head.repo.full_name == github.repository"

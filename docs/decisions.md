@@ -1194,6 +1194,31 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   else. *Cost if wrong:* an irregular noun passed without its plural reads wrongly; the
   documents are English-only.
 
+## gitleaks working directory (UNVAR-66)
+
+- **gitleaks runs in an empty temp folder of its own**, not in the folder Unvarnish was started
+  from. gitleaks 8.30.1 reads `.gitleaksignore` from the scanned directory and from
+  `--gitleaks-ignore-path`, which defaults to `.`; an ignore file in the consultant's working
+  directory suppressed client findings (tree and history) with no trace. Verified with real
+  8.30.1: setting the working directory, or pointing `--gitleaks-ignore-path` at an empty
+  folder, both stop the working-directory file and both keep the scanned tree's own file in
+  force (the flag adds a lookup, it does not replace the scan-root one). The working directory
+  was chosen because it also covers any other `.`-relative default gitleaks has or adds, and
+  needs no flag. The scan root is resolved first so a relative root still works. *Cost if
+  wrong:* a gitleaks release that reads ignore files from somewhere else (the home directory, an
+  environment variable) would bring the gap back; the real-gitleaks test catches only the
+  working-directory case.
+- **No scanner text version bump.** The fix changes no wording, and a scan is affected only if
+  it ran from a folder whose `.gitleaksignore` listed that client's fingerprints (commit, path,
+  rule, line). Upgrades from 0.1.0 already rescan once for UNVAR-57. *Cost if wrong:* a scan
+  made on unreleased `main` from such a folder keeps the hidden finding until its next rescan.
+
+## CI time limit (UNVAR-65)
+
+- **The `test` job's limit is 45 minutes**, about seven times a normal run and above the
+  32 minutes a slow apt mirror once took. *Cost if wrong:* a legitimately slow run is
+  cancelled and fails `ci-status`, and needs a rerun.
+
 ## Fork pull requests and the self-hosted runner (UNVAR-70)
 
 - **`vars.RUNS_ON` applies only to a pull request whose head is a branch of this repo.** A
