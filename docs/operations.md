@@ -412,6 +412,10 @@ to be updated" when `pyproject.toml` changed without it, so CI tests what the Do
 (`--frozen`) and the site kit ship. After editing dependencies, run `uv lock` with the
 Dockerfile's uv version and commit both files.
 
+CI's `test` job stops after 45 minutes (a normal run takes about 6). A run cancelled at the
+limit fails `ci-status`; rerun it once, and if it times out again look for a hung download
+in the grammar fetch or apt step (UNVAR-65).
+
 ## CI runners
 
 `ci.yml` reads the repository variable `RUNS_ON` (a JSON runner label or list) for the

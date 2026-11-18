@@ -1196,6 +1196,12 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   rule, line). Upgrades from 0.1.0 already rescan once for UNVAR-57. *Cost if wrong:* a scan
   made on unreleased `main` from such a folder keeps the hidden finding until its next rescan.
 
+## CI time limit (UNVAR-65)
+
+- **The `test` job's limit is 45 minutes**, about seven times a normal run and above the
+  32 minutes a slow apt mirror once took. *Cost if wrong:* a legitimately slow run is
+  cancelled and fails `ci-status`, and needs a rerun.
+
 ## Fork pull requests and the self-hosted runner (UNVAR-70)
 
 - **`vars.RUNS_ON` applies only to a pull request whose head is a branch of this repo.** A
