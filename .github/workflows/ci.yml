@@ -30,6 +30,13 @@ jobs:
       - run: uv run unvarnish grammars fetch --attempts 5
       - run: uv run ruff check .
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc graphviz weasyprint
+      # The image's weasyprint (docker/weasyprint.txt, hash-locked) first on PATH, so the tagged
+      # PDF test runs here as in the image (UNVAR-22); apt's package brings its libraries.
+      - run: |
+          uv venv --python 3.13 "$RUNNER_TEMP/weasyprint"
+          uv pip install --python "$RUNNER_TEMP/weasyprint" --require-hashes -r docker/weasyprint.txt
+          echo "$RUNNER_TEMP/weasyprint/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/weasyprint/bin/weasyprint" --version
       - run: uv run pytest -q
       - run: uv build
 

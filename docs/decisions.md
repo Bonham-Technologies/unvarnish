@@ -525,6 +525,33 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   *Cost if wrong:* a `--link` to a subdirectory of a repo has no `.git` of its own, so its
   tracked-but-ignored files are still excluded, as before.
 
+- **PDFs are PDF/UA-1 whenever weasyprint can tag them without hiding links (UNVAR-22).**
+  pandoc passes `--pdf-variant=pdf/ua-1` to weasyprint for every PDF, with no setting to turn
+  it off: tagging changes nothing a sighted reader sees, and an untagged report fails any
+  client policy that requires tagged PDFs. weasyprint 61 to 65 set every link annotation's
+  Hidden flag (`/F 2`) in PDF/UA mode, so Acrobat drew no link and none could be clicked;
+  66.0 is the first release whose `pdf/pdfua.py` no longer does (checked in the 61.2 to 70.0
+  wheels on PyPI). *Cost if wrong:* a later weasyprint that hides links again would ship
+  unclickable reports; `test_pdf_export_is_tagged_and_its_links_stay_visible` reads the
+  annotations and fails on it wherever weasyprint 66+ is installed.
+- **An old weasyprint exports untagged with a warning, rather than failing (UNVAR-22).**
+  `export` reads `weasyprint --version` once when PDF is asked for. Below 66.0, or when the
+  version can't be read, it leaves the PDF/UA option out and prints one warning naming the
+  version and the upgrade; the PDFs are written as before. A consultant on a laptop with
+  Debian's or Ubuntu's weasyprint still gets a usable report, and the warning says why it is
+  untagged. *Cost if wrong:* a consultant who misses the warning hands a client an untagged
+  PDF where the client's policy requires tagging; they would have to read the export output
+  to notice, where a hard failure would have stopped them.
+- **The Docker image installs weasyprint from PyPI, in a venv of its own (UNVAR-22).**
+  Debian trixie ships 62.3, which hides links when tagging. `docker/weasyprint.txt` pins 70.0
+  and every dependency with hashes (`uv pip compile --universal --generate-hashes`, so amd64
+  and arm64 resolve the same file), installed with `--require-hashes` into `/opt/weasyprint`
+  and linked into `/usr/local/bin`. Its own venv keeps its Pillow, fonttools and cffi from
+  ever constraining Unvarnish's lock, and keeps weasyprint out of `pyproject.toml`; apt still
+  supplies the libraries it loads (pango, pangoft2, harfbuzz-subset). *Cost if wrong:*
+  Dependabot doesn't read `docker/weasyprint.txt`, so weasyprint and its dependencies are
+  bumped by hand (regenerate with the command at the top of `docker/weasyprint.in`) and can
+  fall behind on a security fix.
 - **Word Title and Author are written after pandoc, not through its metadata (UNVAR-21).**
   pandoc fills `dc:title` and `dc:creator` only from `title` and `author` metadata, and its
   docx writer then also prints both as Title and Author paragraphs above the report's own H1.

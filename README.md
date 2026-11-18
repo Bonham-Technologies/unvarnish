@@ -203,7 +203,9 @@ through the secrets redactor before they reach the console or disk.
     unvarnish export --format docx --template brand.docx
 
 Needs `pandoc` and Graphviz `dot` on PATH, plus `weasyprint` for PDF; if any is missing the
-command says how to install each and exits 2. Files land in `exports/<doc>-<tool>-<timestamp>.<ext>`
+command says how to install each and exits 2. PDFs are tagged (PDF/UA-1) for screen readers
+with weasyprint 66 or later; with an older one, such as Debian's or Ubuntu's, they are written
+untagged and the command warns. Files land in `exports/<doc>-<tool>-<timestamp>.<ext>`
 (`comparison-engagement-...` for the comparison). Diagrams are rendered to SVG (PNG for DOCX)
 with Graphviz from the same model that produced the Mermaid in the Markdown. Branding: set
 `report.branding.reference_docx` (a Word reference document) and `report.branding.html_css` in
@@ -251,7 +253,7 @@ Tools added with `--link` point at host paths the container cannot see; use `--r
 `--files` for engagements that will run in Docker. Inside the container the user-level config
 is `/engagement/.unvarnish/config.yaml`, not the laptop's `~/.config/unvarnish`.
 
-The image bundles Python, the tree-sitter grammars, git, pandoc, Graphviz, weasyprint, and
+The image bundles Python, the tree-sitter grammars, git, pandoc, Graphviz, weasyprint 70, and
 endoflife.date's end-of-life dates, fetched at build time (`--build-arg EOL_DATA=skip` builds
 without them; runs then report end of life as "not checked").
 `docker save unvarnish | gzip > unvarnish.tar.gz` moves it to an air-gapped site. Keys are

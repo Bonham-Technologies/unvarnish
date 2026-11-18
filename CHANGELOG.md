@@ -280,6 +280,16 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ### Fixes
 
+- PDF exports are tagged (PDF/UA-1): weasyprint writes the structure tree and marks the file
+  as tagged, so screen readers can follow headings, lists and tables instead of one flat run
+  of text, and client accessibility policies that require tagged PDFs are met. Links stay
+  clickable: weasyprint before 66.0 hid every link annotation in a tagged file, so the Docker
+  image now installs weasyprint 70.0 from PyPI (pinned with hashes in `docker/weasyprint.txt`,
+  in its own venv) instead of Debian's 62.3, and `unvarnish export` checks the installed
+  version. With a weasyprint older than 66.0, or one whose version it can't read, PDFs are
+  still exported, untagged, with a warning that names the version and how to upgrade
+  (UNVAR-22).
+
 - The end-of-life check reads the other common ways a Python, Node or Ruby version is
   declared: Poetry's `[tool.poetry.dependencies] python`, the Pipfile's `[requires]`
   `python_version` or `python_full_version`, `python_requires` in `setup.cfg` and (as a

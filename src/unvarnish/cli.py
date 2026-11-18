@@ -581,6 +581,8 @@ def export(
                       f"[{colour}]{i.status}[/{colour}]",
                       escape((i.path or i.detail) if i.status == "ok" else i.detail))
     console.print(table)
+    for warning in report.warnings:
+        err_console.print(f"[yellow]warning:[/yellow] {warning}", soft_wrap=True)
     for i in report.ok:
         if i.detail:  # diagram problems: the file exists but is missing something
             err_console.print(f"[yellow]warning:[/yellow] {escape(i.doc)}/{escape(i.tool)}/"

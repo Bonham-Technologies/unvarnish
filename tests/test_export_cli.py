@@ -194,6 +194,81 @@ def test_export_cli_nothing_to_export_exits_1(engagement, synthetic_repo, monkey
     assert out.exit_code == 1 and "nothing to export" in out.output.lower()
 
 
+TAG = "--pdf-engine-opt=--pdf-variant=pdf/ua-1"
+
+
+def _pdf_export(engagement, monkeypatch, version):
+    seen: list[list[str]] = []
+
+    def capture(cmd):
+        seen.append(cmd)
+        _fake_pandoc_ok(cmd)
+
+    monkeypatch.setattr(exporter_module, "run_pandoc", capture)
+    monkeypatch.setattr(exporter_module.shutil, "which", lambda t: "/x")
+    monkeypatch.setattr(exporter_module, "check_toolchain", lambda formats, **kw: None)
+    monkeypatch.setattr(exporter_module, "installed_weasyprint_version", lambda: version)
+    report = export_engagement(engagement, formats=["pdf"], docs=["findings"], tools=["alpha"],
+                               template=None, render=_fake_render)
+    return report, seen
+
+
+def test_pdf_export_is_tagged_with_a_recent_weasyprint(engagement, synthetic_repo, monkeypatch):
+    _rendered(engagement, synthetic_repo)
+    report, seen = _pdf_export(engagement, monkeypatch, (70, 0))
+    assert seen and all(TAG in cmd for cmd in seen)
+    assert report.warnings == [] and [i.status for i in report.items] == ["ok"]
+
+
+@pytest.mark.parametrize("version", [(61, 1), (65, 1), None])
+def test_pdf_export_falls_back_to_untagged_on_an_old_weasyprint(engagement, synthetic_repo,
+                                                                monkeypatch, version):
+    _rendered(engagement, synthetic_repo)
+    report, seen = _pdf_export(engagement, monkeypatch, version)
+    assert seen and not any(TAG in cmd for cmd in seen)
+    assert [i.status for i in report.items] == ["ok"]
+    assert len(report.warnings) == 1 and "untagged" in report.warnings[0]
+
+
+def test_weasyprint_version_is_not_checked_without_pdf(engagement, synthetic_repo, monkeypatch):
+    _rendered(engagement, synthetic_repo)
+
+    def never():
+        raise AssertionError("weasyprint's version is only needed for PDF")
+
+    monkeypatch.setattr(exporter_module, "run_pandoc", _fake_pandoc_ok)
+    monkeypatch.setattr(exporter_module.shutil, "which", lambda t: "/x")
+    monkeypatch.setattr(exporter_module, "check_toolchain", lambda formats, **kw: None)
+    monkeypatch.setattr(exporter_module, "installed_weasyprint_version", never)
+    report = export_engagement(engagement, formats=["html", "docx"], docs=["findings"],
+                               tools=["alpha"], template=None, render=_fake_render)
+    assert report.warnings == [] and len(report.ok) == 2
+
+
+def test_cli_warns_when_pdfs_are_exported_untagged(engagement, synthetic_repo, monkeypatch):
+    _rendered(engagement, synthetic_repo)
+    monkeypatch.setattr(exporter_module, "run_pandoc", _fake_pandoc_ok)
+    monkeypatch.setattr(exporter_module, "check_toolchain", lambda formats, **kw: None)
+    monkeypatch.setattr(exporter_module, "installed_weasyprint_version", lambda: (61, 1))
+    out = runner.invoke(app, ["export", "--format", "pdf", "--doc", "findings", "alpha",
+                              "-e", str(engagement.root)])
+    assert out.exit_code == 0, out.output
+    flat = " ".join(out.output.split())
+    assert "warning:" in flat and "weasyprint 61.1" in flat and "untagged" in flat
+
+
+def test_untagged_pdf_warning_is_not_also_logged_as_a_warning(engagement, synthetic_repo,
+                                                              monkeypatch, caplog):
+    # `export` configures no log handler, so a WARNING record reaches Python's last-resort
+    # handler and the operator would read the same warning twice; the CLI prints it once.
+    _rendered(engagement, synthetic_repo)
+    with caplog.at_level("DEBUG", logger="unvarnish"):
+        report, _ = _pdf_export(engagement, monkeypatch, (61, 1))
+    assert len(report.warnings) == 1
+    assert not [r for r in caplog.records
+                if r.levelno >= 30 and "untagged" in r.getMessage()]
+
+
 @pytest.mark.parametrize("formats", [["csv"], ["sarif"], ["sarif", "docx"], ["sarif", "csv"]])
 def test_export_data_format_without_findings_doc_exits_2(engagement, synthetic_repo, formats):
     # sarif and csv are the findings document's data: asking for them with a --doc list that

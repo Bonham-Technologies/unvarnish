@@ -35,6 +35,30 @@ def test_dockerfile_bundles_the_export_toolchain():
     assert ".venv" in ignore and ".git" in ignore
 
 
+@pytest.mark.skipif(not (ROOT / "Dockerfile").exists(), reason="needs the repository checkout")
+def test_dockerfile_installs_a_weasyprint_that_tags_pdfs():
+    from unvarnish.export.tools import MIN_WEASYPRINT_TAGGED
+
+    text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    apt = re.search(r"apt-get install[^&]*", text).group(0)
+    # Debian's weasyprint (62.3) hides every link in a PDF/UA file, so it comes from PyPI.
+    assert not re.search(r"(?<![\w-])weasyprint(?![\w-])", apt), apt
+    for lib in ("libpango-1.0-0", "libpangoft2-1.0-0", "libharfbuzz-subset0"):
+        assert lib in apt, lib
+    assert "COPY docker/weasyprint.txt /tmp/weasyprint.txt" in text
+    assert "--require-hashes -r /tmp/weasyprint.txt" in text
+    assert "/usr/local/bin/weasyprint" in text
+    pins = (ROOT / "docker" / "weasyprint.txt").read_text(encoding="utf-8")
+    m = re.search(r"^weasyprint==(\d+(?:\.\d+)*) \\$", pins, re.M)
+    assert m, "weasyprint is not pinned in docker/weasyprint.txt"
+    assert tuple(int(x) for x in m.group(1).split(".")) >= MIN_WEASYPRINT_TAGGED
+    assert f"weasyprint=={m.group(1)}" in (ROOT / "docker" / "weasyprint.in").read_text(
+        encoding="utf-8")
+    for block in re.split(r"\n(?=\S)", pins):
+        if not block.startswith("#"):
+            assert "--hash=sha256:" in block, block.splitlines()[0]
+
+
 def test_pyproject_metadata():
     text = (ROOT / "pyproject.toml").read_text()
     assert "[project.urls]" in text and "Bonham-Technologies/Unvarnish" in text

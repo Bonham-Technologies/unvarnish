@@ -102,6 +102,17 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   index, so a file there that is tracked but matches a `.gitignore` rule is still excluded as
   `gitignore`. Git history is skipped for such a link too ("no .git directory"). Nor are a
   parent directory's `.gitignore` rules applied to it.
+- [UNVAR-22] Tagged PDFs are PDF/UA-1 as weasyprint writes them: the tests check the
+  structure tree, `/MarkInfo`, `/Lang` and that links stay visible, but no veraPDF or PAC run
+  checks full conformance, so a strict checker may still report errors (in the diagrams, for
+  example, or in a branded stylesheet's page boxes).
+- [UNVAR-22] The weasyprint in `docker/weasyprint.txt` is outside Dependabot's view: it and
+  its dependencies (Pillow, fonttools, cffi and others) move only when someone regenerates
+  the file.
+- [UNVAR-22] CI puts the image's pinned weasyprint (`docker/weasyprint.txt`) first on PATH,
+  so it runs the tagged test, which reads the link annotations; the real-PDF test of the
+  untagged fallback runs only where an older weasyprint is on PATH (the fallback logic
+  itself is unit-tested with mocked versions).
 - [UNVAR-24] Documentation links in code, such as an install hint in an error message
   (`https://pandoc.org/installing`), still count as hardcoded URLs. Only package-manifest
   metadata keys and `.github/ISSUE_TEMPLATE/` are skipped; a link on a comment line already

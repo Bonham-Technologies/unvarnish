@@ -11,7 +11,10 @@ Practical notes for running Unvarnish on an engagement, from the live runs so fa
 3. For document exports, `pandoc` 2.19 or later, Graphviz `dot`, and `weasyprint` (PDF only)
    must be on PATH, or use the Docker image (SARIF and CSV exports need none of them).
    `apt install pandoc` on Ubuntu 22.04 or Debian 12 is too old; `unvarnish export` says so
-   and exits 2.
+   and exits 2. For tagged (PDF/UA-1) PDFs, weasyprint must be 66.0 or later (tested with
+   70.0, the image's): `pip install 'weasyprint>=66'` or `brew install weasyprint`. Debian's
+   (62.3) and Ubuntu 24.04's (61) packages are older, and their tagged PDFs hide every link, so with them `export`
+   writes the PDFs untagged and prints a warning that says so.
 4. git 2.31 or later (the Docker image has 2.47). gitleaks' own git calls rely on
    `GIT_CONFIG_COUNT` to keep a vetted repo's hooks and its filter and textconv drivers from
    running, and older git ignores it.
