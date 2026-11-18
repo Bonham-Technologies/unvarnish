@@ -301,6 +301,18 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ### Fixes
 
+- A typo in `engagement.yaml`, the user config or a `tools/<name>/tool.yaml` no longer prints
+  a 70-line traceback. Every command prints one `error:` line per problem, naming the file and
+  the dotted key with the value given (`error: engagement.yaml: pipeline.concurrency: Input
+  should be a valid integer, ... (got 'zero')`), or the line and column of a YAML syntax
+  error, and exits 2; a file that is not UTF-8 (UTF-16 from Notepad or PowerShell) or cannot
+  be read is one such line too. The value is cut to 60 characters, and any API key or token
+  the secrets scanner recognises is redacted from every error and unknown-setting line. An
+  invalid `tool.yaml` stops `status`, `run`, `export` and `ask` before
+  any work. `config check` also reports a built-in scanner option of the wrong type
+  (`scanners.oversized_files.file_lines: expected a whole number (got 'lots')`), which loading
+  accepts because scanner options are free-form and which made `run` record that scanner as
+  failed on every run (UNVAR-50).
 - The end-of-life check reads the other common ways a Python, Node or Ruby version is
   declared: Poetry's `[tool.poetry.dependencies] python`, the Pipfile's `[requires]`
   `python_version` or `python_full_version`, `python_requires` in `setup.cfg` and (as a
