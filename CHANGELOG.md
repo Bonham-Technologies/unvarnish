@@ -8,6 +8,27 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Export author
+
+- HTML and PDF exports now carry the engagement's consultant (or "Unvarnish") as their author,
+  the same value Word exports get: a `<meta name="author">` in the HTML and `/Author` in the
+  PDF's document information. Both were missing. No byline is added to the body (UNVAR-60).
+
+### gitleaks ignores the consultant's folder
+
+- gitleaks now runs in an empty temp folder of Unvarnish's own. gitleaks 8.30.1 also reads
+  `.gitleaksignore` from its working directory, so an ignore file in the folder Unvarnish was
+  started from could hide a client's secret findings, tree or history, with no trace; the
+  "Scanner suppression files in the source" finding only looks in the client's source. The
+  scanned tree's own `.gitleaksignore` still applies and is still reported (UNVAR-66).
+
+### CI test job time limit
+
+- The CI `test` job stops after 45 minutes instead of GitHub's six-hour default, so a hung
+  grammar download or pandoc call can no longer hold a runner and every pull request's
+  `ci-status`. A normal run takes about 6 minutes; a slow apt mirror once took 32.
+  `tests/test_repo_hygiene.py` checks that every job in every workflow sets a limit (UNVAR-65).
+
 ### Fork pull requests stay off the self-hosted runner
 
 - CI uses the runner named by the `RUNS_ON` repository variable only for a pull request from a
@@ -290,6 +311,18 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ### Fixes
 
+- A typo in `engagement.yaml`, the user config or a `tools/<name>/tool.yaml` no longer prints
+  a 70-line traceback. Every command prints one `error:` line per problem, naming the file and
+  the dotted key with the value given (`error: engagement.yaml: pipeline.concurrency: Input
+  should be a valid integer, ... (got 'zero')`), or the line and column of a YAML syntax
+  error, and exits 2; a file that is not UTF-8 (UTF-16 from Notepad or PowerShell) or cannot
+  be read is one such line too. The value is cut to 60 characters, and any API key or token
+  the secrets scanner recognises is redacted from every error and unknown-setting line. An
+  invalid `tool.yaml` stops `status`, `run`, `export` and `ask` before
+  any work. `config check` also reports a built-in scanner option of the wrong type
+  (`scanners.oversized_files.file_lines: expected a whole number (got 'lots')`), which loading
+  accepts because scanner options are free-form and which made `run` record that scanner as
+  failed on every run (UNVAR-50).
 - The end-of-life check reads the other common ways a Python, Node or Ruby version is
   declared: Poetry's `[tool.poetry.dependencies] python`, the Pipfile's `[requires]`
   `python_version` or `python_full_version`, `python_requires` in `setup.cfg` and (as a

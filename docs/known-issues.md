@@ -167,6 +167,10 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   baseline".
 - [UNVAR-40] The executive summary prose does not mention the delta (it would cost a model
   call on every baseline change); the section above it carries the comparison.
+- [UNVAR-60] A consultant named `true`, `false`, or a capitalised spelling of either (`True`,
+  `FALSE`) gets no author in HTML and PDF exports: pandoc reads a command-line metadata value
+  in those spellings as a YAML boolean. Word exports are unaffected.
+
 - [UNVAR-64] A custom `report.branding.html_css` written before 0.1.1 has no `tbody th`
   rule, so the row headers in an HTML export's summary tables take its header styling (wash
   background, bold) until the rule is copied from the bundled `report.css`. PDF and Word are
