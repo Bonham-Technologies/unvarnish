@@ -16,7 +16,7 @@
 {% if delta %}
 ## {{ delta.heading }}
 
-Compared with the previous review ({{ delta.compared }}): {{ delta.totals.resolved }} resolved, {{ delta.totals.new }} new, {{ delta.totals.changed }} changed (moved or re-rated), {{ delta.totals.persistent }} persistent{% if delta.totals.accepted %}, {{ delta.totals.accepted }} risk accepted{% endif %}.
+Compared with the previous review ({{ delta.compared }}): {{ delta.totals.resolved }} resolved, {{ delta.totals.new }} new, {{ delta.totals.changed }} changed (moved, re-rated, or a different count), {{ delta.totals.persistent }} persistent{% if delta.totals.accepted %}, {{ delta.totals.accepted }} risk accepted{% endif %}.
 
 | Severity | Resolved | New | Changed | Persistent | Risk accepted |
 |---|---:|---:|---:|---:|---:|
@@ -71,7 +71,7 @@ The client accepted these risks (`baseline.accepted` in `engagement.yaml`); they
 {% endfor %}
 {% endif %}
 
-Findings match by id, then by title and path within {{ delta.line_drift }} lines, then by secret fingerprint.{% for n in delta.notes %} {{ n }}{% endfor %}{{ "" }}
+Findings match by id, then grouped scanner findings by scanner and rule, then by title and path within {{ delta.line_drift }} lines, then by secret fingerprint.{% for n in delta.notes %} {{ n }}{% endfor %}{{ "" }}
 
 {% endif %}
 ## Executive summary

@@ -165,7 +165,10 @@ def _delta_row(e: DeltaEntry) -> dict:
     f, ev = e.finding, e.finding.evidence[0]
     change = []
     if e.status == DeltaStatus.changed:
-        if (e.previous_path, e.previous_line) != (ev.path, ev.line_start):
+        if e.group is not None:  # a group's first member is no location (UNVAR-49)
+            if None not in (e.previous_count, e.count) and e.previous_count != e.count:
+                change.append(f"count {e.previous_count} → {e.count}")
+        elif (e.previous_path, e.previous_line) != (ev.path, ev.line_start):
             change.append(f"moved from `{_location(e.previous_path, e.previous_line)}`")
         if e.previous_severity and e.previous_severity != f.severity:
             change.append(f"re-rated from {e.previous_severity.value}")

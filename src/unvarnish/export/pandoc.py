@@ -36,7 +36,8 @@ def document_title(md: str, fallback: str) -> str:
 def build_pandoc_command(src: Path, fmt: str, out: Path, *, title: str, resource_dir: Path,
                          reference_docx: Path | None, css: Path | None,
                          pandoc: str = "pandoc", lang: str = "en",
-                         pdf_tagged: bool = True) -> list[str]:
+                         pdf_tagged: bool = True,
+                         author: str | None = None) -> list[str]:
     # Model-written and scanned text comes from the client's untrusted code, so any HTML in it
     # (a quoted <script>, List<String>) must reach the reader as text. pandoc 3.1's gfm reader
     # ignores -raw_html, so the bundled filter turns whatever raw HTML remains into text.
@@ -65,6 +66,11 @@ def build_pandoc_command(src: Path, fmt: str, out: Path, *, title: str, resource
             cmd.append(f"--css={css}")
     else:
         raise ValueError(f"unknown export format {fmt!r}")
+    if author and fmt in ("html", "pdf"):
+        # The html5 template prints `author` only in the title block, which needs `title`, and
+        # only `pagetitle` is set: so it becomes <meta name="author"> (weasyprint's PDF /Author)
+        # and never a visible byline. DOCX gets its author after pandoc instead.
+        cmd.append(f"--metadata=author:{author}")
     return cmd
 
 
@@ -145,7 +151,8 @@ def export_markdown(md_path: Path, fmt: str, out: Path, *, diagrams: dict[str, D
     title = document_title(md, md_path.stem)
     cmd = build_pandoc_command(src, fmt, out, title=title,
                                resource_dir=work_dir, reference_docx=reference_docx, css=css,
-                               pandoc=pandoc, lang=lang, pdf_tagged=pdf_tagged)
+                               pandoc=pandoc, lang=lang, pdf_tagged=pdf_tagged,
+                               author=author or DEFAULT_AUTHOR)
     (runner or run_pandoc)(cmd)
     if fmt == "docx" and zipfile.is_zipfile(out):  # a test runner may stand in for pandoc
         try:

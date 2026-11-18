@@ -8,8 +8,10 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit, urlunsplit
 
 import yaml
+from pydantic import ValidationError
 
 from unvarnish.analysis.languages import is_dependency_or_build_dir
+from unvarnish.config import ConfigError, read_yaml, validation_problems
 from unvarnish.engagement import TOOL_NAME_RE, Engagement, ToolPaths
 from unvarnish.schemas.tool import OriginKind, ToolMeta
 from unvarnish.util.gitcmd import GitError, UntrustedRepoError, git, is_git_repo
@@ -246,7 +248,14 @@ def _copy_local_repo(src: Path, display: str, dest: Path) -> list[str]:
 def load_tool_meta(paths: ToolPaths) -> ToolMeta:
     if not paths.meta_file.exists():
         raise IngestError(f"{paths.meta_file} missing; was the tool added?")
-    return ToolMeta.model_validate(yaml.safe_load(paths.meta_file.read_text(encoding="utf-8")))
+    label = f"tools/{paths.root.name}/tool.yaml"
+    data = read_yaml(paths.meta_file, label)  # ConfigError on a syntax error (UNVAR-50)
+    if not isinstance(data, dict):
+        raise ConfigError([f"{label}: must contain a mapping at top level"])
+    try:
+        return ToolMeta.model_validate(data)
+    except ValidationError as exc:
+        raise ConfigError(validation_problems(exc, label)) from exc
 
 
 def resolve_source_root(eng: Engagement, meta: ToolMeta) -> Path:

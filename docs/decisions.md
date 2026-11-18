@@ -946,6 +946,21 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   the fingerprint catches a secret that moved files. Two secrets with
   different fingerprints never match on title and path. "Changed" means moved or re-rated.
   *Cost if wrong:* a model finding reworded between runs shows as one resolved and one new.
+- **Grouped scanner findings match by scanner and rule (UNVAR-49)**, after the id and before
+  title and path. One finding stands for every oversized file or function, every hardcoded
+  value of a kind, every TODO or swallowed error; its title follows the count ("Oversized
+  file" or "files") and its id and path the first member, so partly fixing a group read as one
+  resolved plus a new finding of the same severity. Scanners now tag such a finding
+  `group:<rule>` and `count:<n>` (hardcoded_infra keeps `distinct:<n>`); findings written
+  before the tags are recognised by a frozen table of scanner and title, and by
+  `hardcoded:<kind>`, so existing baselines match with no schema bump. A matched group is
+  "changed" when its count or severity changed, never because its first member moved, and
+  `delta.json` entries gain optional `group`, `previous_count` and `count` fields (matched by
+  `group`); the document shows "count 2 → 1". The matching carries a version
+  (`MATCH_VERSION` in `analysis/delta.py`) in the render phase's inputs hash when there is a
+  baseline, so a change to it re-renders a resumed run's delta. *Cost if wrong:* a group whose members were
+  swapped one for one reads as persistent, and a scanner that adds a grouped finding without
+  the tag falls back to title and path matching.
 - **Line drift defaults to 50 lines** (`baseline.line_drift`): it covers an import block or a
   new function above the finding while keeping two same-titled findings in one file apart.
   *Cost if wrong:* a finding pushed further down shows as resolved plus new; raise the setting.
@@ -1154,6 +1169,23 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   ignore a warning on every report; too long, and a report presents months-old data as
   current with only its date as a hint. Either is one setting in the engagement file.
 
+## Export author in HTML and PDF (UNVAR-60)
+
+- **HTML and PDF get the author as pandoc `author` metadata; Word keeps its post-pandoc
+  rewrite.** The value is the one Word gets (`consultant`, else "Unvarnish"). pandoc's html5
+  template prints `author` as a visible byline only inside the title block, which it emits
+  only when `title` is set; the exporter sets `pagetitle` and never `title`, so `author`
+  becomes `<meta name="author">` alone, and weasyprint turns that into the PDF's `/Author`.
+  `author` metadata rather than an `author-meta` variable because pandoc escapes metadata
+  for the attribute (`"`, `&`, `<`), while a variable is inserted raw. Tests check the meta
+  tag, the PDF's `/Author`, and that neither the HTML nor the PDF's source HTML has the
+  author in its body. *Cost if wrong:* a later pandoc template that prints authors outside
+  the title block would add a visible byline; `test_html_export_carries_author_meta_without_a_byline`
+  fails on it. A consultant named `true` or `false` (also `True`, `TRUE`, `False`, `FALSE`)
+  is read by pandoc as a YAML boolean and the author is left out; every other string,
+  including `null`, `~`, `1.0`, `[a]` and values with colons, reaches the meta tag verbatim
+  (known-issues.md).
+
 ## Native Windows (UNVAR-35)
 
 - **Docker only on Windows; the CLI refuses native Windows with a clear message.** The owner
@@ -1162,6 +1194,32 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   before rich or typer load their Windows console code. *Cost if wrong:* a consultant whose
   client laptop can't run Docker can't run Unvarnish at all; native support (option 2 on the
   ticket) is the follow-up if that happens.
+
+## Configuration errors (UNVAR-50)
+
+- **An invalid `tool.yaml` stops the command; a missing one does not.** A missing
+  `tool.yaml` (UNVAR-17) means the tool was dropped, so `run` carries on with the others. One
+  that is present but unreadable is a mistake to fix, and `status`, `run`, `export` and `ask`
+  refuse with the file, key and exit 2 before any work. *Cost if wrong:* one tool's broken
+  `tool.yaml` holds up a run of the others until the one line the error names is fixed.
+- **A bad value is blamed on `engagement.yaml` unless only the user config sets that key.**
+  The two files are merged before validation, so the error names the user config only when
+  `engagement.yaml` does not set the key itself. *Cost if wrong:* none in practice;
+  `engagement.yaml` always wins over the user config for keys it sets.
+- **Every configuration error and unknown-setting line is redacted; a shown value is also
+  shortened.** The value is what makes `got 'zero'` obvious, but a key pasted into the wrong
+  place can turn up in the value, the dotted key (a key used as a backend name) or a
+  validator's message (an effort band or rule name), so each whole line, and each
+  unknown-setting warning, goes through the secrets scanner's redaction. A shown value is
+  redacted before it is cut to 60 characters, since a key cut short is no longer recognised.
+  *Cost if wrong:* a secret no scanner rule recognises is still printed (a value at most its
+  first 57 characters) on the consultant's own terminal.
+- **Built-in scanner option types are checked by `config check`, not on load.** Scanner
+  options stay free-form (a plugin scanner reads its own), and refusing them on load would
+  stop every command, `status` included, for a value only one scanner reads. Types come from
+  `DEFAULT_SCANNER_OPTIONS`: a whole number where the default is one, any number where it is
+  a float, true or false, a string, or a list of strings. *Cost if wrong:* someone who skips
+  `config check` still sees the bad option only as a recorded scanner failure in `run`.
 
 ## One walk per syntax tree (UNVAR-54)
 
@@ -1203,6 +1261,31 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   `-es` after a sibilant, `-ies` after a consonant `-y`, and an explicit plural for anything
   else. *Cost if wrong:* an irregular noun passed without its plural reads wrongly; the
   documents are English-only.
+
+## gitleaks working directory (UNVAR-66)
+
+- **gitleaks runs in an empty temp folder of its own**, not in the folder Unvarnish was started
+  from. gitleaks 8.30.1 reads `.gitleaksignore` from the scanned directory and from
+  `--gitleaks-ignore-path`, which defaults to `.`; an ignore file in the consultant's working
+  directory suppressed client findings (tree and history) with no trace. Verified with real
+  8.30.1: setting the working directory, or pointing `--gitleaks-ignore-path` at an empty
+  folder, both stop the working-directory file and both keep the scanned tree's own file in
+  force (the flag adds a lookup, it does not replace the scan-root one). The working directory
+  was chosen because it also covers any other `.`-relative default gitleaks has or adds, and
+  needs no flag. The scan root is resolved first so a relative root still works. *Cost if
+  wrong:* a gitleaks release that reads ignore files from somewhere else (the home directory, an
+  environment variable) would bring the gap back; the real-gitleaks test catches only the
+  working-directory case.
+- **No scanner text version bump.** The fix changes no wording, and a scan is affected only if
+  it ran from a folder whose `.gitleaksignore` listed that client's fingerprints (commit, path,
+  rule, line). Upgrades from 0.1.0 already rescan once for UNVAR-57. *Cost if wrong:* a scan
+  made on unreleased `main` from such a folder keeps the hidden finding until its next rescan.
+
+## CI time limit (UNVAR-65)
+
+- **The `test` job's limit is 45 minutes**, about seven times a normal run and above the
+  32 minutes a slow apt mirror once took. *Cost if wrong:* a legitimately slow run is
+  cancelled and fails `ci-status`, and needs a rerun.
 
 ## Fork pull requests and the self-hosted runner (UNVAR-70)
 

@@ -142,6 +142,7 @@ class HygieneScanner:
                 impact="Known gaps are documented only as comments and will be forgotten.",
                 remediation="Convert markers into tracked issues or resolve them.",
                 evidence=todo_evidence, source=Source.scanner, scanner=self.name,
+                tags=["group:todo_density", f"count:{todo_count}"],
                 **rule_effort(ctx, self.name, "todo_density"),
             ))
         if handler_evidence:
@@ -154,6 +155,7 @@ class HygieneScanner:
                 remediation=("Log and surface errors, or handle them explicitly with a "
                              "documented reason."),
                 evidence=handler_evidence, source=Source.scanner, scanner=self.name,
+                tags=["group:swallowed_errors", f"count:{len(handler_evidence)}"],
                 **rule_effort(ctx, self.name, "swallowed_errors"),
             ))
         return findings
