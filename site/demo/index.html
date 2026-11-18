@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Demo: Unvarnish on OWASP NodeGoat | Unvarnish</title>
     <meta name="description" content="A real Unvarnish run on OWASP NodeGoat, a deliberately insecure training app: the commands, their output, and the findings document exactly as produced.">
-    <meta name="theme-color" content="#0a0a0b">
+    <meta name="theme-color" content="#f3f0e8" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0f1113" media="(prefers-color-scheme: dark)">
     <link rel="canonical" href="https://unvarnish.com/demo/">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <meta property="og:title" content="Demo: Unvarnish on OWASP NodeGoat">
@@ -18,9 +19,7 @@
     <meta property="og:image:alt" content="Unvarnish: the unvarnished truth about internally built software">
     <meta property="og:site_name" content="Unvarnish">
     <meta name="twitter:card" content="summary_large_image">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&amp;family=Geist+Mono:wght@400;600&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet">
+    <link rel="preload" href="/fonts/archivo-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/site.css">
 </head>
 <body>
@@ -28,7 +27,7 @@
 
 <header class="top">
     <div class="container bar">
-        <a class="logo" href="/">UNVARNISH<span>.</span>COM</a>
+        <a class="logo" href="/" aria-label="Unvarnish, by Bonham Technologies"><b>UNVARNISH</b><span>by Bonham Technologies</span></a>
         <nav aria-label="Main">
             <ul class="nav-links">
                 <li><a href="/#finds">What it finds</a></li>

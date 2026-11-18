@@ -204,3 +204,42 @@ def test_every_sitemap_page_names_itself_as_canonical():
         path = urlparse(loc).path
         page = _parse(str(_resolve("index.html", path).relative_to(SITE)))
         assert page.canonical == loc, f"{loc}: canonical is {page.canonical}"
+
+
+def _font_urls() -> list[str]:
+    css = (SITE / "site.css").read_text(encoding="utf-8")
+    return re.findall(r"url\(['\"]?([^'\")]+)['\"]?\)\s*format", css)
+
+
+def test_fonts_are_self_hosted_and_no_page_calls_a_font_service():
+    # UNVAR-74: the site follows the Bonham Technologies design system, which self-hosts its
+    # fonts so pages render with no third-party request; the CSP must not allow one either.
+    urls = _font_urls()
+    assert urls, "site.css declares no @font-face"
+    for url in urls:
+        assert url.startswith("/fonts/"), url
+        assert (SITE / url.lstrip("/")).is_file(), url
+    families = {p.name.split("-latin")[0] for p in (SITE / "fonts").glob("*.woff2")}
+    for family in families:
+        assert list((SITE / "fonts").glob(f"OFL-{family}*.txt")), f"no licence text for {family}"
+    for rel in PAGES:
+        text = (SITE / rel).read_text(encoding="utf-8")
+        assert "fonts.googleapis.com" not in text and "fonts.gstatic.com" not in text, rel
+    config = json.loads((SITE / "vercel.json").read_text(encoding="utf-8"))
+    csp = {h["key"]: h["value"] for h in config["headers"][0]["headers"]}[
+        "Content-Security-Policy"]
+    assert "font-src 'self'" in csp
+    assert "googleapis" not in csp and "gstatic" not in csp
+
+
+def test_stylesheet_carries_both_themes_and_the_parent_action_colour():
+    # UNVAR-74: Daylight by default, Night by the reader's system setting (the site has no
+    # JavaScript, so no toggle), and safety orange as the one action colour in both.
+    css = (SITE / "site.css").read_text(encoding="utf-8")
+    assert "prefers-color-scheme: dark" in css
+    assert "--signal-fill: #ec5308" in css and "--signal-fill: #ff6a1f" in css
+    for old in ("#f59e0b", "Instrument Serif", "DM Sans", "Geist Mono"):
+        assert old not in css, f"{old} is from the retired look"
+    for rel in PAGES:
+        text = (SITE / rel).read_text(encoding="utf-8")
+        assert 'media="(prefers-color-scheme: dark)"' in text, f"{rel}: no Night theme-color"
