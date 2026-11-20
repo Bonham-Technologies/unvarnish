@@ -28,6 +28,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 - `.gitleaksignore` is removed: its entries named commits of the old private history, so it
   suppressed nothing, and gitleaks finds nothing in the public history or tree (UNVAR-72).
 
+### Anthropic backend and temperature
+
+- A model request that sets a temperature no longer crashes the Anthropic backend: the SDK's
+  `messages.create` takes no temperature, so the backend drops it with a debug log line. The
+  OpenAI-compatible backend still sends it. Nothing sets one today (UNVAR-69).
+
 ### Export author
 
 - HTML and PDF exports now carry the engagement's consultant (or "Unvarnish") as their author,

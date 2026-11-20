@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from typing import Any
@@ -14,6 +15,8 @@ from unvarnish.model.base import (
     retry_rate_limited,
 )
 from unvarnish.schemas.cost import Usage
+
+log = logging.getLogger("unvarnish.model")
 
 
 class AnthropicBackend:
@@ -60,7 +63,11 @@ class AnthropicBackend:
         if output_config:
             kwargs["output_config"] = output_config
         if req.temperature is not None:
-            kwargs["temperature"] = req.temperature
+            # The anthropic SDK's Messages.create has no temperature argument; passing one
+            # raises TypeError before the request is sent (UNVAR-69). Drop it here; the
+            # OpenAI-compatible backend still honours it.
+            log.debug("%s: temperature %s dropped; the Anthropic backend does not send it",
+                      self.name, req.temperature)
         # The SDK refuses a non-streaming call whose max_tokens implies more than ten minutes
         # of output unless a timeout is given explicitly. Long structured outputs (the tool
         # rollup) are legitimate here, so give each call a timeout that scales with its size.

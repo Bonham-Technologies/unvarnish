@@ -1299,6 +1299,15 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   *Cost if wrong:* none beyond re-adding an entry; whole-token fixtures are still built from
   fragments (UNVAR-36).
 
+## Temperature on the Anthropic backend (UNVAR-69)
+
+- **`CompletionRequest.temperature` is honoured by the OpenAI-compatible backend only.** The
+  anthropic SDK (2.7.0 and 2.8.0) has no `temperature` argument on `messages.create`, so the
+  Anthropic backend drops the field with a debug log line instead of raising `TypeError`
+  before the call. The field stays on the request because on-prem model servers use it.
+  *Cost if wrong:* a later change that relies on a temperature for Anthropic models gets the
+  model's default, visible only at debug level.
+
 ## Fork pull requests and the self-hosted runner (UNVAR-70)
 
 - **`vars.RUNS_ON` applies only to a pull request whose head is a branch of this repo.** A
