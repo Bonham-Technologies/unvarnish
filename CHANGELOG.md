@@ -26,6 +26,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   now link it, and the package metadata, SECURITY.md, the issue template and the CI runner
   notes use the new name and present tense.
 
+### Anthropic backend and temperature
+
+- A model request that sets a temperature no longer crashes the Anthropic backend: the SDK's
+  `messages.create` takes no temperature, so the backend drops it with a debug log line. The
+  OpenAI-compatible backend still sends it. Nothing sets one today (UNVAR-69).
+
 ### Export author
 
 - HTML and PDF exports now carry the engagement's consultant (or "Unvarnish") as their author,
