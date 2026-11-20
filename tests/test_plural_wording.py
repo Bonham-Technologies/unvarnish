@@ -54,11 +54,14 @@ def test_template_filters_registered():
         "2 credential-like values")
 
 
-def test_no_paren_s_in_client_facing_sources():
-    pattern = re.compile(r"(?<![.\w])(?!len\b|Counter\b|set\b|sum\b)[A-Za-z]+\(s\)")
-    roots = [SRC / "scanners", SRC / "render"]
-    hits = [f"{p.relative_to(SRC)}:{i}" for root in roots for p in root.rglob("*")
-            if p.is_file() and p.suffix in {".py", ".j2"}
+def test_no_paren_s_in_user_facing_sources():
+    # Every user-facing string: documents, scanner summaries, and since UNVAR-68 the console
+    # and error messages too. Model prompts are left alone: rewording one bumps its prompt
+    # version and re-spends model calls in every engagement.
+    pattern = re.compile(r"(?<![.\w])(?!len\b|Counter\b|set\b|sum\b|Source\b)[A-Za-z]+\(s\)")
+    prompts = SRC / "model" / "prompts"
+    hits = [f"{p.relative_to(SRC)}:{i}" for p in SRC.rglob("*")
+            if p.is_file() and p.suffix in {".py", ".j2"} and prompts not in p.parents
             for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
             if pattern.search(line)]
     assert hits == []
@@ -88,3 +91,24 @@ def test_scanner_wording_version_is_in_the_scan_inputs_hash(ingested, monkeypatc
     before = scan.ScanPhase().inputs_hash(ctx)
     monkeypatch.setattr(scan, "SCANNER_TEXT_VERSION", "changed")
     assert scan.ScanPhase().inputs_hash(ctx) != before
+
+
+@pytest.mark.parametrize(("failed", "expected"), [
+    (1, "The only conversion failed"), (2, "All 2 conversions failed"),
+])
+def test_export_all_failed_message_agrees(engagement, synthetic_repo, monkeypatch, failed,
+                                          expected):
+    from typer.testing import CliRunner
+
+    from unvarnish import cli
+    from unvarnish.export.exporter import ExportItem, ExportReport
+
+    report = ExportReport(items=[ExportItem(doc="findings", tool="t", fmt=f, status="failed")
+                                 for f in ["pdf", "docx"][:failed]])
+    runner = CliRunner()
+    runner.invoke(cli.app, ["add", "t", "--repo", str(synthetic_repo),
+                            "-e", str(engagement.root)])
+    monkeypatch.setattr(cli, "export_engagement", lambda *_a, **_k: report)
+    r = runner.invoke(cli.app, ["export", "-e", str(engagement.root)], env={"COLUMNS": "400"})
+    assert r.exit_code == 1
+    assert expected in r.output and "All 1 " not in r.output
