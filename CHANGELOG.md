@@ -8,6 +8,17 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### unvarnish.com in the new Bonham Technologies design system
+
+- The product site is rebuilt on the design system bonham.tech now uses: a light Daylight
+  theme by default and a dark Night theme by the reader's system setting, Archivo and IBM Plex
+  Mono, square shapes and hairlines, and one orange action button per view. Unvarnish's own
+  identity inside it is no accent colour at all and a "stripped layers" motif under the hero,
+  in the icon and in the link-preview image. Copy, links and the published NodeGoat exports
+  are unchanged.
+- Fonts are now self-hosted under `site/fonts/` and the site's CSP no longer allows Google
+  Fonts, so the pages make no third-party request (UNVAR-74).
+
 ### Public repository
 
 - The repository went public with a fresh history on 2026-11-18 (UNVAR-37), under the
