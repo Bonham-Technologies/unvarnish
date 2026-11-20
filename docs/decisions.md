@@ -1359,3 +1359,11 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   or critical on headless-artist where Sonnet rated one; its own verification rejected 23 and
   downgraded 5. Verification on a stronger model (`models.phases.verify`) is the remedy where
   one is available.
+- **unvarnish.com follows the parent design system and carries one product identity
+  (UNVAR-74, owner's choice).** The site uses Bonham Technologies' tokens, type and shapes;
+  Unvarnish's own part is no accent colour (`--product-accent` is the ink) and the
+  stripped-layers motif. The site stays free of JavaScript, so Night follows the system
+  setting with no toggle, and fonts are self-hosted with `font-src 'self'`. *Cost if wrong:*
+  a reader who wants the other theme changes a system setting; and the site is plainer than
+  its siblings by design, which a later identity pass can revisit by changing one token and
+  one drawing.

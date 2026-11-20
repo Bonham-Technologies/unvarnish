@@ -7,7 +7,7 @@ Only the latest release and the current default branch receive security fixes.
 ## Reporting a Vulnerability
 
 Please **do not** open a public issue for security problems. Report privately via
-[GitHub Security Advisories](https://github.com/Bonham-Technologies/Unvarnish/security/advisories/new).
+[GitHub Security Advisories](https://github.com/Bonham-Technologies/unvarnish/security/advisories/new).
 
 Include reproduction steps and the version you tested. You should hear back
 within a few business days; please allow a reasonable window for a fix before

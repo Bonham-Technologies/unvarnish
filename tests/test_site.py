@@ -138,18 +138,21 @@ def test_vercel_config_sets_security_headers_and_skips_unrelated_deploys():
 
 def test_internal_notes_are_not_served():
     # With Root Directory site/, every file in it is public unless .vercelignore drops it;
-    # README.md holds the owner's setup notes and names the private repository.
+    # README.md holds the owner's setup notes, which are not for the public site.
     ignored = (SITE / ".vercelignore").read_text(encoding="utf-8").split()
     assert "README.md" in ignored
 
 
-def test_no_github_link_until_the_repository_is_public():
-    # UNVAR-38 AC2: link the repo only once it is public (UNVAR-37). LICENSE became
-    # Apache-2.0 before launch (UNVAR-36), so it no longer tells us the repository is
-    # private: the guard holds until the launch thread deletes this test and adds the link.
+def test_every_page_links_the_public_repository():
+    # The repository went public on 2026-11-18 (UNVAR-37): every page's footer links it, and
+    # it is the only Bonham Technologies repository the pages link (the demo also links the
+    # project it scanned).
     for rel in PAGES:
-        text = (SITE / rel).read_text(encoding="utf-8").lower()
-        assert "github.com/bonham-technologies/unvarnish" not in text, rel
+        text = (SITE / rel).read_text(encoding="utf-8")
+        assert 'href="https://github.com/Bonham-Technologies/unvarnish"' in text, rel
+        assert "will be published" not in text and "once it goes public" not in text, rel
+        ours = re.findall(r'href="(https://github\.com/bonham-technologies/[^"]*)"', text, re.I)
+        assert set(ours) == {"https://github.com/Bonham-Technologies/unvarnish"}, rel
 
 
 def test_demo_numbers_match_the_published_report():
@@ -201,3 +204,42 @@ def test_every_sitemap_page_names_itself_as_canonical():
         path = urlparse(loc).path
         page = _parse(str(_resolve("index.html", path).relative_to(SITE)))
         assert page.canonical == loc, f"{loc}: canonical is {page.canonical}"
+
+
+def _font_urls() -> list[str]:
+    css = (SITE / "site.css").read_text(encoding="utf-8")
+    return re.findall(r"url\(['\"]?([^'\")]+)['\"]?\)\s*format", css)
+
+
+def test_fonts_are_self_hosted_and_no_page_calls_a_font_service():
+    # UNVAR-74: the site follows the Bonham Technologies design system, which self-hosts its
+    # fonts so pages render with no third-party request; the CSP must not allow one either.
+    urls = _font_urls()
+    assert urls, "site.css declares no @font-face"
+    for url in urls:
+        assert url.startswith("/fonts/"), url
+        assert (SITE / url.lstrip("/")).is_file(), url
+    families = {p.name.split("-latin")[0] for p in (SITE / "fonts").glob("*.woff2")}
+    for family in families:
+        assert list((SITE / "fonts").glob(f"OFL-{family}*.txt")), f"no licence text for {family}"
+    for rel in PAGES:
+        text = (SITE / rel).read_text(encoding="utf-8")
+        assert "fonts.googleapis.com" not in text and "fonts.gstatic.com" not in text, rel
+    config = json.loads((SITE / "vercel.json").read_text(encoding="utf-8"))
+    csp = {h["key"]: h["value"] for h in config["headers"][0]["headers"]}[
+        "Content-Security-Policy"]
+    assert "font-src 'self'" in csp
+    assert "googleapis" not in csp and "gstatic" not in csp
+
+
+def test_stylesheet_carries_both_themes_and_the_parent_action_colour():
+    # UNVAR-74: Daylight by default, Night by the reader's system setting (the site has no
+    # JavaScript, so no toggle), and safety orange as the one action colour in both.
+    css = (SITE / "site.css").read_text(encoding="utf-8")
+    assert "prefers-color-scheme: dark" in css
+    assert "--signal-fill: #ec5308" in css and "--signal-fill: #ff6a1f" in css
+    for old in ("#f59e0b", "Instrument Serif", "DM Sans", "Geist Mono"):
+        assert old not in css, f"{old} is from the retired look"
+    for rel in PAGES:
+        text = (SITE / rel).read_text(encoding="utf-8")
+        assert 'media="(prefers-color-scheme: dark)"' in text, f"{rel}: no Night theme-color"
