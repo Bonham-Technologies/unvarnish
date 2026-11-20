@@ -336,3 +336,38 @@ def test_cli_add_missing_repo_prints_the_whole_path_on_one_line(
     )
     assert result.exit_code == 2
     assert f"error: {missing.resolve()} does not exist" in result.output
+
+
+@pytest.mark.parametrize("kind", ["files", "link"])
+def test_ingest_files_and_link_missing_path_says_it_does_not_exist(
+    engagement: Engagement, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+):
+    # UNVAR-71: these said "<last segment> is not a directory" for a path that isn't there.
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(IngestError) as exc:
+        ingest_tool(engagement, "nope", "../nope", kind)
+    assert str(exc.value) == f"{(tmp_path.parent / 'nope').resolve()} does not exist"
+    assert not (engagement.root / "tools" / "nope").exists()
+
+
+@pytest.mark.parametrize("kind", ["files", "link"])
+def test_ingest_files_and_link_file_path_is_not_a_folder(
+    engagement: Engagement, tmp_path: Path, kind: str
+):
+    afile = tmp_path / "a.py"
+    afile.write_text("x = 1\n", encoding="utf-8")
+    with pytest.raises(IngestError) as exc:
+        ingest_tool(engagement, "a", str(afile), kind)
+    assert str(exc.value) == f"{afile.resolve()} is not a folder"
+
+
+@pytest.mark.parametrize("flags", [["--files"], ["--link", "--files"]])
+def test_cli_add_missing_files_prints_the_whole_path_on_one_line(
+    engagement: Engagement, tmp_path: Path, flags: list[str]
+):
+    missing = tmp_path / ("a-long-folder-name-" * 6) / "nope"
+    result = runner.invoke(
+        app, ["add", "nope", *flags, str(missing), "-e", str(engagement.root)]
+    )
+    assert result.exit_code == 2
+    assert f"error: {missing.resolve()} does not exist" in result.output
