@@ -79,13 +79,11 @@ def ingest_tool(
                 raise IngestError(f"{display}: {_scrub(str(exc), origin, display)}") from exc
         elif kind == "files":
             src = Path(origin)
-            if not src.is_dir():
-                raise IngestError(f"{display} is not a directory")
+            _require_folder(src)
             shutil.copytree(src, staging.source, symlinks=True)
         elif kind == "link":
             target = Path(origin).resolve()
-            if not target.is_dir():
-                raise IngestError(f"{display} is not a directory")
+            _require_folder(target)
             rel = os.path.relpath(target, eng.root)
             if rel.startswith(".."):
                 meta.source_path = str(target)
@@ -107,6 +105,14 @@ def ingest_tool(
     return meta
 
 
+def _require_folder(src: Path) -> None:
+    """Name the resolved path when a local source is missing or isn't a folder."""
+    if not src.exists():
+        raise IngestError(f"{src.resolve()} does not exist")
+    if not src.is_dir():
+        raise IngestError(f"{src.resolve()} is not a folder")
+
+
 def _ingest_repo(
     origin: str, display: str, branch: str | None, staging: ToolPaths, meta: ToolMeta
 ) -> None:
@@ -123,10 +129,7 @@ def _ingest_repo(
             raise IngestError(f"clone of {display} failed: {detail}") from exc
     else:
         src = Path(origin)
-        if not src.exists():
-            raise IngestError(f"{src.resolve()} does not exist")
-        if not src.is_dir():
-            raise IngestError(f"{src.resolve()} is not a folder")
+        _require_folder(src)
         if not is_git_repo(src):
             raise IngestError(
                 f"{display} has no .git directory; use --files for a loose file pile"

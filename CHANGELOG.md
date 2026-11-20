@@ -74,6 +74,9 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   which sent a user who had only mistyped the path toward the wrong fix. A path that is a file
   says it is not a folder. An existing folder without `.git` keeps its message (UNVAR-63).
   `add` prints its errors on one line, so a long path is not broken across lines.
+- `add --files` and `add --link` say the same: a missing path is `<absolute path> does not
+  exist` and a file is not a folder, where they said `<last segment> is not a directory`
+  for both (UNVAR-71).
 
 ### Dry-run render estimate counts a tool's own blocks
 
