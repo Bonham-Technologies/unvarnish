@@ -75,6 +75,7 @@ from unvarnish.schemas.rollup import ModulesIndex
 from unvarnish.schemas.verify import ModelFindings
 from unvarnish.util.env import env_flag
 from unvarnish.util.logging import setup_run_logging
+from unvarnish.util.plural import plural, pluralize
 
 app = typer.Typer(
     name="unvarnish",
@@ -221,7 +222,8 @@ def _select_tools(eng: Engagement, tools: list[str] | None) -> list[str]:
     unknown = [t for t in tools if t not in known]
     if unknown:
         err_console.print(
-            f"[red]error:[/red] unknown tool(s): {escape(', '.join(unknown))}; "
+            f"[red]error:[/red] unknown {pluralize(len(unknown), 'tool')}: "
+            f"{escape(', '.join(unknown))}; "
             f"known: {escape(', '.join(known))}"
         )
         raise typer.Exit(code=2)
@@ -482,7 +484,7 @@ def _run_tools(eng: Engagement, names: list[str], runner: PhaseRunner, *, phase:
             ]
             detail = escape(r.message or "")
             if r.failures:
-                detail += f" [yellow]({len(r.failures)} recorded failure(s))[/yellow]"
+                detail += f" [yellow]({plural(len(r.failures), 'recorded failure')})[/yellow]"
                 any_failed = True
             if r.status == PhaseStatus.failed:
                 any_failed = True
@@ -511,7 +513,7 @@ def _run_tools(eng: Engagement, names: list[str], runner: PhaseRunner, *, phase:
 
 def _report_missing_summary(missing: list[str], *, ran: bool) -> None:
     err_console.print(
-        f"{len(missing)} tool(s) could not run: {escape(', '.join(missing))} "
+        f"{plural(len(missing), 'tool')} could not run: {escape(', '.join(missing))} "
         f"({MISSING_TOOL_YAML}); "
         + ("the others ran. " if ran else "") + "exit code 2.", soft_wrap=True)
 
@@ -543,7 +545,7 @@ def _compare(eng: Engagement, *, force: bool, verbose: bool) -> None:
         colour = {"ok": "green", "skipped": "dim", "failed": "red", "stopped": "yellow"}[r.status]
         detail = escape(r.message or "")
         if r.failures:
-            detail += f" [yellow]({len(r.failures)} recorded failure(s))[/yellow]"
+            detail += f" [yellow]({plural(len(r.failures), 'recorded failure')})[/yellow]"
             any_failed = True
         any_failed = any_failed or r.status == PhaseStatus.failed
         any_stopped = any_stopped or r.status == PhaseStatus.stopped
@@ -591,8 +593,8 @@ def export(
         raise typer.Exit(code=2)
     unknown = [d for d in (doc or []) if d not in DOC_NAMES]
     if unknown:
-        err_console.print(f"[red]error:[/red] unknown document(s): {escape(', '.join(unknown))}; "
-                          f"known: {', '.join(DOC_NAMES)}")
+        err_console.print(f"[red]error:[/red] unknown {pluralize(len(unknown), 'document')}: "
+                          f"{escape(', '.join(unknown))}; known: {', '.join(DOC_NAMES)}")
         raise typer.Exit(code=2)
     if doc and "findings" not in doc and any(f in DATA_FORMATS for f in formats):
         # sarif and csv are written only from the findings document; refuse the whole request
@@ -624,14 +626,16 @@ def export(
                               f"{escape(i.fmt)}: {escape(i.detail)}", soft_wrap=True)
     if not report.ok:
         if report.failed:
-            err_console.print(f"All {len(report.failed)} conversion(s) failed; see the table "
-                              "above and the log.")
+            n = len(report.failed)
+            what = "The only conversion" if n == 1 else f"All {plural(n, 'conversion')}"
+            err_console.print(f"{what} failed; see the table above and the log.")
         else:
             err_console.print("Nothing to export: run `unvarnish run` (and `compare`) first.")
         raise typer.Exit(code=1)
-    console.print(f"{len(report.ok)} file(s) written under exports/")
+    console.print(f"{plural(len(report.ok), 'file')} written under exports/")
     if report.failed:
-        err_console.print(f"{len(report.failed)} conversion(s) failed; see the table above.")
+        err_console.print(f"{plural(len(report.failed), 'conversion')} failed; "
+                          "see the table above.")
         raise typer.Exit(code=1)
 
 
@@ -699,7 +703,7 @@ def _ask(eng: Engagement, backend, question: str | None, *, tool: str | None,
             any_unanswered = True
         stopped = stopped or res.stopped_for_budget
         calls = sum(1 for s in res.steps if s.kind == "call")
-        console.print(f"[dim]{calls} tool call(s), {res.usage.total():,} tokens[/dim]")
+        console.print(f"[dim]{plural(calls, 'tool call')}, {res.usage.total():,} tokens[/dim]")
 
     try:
         if question:
@@ -796,7 +800,7 @@ def status(engagement: Path | None = EngagementOption) -> None:
         if record is None:
             last = "[dim]never[/dim]"
         elif record.failures:
-            last = f"[yellow]{len(record.failures)} failure(s)[/yellow]"
+            last = f"[yellow]{plural(len(record.failures), 'failure')}[/yellow]"
         else:
             last = "[green]clean[/green]"
         table.add_row(name, "last run", last, end_section=True)
@@ -1076,4 +1080,4 @@ def cache_clear(
     if not yes and not typer.confirm("Delete all cached model responses?"):
         raise typer.Exit(code=1)
     n = clear_cache(eng.cache_dir / "responses")
-    console.print(f"Removed {n} cached response(s).")
+    console.print(f"Removed {plural(n, 'cached response')}.")
