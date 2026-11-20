@@ -34,6 +34,17 @@ def test_request_shape_with_schema_cache_and_effort(fake_llm: FakeLLM):
     assert "temperature" not in sent
 
 
+def test_temperature_is_dropped_not_sent(fake_llm: FakeLLM, caplog):
+    # The anthropic SDK's Messages.create takes no temperature argument (UNVAR-69): passing one
+    # raised TypeError before any request was made.
+    fake_llm.script("plain")
+    with caplog.at_level("DEBUG", logger="unvarnish.model"):
+        resp = _backend(fake_llm).complete(_req(temperature=0.2))
+    assert resp.text == "plain"
+    assert "temperature" not in fake_llm.requests[0]
+    assert any("temperature" in r.getMessage() for r in caplog.records)
+
+
 def test_no_schema_when_backend_lacks_capability(fake_llm: FakeLLM):
     fake_llm.script("plain")
     _backend(fake_llm, json_schema=False).complete(_req(output_schema=SCHEMA, cache_system=False))
