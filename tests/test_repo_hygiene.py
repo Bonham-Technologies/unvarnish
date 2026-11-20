@@ -249,18 +249,24 @@ def test_no_tracked_file_holds_a_whole_real_format_token():
     assert not hits, "build these fixtures from fragments at runtime:\n" + "\n".join(hits)
 
 
-# The 17 history-only fixtures the owner confirmed fake on UNVAR-14 (2026-11-13).
-GITLEAKS_FINGERPRINT = re.compile(r"^[0-9a-f]{40}:[^:]+:[a-z0-9-]+:\d+$")
+# Commits of the private archive's history that the old .gitleaksignore named (UNVAR-14). The
+# public history starts at one snapshot commit (UNVAR-37), so a fingerprint naming one of these
+# suppresses nothing and points readers at history that isn't here (UNVAR-72).
+ARCHIVE_ONLY_COMMITS = {
+    "24bdadea58975c4b076cb97c7d1ad78e6c7d0e10", "38a6eeffec63cd2160f8921c7befdc8807ae650b",
+    "49bbbbda7153f9b6f18838eb4c11b32af1d066f2", "5dba819f28ff3b243e74bf4296796622a5ec6159",
+    "a05f23f6ce1eec701166178d606f1c645d66b1a9", "c0fa978b3181245218d704deecd2bf006d7f0249",
+    "f4c977775b464fd6092d14d4c2ce51ed37658ff7",
+}
 
 
-def test_gitleaksignore_lists_the_confirmed_history_fixtures():
+def test_gitleaksignore_names_no_archive_only_commit():
+    # The file may come back for a fingerprint in this history (the security sweep allow-lists
+    # a confirmed false positive or a revoked leak there); it may not carry the archive's.
     path = ROOT / ".gitleaksignore"
-    lines = path.read_text(encoding="utf-8").splitlines()
-    comments = [line for line in lines if line.startswith("#")]
-    entries = [line for line in lines if line and not line.startswith("#")]
-    assert any("test fixture" in line for line in comments)
-    assert len(entries) == 17
-    assert len(set(entries)) == 17
-    for entry in entries:
-        assert GITLEAKS_FINGERPRINT.match(entry), entry
-        assert entry.split(":")[1].startswith(("tests/", "docs/superpowers/plans/")), entry
+    if not path.exists():
+        return
+    entries = [line for line in path.read_text(encoding="utf-8").splitlines()
+               if line and not line.startswith("#")]
+    stale = [e for e in entries if e.split(":", 1)[0] in ARCHIVE_ONLY_COMMITS]
+    assert stale == []

@@ -25,6 +25,8 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   lowercase name `Bonham-Technologies/unvarnish`. The site's licence section and both footers
   now link it, and the package metadata, SECURITY.md, the issue template and the CI runner
   notes use the new name and present tense.
+- `.gitleaksignore` is removed: its entries named commits of the old private history, so it
+  suppressed nothing, and gitleaks finds nothing in the public history or tree (UNVAR-72).
 
 ### Anthropic backend and temperature
 
