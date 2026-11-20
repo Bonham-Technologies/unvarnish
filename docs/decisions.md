@@ -765,7 +765,8 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   `pull_request_target` or `workflow_run`, and no secret is read by a `pull_request` job;
   `tests/test_repo_hygiene.py` checks the first three. *Cost if wrong:* a job that later needs
   a write scope fails until it asks for it in its own `permissions:` block.
-- **History-only gitleaks fixtures are allow-listed by fingerprint (UNVAR-14).** After the
+- **History-only gitleaks fixtures are allow-listed by fingerprint (UNVAR-14; superseded by
+  UNVAR-72 once the history was replaced).** After the
   fragmenting above, `gitleaks git .` still found 17 fixtures in old commits; the owner
   confirmed each fake on 2026-11-13 and `.gitleaksignore` lists them by commit, path, rule
   and line, so the list can't hide a new finding elsewhere. *Cost if wrong:* a rewrite of the
@@ -1286,6 +1287,17 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
 - **The `test` job's limit is 45 minutes**, about seven times a normal run and above the
   32 minutes a slow apt mirror once took. *Cost if wrong:* a legitimately slow run is
   cancelled and fails `ci-status`, and needs a rerun.
+
+## No gitleaks ignore file (UNVAR-72)
+
+- **`.gitleaksignore` is gone.** Its 17 fingerprints named commits of the private archive, so
+  in the public repository they suppressed nothing, and `gitleaks git` and `gitleaks dir` find
+  nothing on `main` without it (gitleaks 8.30.1, 2026-11-20). This closes the step the
+  fresh-history ruling (UNVAR-37) left for after the cut-over. The file may come back for a
+  fingerprint in this history, as the security sweep's allow-list and revoked-leak steps add
+  one; `tests/test_repo_hygiene.py` fails only if it names an archive-only commit again.
+  *Cost if wrong:* none beyond re-adding an entry; whole-token fixtures are still built from
+  fragments (UNVAR-36).
 
 ## Fork pull requests and the self-hosted runner (UNVAR-70)
 
