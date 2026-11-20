@@ -29,6 +29,7 @@ from unvarnish.schemas.delta import (
 from unvarnish.schemas.finding import Finding, Source, Verification
 from unvarnish.schemas.scan import ScannerFindings
 from unvarnish.schemas.verify import ModelFindings
+from unvarnish.util.plural import plural
 
 
 class BaselineError(ValueError):
@@ -61,8 +62,8 @@ def _read(path: Path) -> tuple[ArtifactMeta, ScannerFindings | ModelFindings]:
         meta = ArtifactMeta.model_validate(raw["meta"])
         data = cls.model_validate(raw["data"])
     except ValidationError as exc:
-        raise BaselineError(f"{path}: not a valid findings artifact ({exc.error_count()} "
-                            "error(s))") from exc
+        raise BaselineError(f"{path}: not a valid findings artifact "
+                            f"({plural(exc.error_count(), 'error')})") from exc
     return meta, data  # type: ignore[return-value]
 
 

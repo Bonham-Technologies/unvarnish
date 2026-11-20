@@ -121,7 +121,11 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   scan's inputs hash now carries a scanner text version, so an engagement scanned before this
   rescans once on its next plain run (deterministic, no model calls) and its documents lose the
   old wording; `run --phase render` alone keeps the summaries already in
-  `scanner-findings.json`. Command-line messages keep "(s)" for now (UNVAR-57).
+  `scanner-findings.json` (UNVAR-57).
+- Command-line and error messages drop "(s)" too: "1 file written under exports/",
+  "3 recorded failures", "unknown tool: x", "no heartbeat for 1 minute". A source test now
+  covers every file under `src/unvarnish/` except the model prompts, whose wording is part of
+  their prompt version (UNVAR-68).
 
 ### End-of-life refresh
 

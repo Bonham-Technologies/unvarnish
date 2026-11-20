@@ -14,6 +14,7 @@ from unvarnish.config import BrandingConfig
 from unvarnish.export.graphviz import render_with_dot
 from unvarnish.export.markdown import prepare_markdown
 from unvarnish.render.diagram import Diagram
+from unvarnish.util.plural import plural
 
 TITLE_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 IMAGE_FORMAT = {"docx": "png", "html": "svg", "pdf": "svg"}
@@ -117,7 +118,8 @@ def run_pandoc(cmd: list[str], cwd: Path | None = None) -> None:
         raise RuntimeError(f"pandoc exited {proc.returncode}: {err[:400]}")
     lost = [line for line in err.splitlines() if "Failed to load image" in line]
     if lost:  # weasyprint drops the image and pandoc still exits 0: never ship that silently
-        raise RuntimeError(f"pandoc: {len(lost)} image(s) could not be loaded: {lost[0][:300]}")
+        raise RuntimeError(f"pandoc: {plural(len(lost), 'image')} could not be loaded: "
+                           f"{lost[0][:300]}")
 
 
 def _branding(fmt: str, branding: BrandingConfig,

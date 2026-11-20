@@ -31,6 +31,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
+from unvarnish.util.plural import plural
+
 log = logging.getLogger(__name__)
 
 BOOT_ID_FILE = Path("/proc/sys/kernel/random/boot_id")
@@ -231,7 +233,7 @@ class EngagementLock:
                 return "the machine has restarted since its last heartbeat"
         age = time.time() - mtime
         if age > self.stale_after.total_seconds():
-            return (f"no heartbeat for {age / 60:.0f} minute(s), more than the "
+            return (f"no heartbeat for {plural(round(age / 60), 'minute')}, more than the "
                     f"{self.stale_after.total_seconds() / 60:g} allowed "
                     "(pipeline.lock_stale_minutes)")
         return None
