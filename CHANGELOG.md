@@ -8,6 +8,13 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Model-written text stays inside its paragraph
+
+- A finding's summary, impact, remediation, effort note and verifier note can no longer start
+  a heading, table, code fence, blockquote, list or rule in `findings.md` and its exports, and
+  a prose block can no longer open a top-level or section heading. The words are kept, with a
+  backslash before the marker (UNVAR-76).
+
 ### Unreachable model server is not a budget stop
 
 - When a run stops because the model server cannot be reached, `status` now says the extract

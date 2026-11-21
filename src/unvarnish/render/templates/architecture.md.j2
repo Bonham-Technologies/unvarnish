@@ -127,7 +127,7 @@ No module map was identified, so there is no diagram of how the files depend on 
 {% prose "deployment" %}{{ "" }}
 
 {% for a in tm.deployment_assumptions | cap %}
-- {{ a | cell }}
+- {{ a | cell | inert_block }}
 {% else %}
 - No deployment assumptions were identified in the code.
 {% endfor %}

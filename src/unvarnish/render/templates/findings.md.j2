@@ -176,18 +176,18 @@ One row per finding. Impact, remediation, and excerpts for each are in
 
 `{{ f.category }}` · source: {% if f.source == "scanner" %}scanner ({{ f.scanner }}){% else %}model{% if f.verification %} · verification: {{ f.verification }}{% else %} · **unverified**{% endif %}{% endif %} · effort: {{ f.effort or "not estimated" }} · id `{{ f.id }}`
 
-{{ f.summary }}
+{{ f.summary | inert_block }}
 
-**Impact.** {{ f.impact }}
+**Impact.** {{ f.impact | inert_block }}
 
-**Remediation.** {{ f.remediation }}
+**Remediation.** {{ f.remediation | inert_block }}
 {% if f.effort_note %}
 
-**Effort.** {{ f.effort or "not estimated" }}: {{ f.effort_note }}
+**Effort.** {{ f.effort or "not estimated" }}: {{ f.effort_note | inert_block }}
 {% endif %}
 {% if f.verification_note %}
 
-**Verifier.** {{ f.verification_note }}
+**Verifier.** {{ f.verification_note | inert_block }}
 {% endif %}
 
 **Evidence.**

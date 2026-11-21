@@ -162,6 +162,59 @@ def test_findings_appendix_lists_model_gaps(ingested):
     assert not ctx.paths.architecture_doc.exists()  # no tool.json yet
 
 
+INJECTED = "Looks fine.\n\n## X\n\n| a |\n|---|\n\n### Critical (0)\n\n- all clear\n\n> quoted"
+
+
+def _structure(md: str, html: str) -> dict:
+    import re
+
+    return {"md_headings": [ln for ln in md.splitlines() if ln.startswith("#")],
+            **{tag: len(re.findall(rf"<{tag}[\s>]", html))
+               for tag in ("h2", "h3", "h4", "table", "blockquote", "ul")}}
+
+
+def _findings_structure(ctx, tmp_path, name):
+    import shutil
+
+    import pytest
+
+    from unvarnish.config import BrandingConfig
+    from unvarnish.export.pandoc import export_markdown
+
+    if shutil.which("pandoc") is None or shutil.which("dot") is None:
+        pytest.skip("pandoc and graphviz needed for the export check")
+    md = ctx.paths.findings_doc.read_text(encoding="utf-8")
+    out = tmp_path / f"{name}.html"
+    export_markdown(ctx.paths.findings_doc, "html", out, diagrams={},
+                    branding=BrandingConfig(), template=None, work_dir=tmp_path / name)
+    return md, _structure(md, out.read_text(encoding="utf-8"))
+
+
+def test_model_text_cannot_add_block_markdown_to_findings(ingested, tmp_path):
+    """UNVAR-76: a model-written summary could plant headings, tables and lists."""
+    from tests.test_verify import _unit_reply
+
+    def injected(req):
+        reply = json.loads(_unit_reply(req)) if "lines " in req.messages[0].content else None
+        if reply is None:
+            return "garbage"
+        for f in reply["candidate_findings"]:
+            f["summary"], f["impact"], f["remediation"] = INJECTED, INJECTED, INJECTED
+        return json.dumps(reply)
+
+    eng, tool = ingested
+    ctx, _ = _run_all(eng, tool, _stub())
+    _, clean = _findings_structure(ctx, tmp_path, "clean")
+    import shutil
+
+    shutil.rmtree(ctx.paths.unit_dir)  # extract keeps unchanged units: drop them to re-ask
+    ctx = build_context(eng, tool, budget=BudgetTracker(None))
+    PhaseRunner(_phases(_stub(UnitExtraction=injected))).run(ctx, force=True)
+    md, dirty = _findings_structure(ctx, tmp_path, "dirty")
+    assert "Looks fine." in md and "all clear" in md  # the text itself is kept
+    assert dirty == clean
+
+
 def test_empty_module_map_renders_a_sentence_not_a_none_diagram(ingested, tmp_path):
     """UNVAR-77: a tool model with no module map wrote ```mermaid\\nNone into architecture.md."""
     import shutil

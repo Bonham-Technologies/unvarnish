@@ -1299,6 +1299,20 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   *Cost if wrong:* none beyond re-adding an entry; whole-token fixtures are still built from
   fragments (UNVAR-36).
 
+## Model text is inline Markdown only (UNVAR-76)
+
+- **Model-written fields in paragraph slots go through `inert_block`; prose blocks go through
+  `cap_headings`.** The vetted code is untrusted and can steer the model, and the templates
+  render with `autoescape=False`, so model text could otherwise change a document's
+  structure. `inert_block` keeps each line of a finding's text, and each model-written list
+  item, inside its paragraph: a line Markdown would read as the start of a block gets a
+  backslash before its marker, and indentation is dropped; inline emphasis, code spans and
+  links still render. Prose blocks keep lists and `###` and deeper headings, but a `#` or `##`
+  heading or an HTML block opener is made literal wherever it sits, because every prose block
+  sits under a `##` section. Scanner findings pass through the same filter, which leaves their
+  single-line text unchanged. *Cost if wrong:* a list in a finding's remediation shows as one
+  paragraph with its markers visible.
+
 ## A backend outage is recorded as one (UNVAR-78)
 
 - **`ExtractState.backend_unreachable` is a new field, separate from `stopped_for_budget`.**
