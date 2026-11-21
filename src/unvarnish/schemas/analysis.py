@@ -146,6 +146,9 @@ class ExtractState(BaseModel):
     units_failed: int = 0
     usage: Usage = Field(default_factory=Usage)
     stopped_for_budget: bool = False
+    # The run stopped because the model server could not be reached or refused the call
+    # (BackendUnavailable), not because of the budget (UNVAR-78). False in older states.
+    backend_unreachable: bool = False
     # Digest of the done units' ids and inputs hashes (backend, model, effort, prompt, source),
     # and of the recorded inputs hash of any artifact an undone unit still has on disk.
     # A state written while units are still failing records no inputs hash, so this is what

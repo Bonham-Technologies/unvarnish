@@ -1313,6 +1313,35 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   single-line text unchanged. *Cost if wrong:* a list in a finding's remediation shows as one
   paragraph with its markers visible.
 
+## A backend outage is recorded as one (UNVAR-78)
+
+- **`ExtractState.backend_unreachable` is a new field, separate from `stopped_for_budget`.**
+  A `BackendUnavailable` (connection refused, bad key, server errors after retries) sets it,
+  and the phase stays stale, so a rerun resumes as after a budget stop. Older states read it
+  as false. When a fatal backend error stops a tool, `PhaseRunner` attaches the results so far
+  to the exception and `run` records them, so `status` shows the failed phase. The error names
+  the base URL with any user info and query removed (`display_url`). *Cost if wrong:* a state
+  written by this version and read by an older one ignores the new field and shows neither
+  reason; an outage in a later phase still shows only through "last run".
+
+## Attribute access is not a hostname (UNVAR-75)
+
+- **In code, a dotted name ending in an internal TLD is a hostname only inside a string or a
+  comment, or where it is not used as an expression.** A small per-file lexer
+  (`code_masks` in `scanners/hardcoded_infra.py`) marks strings (escapes; triple quotes in
+  Python, Java, Kotlin, Scala, Swift, C#, Dart and Groovy, and JavaScript/Go backticks, across
+  lines) and comments (Python `#`, `//`, `/* */`) for the languages in `CODE_LANGS`. A match
+  wholly in code and followed by a colon, a closing bracket, a separator, an operator (`<`,
+  `>`, `/` and `-` only after whitespace, so JSX text is not code) or the end of the line is
+  attribute access and is dropped. Shell, Make, Dockerfiles, HTML, Vue and Svelte templates,
+  and the config languages are not lexed, because a bare hostname in them can be real. Nor
+  are Ruby, Perl, PHP, Lua, R and Elixir, whose heredocs, word lists, multi-line strings and
+  PHP's HTML mode this lexer would read as code. A file with no internal-TLD candidate is not
+  lexed at all. *Cost if wrong:* a real hostname written bare in code is missed; in most
+  lexed languages that is a syntax error, but JSX text with a host followed by `,`, `:` or the
+  end of the line is not. A string the lexer misreads (Rust `r#"…"#`, C# `@"…\"`, nested block
+  comments) can hide a host on that line.
+
 ## Temperature on the Anthropic backend (UNVAR-69)
 
 - **`CompletionRequest.temperature` is honoured by the OpenAI-compatible backend only.** The

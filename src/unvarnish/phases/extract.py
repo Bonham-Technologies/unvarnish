@@ -241,7 +241,7 @@ class ExtractPhase:
         finally:
             pool.shutdown(wait=True, cancel_futures=True)
             self._persist(ctx, backend, index, done, failures, usage, unit_hashes,
-                          stopped=budget_hit.is_set() or fatal is not None)
+                          stopped=budget_hit.is_set(), unreachable=fatal is not None)
         if fatal is not None:
             raise fatal
         stopped = budget_hit.is_set()
@@ -276,7 +276,7 @@ class ExtractPhase:
 
     def _persist(self, ctx: ToolContext, backend: Backend, index: UnitsIndex, done: int,
                  failures: list[FailureRecord], usage: Usage, unit_hashes: dict[str, str], *,
-                 stopped: bool) -> None:
+                 stopped: bool, unreachable: bool = False) -> None:
         if usage.total():
             record_cost(ctx.engagement, CostEntry(
                 tool=ctx.tool, phase=self.name, backend=backend.name, model=backend.model,
@@ -285,12 +285,13 @@ class ExtractPhase:
             tool=ctx.tool, backend=backend.name, model=backend.model,
             prompt_version=PROMPT_VERSION, units_total=len(index.units), units_done=done,
             units_failed=len(failures), usage=usage, stopped_for_budget=stopped,
+            backend_unreachable=unreachable,
             units_digest=self._units_digest(ctx, index, unit_hashes),
         )
         merge_failures(ctx, self.name, failures)
         # An empty inputs_hash keeps the phase stale after a stop, a failed unit, or anything
         # else that left units undone (an interrupt), so a later run resumes or retries; done
         # units are kept by their own hashes (UNVAR-29, UNVAR-32).
-        complete = not (stopped or failures) and done >= len(index.units)
+        complete = not (stopped or unreachable or failures) and done >= len(index.units)
         write_artifact(ctx.paths.extract_state, state, produced_by=self.name,
                        inputs_hash=self.inputs_hash(ctx) if complete else "")

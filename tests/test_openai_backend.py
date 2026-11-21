@@ -76,3 +76,14 @@ def test_rate_limit_is_retried_then_succeeds(fake_llm: FakeLLM):
     fake_llm.script({"status": 429}, "ok")
     assert b.complete(_req()).text == "ok"
     assert len(fake_llm.requests) == 2 and len(sleeps) == 1
+
+
+def test_display_url_never_prints_credentials_or_a_query():
+    """UNVAR-78: the unreachable-server error names the base URL, so it must be safe to print."""
+    from unvarnish.model.base import display_url
+
+    assert display_url("http://llm:11434/v1") == "http://llm:11434/v1"
+    assert display_url("https://user:s3cret@gw.example/v1/?key=abc") == "https://gw.example/v1"
+    assert display_url("not a url") == "(unparseable URL)"
+    assert display_url("http://u:p@[::1]:8080/v1?t=x") == "http://[::1]:8080/v1"
+    assert display_url(None) == "(unparseable URL)"

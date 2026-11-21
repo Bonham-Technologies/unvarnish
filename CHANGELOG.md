@@ -15,6 +15,27 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   a prose block can no longer open a top-level or section heading. The words are kept, with a
   backslash before the marker (UNVAR-76).
 
+### Unreachable model server is not a budget stop
+
+- When a run stops because the model server cannot be reached, `status` now says the extract
+  phase stopped because the backend was unreachable instead of "budget-stopped", "last run"
+  shows the failure instead of "never", and the error names the server's base URL and
+  suggests `unvarnish config check` (UNVAR-78).
+
+### Architecture document without a module map
+
+- When the tool model has no module map, `architecture.md` now says in one sentence that none
+  was identified instead of printing a Mermaid block containing `None`, and the HTML, DOCX and
+  PDF exports carry no blank module-map image (UNVAR-77).
+
+### Attribute access is not a hostname
+
+- The hardcoded-infrastructure scanner no longer reports code such as `if g.internal:`,
+  `user.private and opts.local` or `net.lan;` as internal hostnames. In Python, JavaScript,
+  TypeScript, Go and the other languages it lexes, a dotted name outside strings and comments
+  that is used as an expression is code; hostnames in strings, comments, config files and
+  shell scripts are still reported (UNVAR-75).
+
 ### unvarnish.com in the new Bonham Technologies design system
 
 - The product site is rebuilt on the design system bonham.tech now uses: a light Daylight

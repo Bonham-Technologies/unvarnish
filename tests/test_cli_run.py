@@ -271,3 +271,33 @@ def test_single_phase_that_reads_the_source_fails_when_it_is_gone(
     assert (tool_dir / "inventory" / "scanner-findings.json").read_bytes() == findings
     rendered = runner.invoke(app, ["run", "--phase", "render", "--force", "-e", str(eng)])
     assert rendered.exit_code == 0, rendered.output
+
+
+def test_unreachable_model_server_is_not_reported_as_a_budget_stop(
+        tmp_path: Path, synthetic_repo: Path, fake_llm):
+    """UNVAR-78: a run whose model server was down showed "budget-stopped" and "never"."""
+    from tests.conftest import model_config
+    from unvarnish.config import EngagementConfig
+    from unvarnish.engagement import Engagement
+
+    eng = Engagement.create(tmp_path / "acme", client="Acme")
+    eng.config = EngagementConfig.model_validate(
+        {**eng.config.model_dump(), **model_config(fake_llm, kind="openai_compatible")})
+    eng.save_config()
+    added = runner.invoke(app, ["add", "bot", "--repo", str(synthetic_repo),
+                                "-e", str(eng.root)])
+    assert added.exit_code == 0, added.output
+    url = fake_llm.url
+    fake_llm.stop()  # nothing listens on the port any more
+
+    r = runner.invoke(app, ["run", "-e", str(eng.root)])
+    assert r.exit_code == 2, r.output
+    flat = " ".join(r.output.split())
+    assert url in flat and "unvarnish config check" in flat
+
+    st = runner.invoke(app, ["status", "-e", str(eng.root)])
+    assert st.exit_code == 0, st.output
+    flat = " ".join(st.output.split())
+    assert "unreachable" in flat and "budget-stopped" not in flat
+    last = [line for line in st.output.splitlines() if "last run" in line]
+    assert last and "never" not in last[0], st.output

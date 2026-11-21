@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from tests.stub_backend import StubBackend
 from tests.test_rollup_modules import MODULE
 from tests.test_rollup_tool import DIRECTORY, TOOL
@@ -211,3 +213,35 @@ def test_model_text_cannot_add_block_markdown_to_findings(ingested, tmp_path):
     md, dirty = _findings_structure(ctx, tmp_path, "dirty")
     assert "Looks fine." in md and "all clear" in md  # the text itself is kept
     assert dirty == clean
+
+
+def test_empty_module_map_renders_a_sentence_not_a_none_diagram(ingested, tmp_path):
+    """UNVAR-77: a tool model with no module map wrote ```mermaid\\nNone into architecture.md."""
+    import shutil
+
+    from unvarnish.config import BrandingConfig
+    from unvarnish.export.pandoc import export_markdown
+    from unvarnish.schemas.diagrams import DiagramSet
+
+    tool = json.loads(TOOL)
+    tool["module_map"] = []
+    eng, tool_name = ingested
+    ctx, results = _run_all(eng, tool_name, _stub(ToolRollup=json.dumps(tool)))
+    assert all(r.status == PhaseStatus.ok for r in results), [r.model_dump() for r in results]
+    arch = ctx.paths.architecture_doc.read_text(encoding="utf-8")
+    section = arch.split("## 4. Module map and interactions", 1)[1].split("\n## ", 1)[0]
+    assert "\nNone\n" not in section and "```mermaid\nNone" not in arch
+    assert "unvarnish-diagram: modules" not in section and "```mermaid" not in section
+    assert "No module map was identified" in section
+    assert arch.count("```mermaid") == 1  # the context diagram still renders
+
+    if shutil.which("pandoc") is None or shutil.which("dot") is None:
+        pytest.skip("pandoc and graphviz needed for the export check")
+    diagrams = read_artifact(ctx.paths.diagrams, DiagramSet).data.diagrams
+    out = tmp_path / "architecture.html"
+    failures = export_markdown(ctx.paths.architecture_doc, "html", out, diagrams=diagrams,
+                               branding=BrandingConfig(), template=None,
+                               work_dir=tmp_path / "work")
+    html = out.read_text(encoding="utf-8")
+    assert failures == []
+    assert 'alt="Module map' not in html

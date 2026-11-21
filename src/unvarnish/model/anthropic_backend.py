@@ -11,6 +11,7 @@ from unvarnish.model.base import (
     BackendUnavailable,
     CompletionRequest,
     CompletionResponse,
+    display_url,
     header_retry_after,
     retry_rate_limited,
 )
@@ -37,6 +38,7 @@ class AnthropicBackend:
         if base_url:
             kwargs["base_url"] = base_url
         self._client = anthropic.Anthropic(**kwargs)
+        self._base_url = str(self._client.base_url)
 
     @staticmethod
     def timeout_for(max_tokens: int) -> float:
@@ -97,7 +99,9 @@ class AnthropicBackend:
             raise BackendError(
                 f"{self.name}: no reply within {kwargs['timeout']:.0f}s") from exc
         except anthropic.APIConnectionError as exc:
-            raise BackendUnavailable(f"{self.name}: connection failed: {exc}") from exc
+            raise BackendUnavailable(
+                f"{self.name}: connection to {display_url(self._base_url)} failed: {exc}"
+            ) from exc
         except anthropic.APIStatusError as exc:
             raise BackendUnavailable(f"{self.name}: HTTP {exc.status_code}: {exc.message}") from exc
 
