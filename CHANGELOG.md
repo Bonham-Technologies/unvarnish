@@ -8,6 +8,13 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Unreachable model server is not a budget stop
+
+- When a run stops because the model server cannot be reached, `status` now says the extract
+  phase stopped because the backend was unreachable instead of "budget-stopped", "last run"
+  shows the failure instead of "never", and the error names the server's base URL and
+  suggests `unvarnish config check` (UNVAR-78).
+
 ### unvarnish.com in the new Bonham Technologies design system
 
 - The product site is rebuilt on the design system bonham.tech now uses: a light Daylight

@@ -11,6 +11,7 @@ from unvarnish.model.base import (
     BackendUnavailable,
     CompletionRequest,
     CompletionResponse,
+    display_url,
     header_retry_after,
     retry_rate_limited,
 )
@@ -43,6 +44,7 @@ class OpenAICompatibleBackend:
         self._sleep = sleep
         # The SDK would retry a timeout too, repeating the slowest work a server has; retries
         # for dropped connections and server errors are done in _create instead.
+        self._base_url = base_url
         self._client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0,
                               timeout=self._timeout_s)
 
@@ -114,7 +116,9 @@ class OpenAICompatibleBackend:
                 f"{self.name}: no reply within {self._timeout_s:.0f}s; raise "
                 f"backends.{self.name}.timeout_s for this server") from exc
         except openai.APIConnectionError as exc:
-            raise BackendUnavailable(f"{self.name}: connection failed: {exc}") from exc
+            raise BackendUnavailable(
+                f"{self.name}: connection to {display_url(self._base_url)} failed: {exc}"
+            ) from exc
         except openai.APIStatusError as exc:
             raise BackendUnavailable(f"{self.name}: HTTP {exc.status_code}: {exc.message}") from exc
 

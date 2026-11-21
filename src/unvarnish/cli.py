@@ -437,7 +437,16 @@ def _run_tools(eng: Engagement, names: list[str], runner: PhaseRunner, *, phase:
 
     def run_tool(name: str) -> list:
         ctx = build_context(eng, name, budget=tracker)
-        results = runner.run(ctx, force=force, only=phase)
+        try:
+            results = runner.run(ctx, force=force, only=phase)
+        except Exception as exc:
+            partial = getattr(exc, "phase_results", None)
+            if partial is not None:  # a backend outage: record how far the run got
+                try:
+                    record_run(ctx, partial)
+                except Exception:  # noqa: BLE001, S110 - never hide the outage behind a write error
+                    pass
+            raise
         record_run(ctx, results)
         return results
 
@@ -475,6 +484,10 @@ def _run_tools(eng: Engagement, names: list[str], runner: PhaseRunner, *, phase:
         if isinstance(outcome, (BackendConfigError, BackendUnavailable)):
             err_console.print(f"[red]error:[/red] {escape(name)}: {escape(str(outcome))}",
                               soft_wrap=True)
+            if isinstance(outcome, BackendUnavailable):
+                err_console.print("Check that the model server is running and reachable, then "
+                                  "run [cyan]unvarnish config check[/cyan]; rerun "
+                                  "[cyan]unvarnish run[/cyan] to resume.", soft_wrap=True)
             raise typer.Exit(code=2) from outcome
         if isinstance(outcome, BaseException):
             raise outcome
@@ -824,11 +837,14 @@ def _phase_cell(p, ctx) -> str:
     if p.name == "extract" and ctx.paths.extract_state.exists():
         st = read_artifact(ctx.paths.extract_state, ExtractState).data
         cell = f"{st.units_done}/{st.units_total} units"
-        if st.stopped_for_budget:
+        if st.backend_unreachable:
+            cell += " stopped: backend unreachable"
+        elif st.stopped_for_budget:
             cell += " budget-stopped"
         if st.units_failed:
             cell += f" ({st.units_failed} failed)"
-        colour = "yellow" if (st.stopped_for_budget or st.units_failed) else "green"
+        stopped = st.stopped_for_budget or st.backend_unreachable
+        colour = "yellow" if (stopped or st.units_failed) else "green"
         return f"[{colour}]{cell}[/{colour}]"
     if p.name == "rollup_modules" and ctx.paths.modules_index.exists():
         mi = read_artifact(ctx.paths.modules_index, ModulesIndex).data

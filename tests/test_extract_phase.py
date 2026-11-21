@@ -8,7 +8,7 @@ from unvarnish.artifacts import read_artifact
 from unvarnish.config import EngagementConfig
 from unvarnish.engagement import Engagement
 from unvarnish.model.budget import BudgetExceeded, BudgetTracker, load_ledger
-from unvarnish.phases.base import PhaseRunner, PhaseStatus, build_context
+from unvarnish.phases.base import PhaseRunner, PhaseStatus, build_context, is_fresh
 from unvarnish.phases.extract import ExtractPhase, to_findings
 from unvarnish.phases.inventory import InventoryPhase
 from unvarnish.phases.split import SplitPhase
@@ -165,6 +165,10 @@ def test_budget_cap_stops_cleanly(ingested, fake_llm: FakeLLM):
     state = read_artifact(ctx.paths.extract_state, ExtractState).data
     assert state.stopped_for_budget is True and 1 <= state.units_done < state.units_total
     assert len(fake_llm.requests) == state.units_done
+    assert not state.backend_unreachable
+    from unvarnish.cli import _phase_cell
+    cell = _phase_cell(ExtractPhase(), ctx)
+    assert "budget-stopped" in cell and "unreachable" not in cell  # UNVAR-78
     results = PhaseRunner([ExtractPhase(), SplitPhase()]).run(ctx, force=True)
     assert results[1].status == PhaseStatus.skipped and "stopped" in (results[1].message or "")
 
@@ -195,6 +199,9 @@ def test_fatal_backend_error_stops_other_workers_and_writes_state(ingested, fake
     assert ctx.paths.extract_state.exists() and ctx.paths.failures.exists()
     state = read_artifact(ctx.paths.extract_state, ExtractState).data
     assert state.units_done == 0
+    # UNVAR-78: an outage is not a budget stop, and the phase stays stale to resume
+    assert state.backend_unreachable and not state.stopped_for_budget
+    assert not is_fresh(ExtractPhase(), ctx)
 
 
 def test_budget_cap_with_threads_in_flight(ingested, fake_llm: FakeLLM):

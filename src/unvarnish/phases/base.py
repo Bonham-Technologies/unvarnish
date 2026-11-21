@@ -274,6 +274,10 @@ class PhaseRunner:
             except Exception as exc:  # one bad phase never kills the process
                 _log_crash(ctx, phase, exc)
                 if getattr(exc, "fatal", False):  # except configuration/backend outages
+                    # The caller records the run so far, so `status` shows the failure
+                    # instead of an older run or "never" (UNVAR-78).
+                    exc.phase_results = [*results, PhaseResult(  # type: ignore[attr-defined]
+                        phase=phase.name, status=PhaseStatus.failed, message=str(exc))]
                     raise
                 result = PhaseResult(
                     phase=phase.name, status=PhaseStatus.failed, message=repr(exc)
