@@ -8,6 +8,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Architecture document without a module map
+
+- When the tool model has no module map, `architecture.md` now says in one sentence that none
+  was identified instead of printing a Mermaid block containing `None`, and the HTML, DOCX and
+  PDF exports carry no blank module-map image (UNVAR-77).
+
 ### Attribute access is not a hostname
 
 - The hardcoded-infrastructure scanner no longer reports code such as `if g.internal:`,
