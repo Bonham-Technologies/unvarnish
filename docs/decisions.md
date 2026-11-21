@@ -1303,15 +1303,19 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
 
 - **In code, a dotted name ending in an internal TLD is a hostname only inside a string or a
   comment, or where it is not used as an expression.** A small per-file lexer
-  (`code_masks` in `scanners/hardcoded_infra.py`) marks strings (escapes, Python triple
-  quotes and JavaScript/Go backticks across lines) and comments (`#`, `//`, `/* */`, Lua
-  `--`) for the languages in `CODE_LANGS`. A match wholly in code and followed by a colon, a
-  closing bracket, a separator, an operator or the end of the line is attribute access and is
-  dropped. Shell, Make, Dockerfiles, HTML, Vue and Svelte templates, and the config languages
-  are not lexed, because a bare hostname in them can be real; a file with no internal-TLD
-  candidate is not lexed at all. *Cost if wrong:* a real hostname written bare in code (a
-  syntax error in every lexed language, so only in a broken file) is missed, and a string the
-  lexer misreads (a raw-string or heredoc form it does not know) can hide a host on that line.
+  (`code_masks` in `scanners/hardcoded_infra.py`) marks strings (escapes; triple quotes in
+  Python, Java, Kotlin, Scala, Swift, C#, Dart and Groovy, and JavaScript/Go backticks, across
+  lines) and comments (Python `#`, `//`, `/* */`) for the languages in `CODE_LANGS`. A match
+  wholly in code and followed by a colon, a closing bracket, a separator, an operator (`<`,
+  `>`, `/` and `-` only after whitespace, so JSX text is not code) or the end of the line is
+  attribute access and is dropped. Shell, Make, Dockerfiles, HTML, Vue and Svelte templates,
+  and the config languages are not lexed, because a bare hostname in them can be real. Nor
+  are Ruby, Perl, PHP, Lua, R and Elixir, whose heredocs, word lists, multi-line strings and
+  PHP's HTML mode this lexer would read as code. A file with no internal-TLD candidate is not
+  lexed at all. *Cost if wrong:* a real hostname written bare in code is missed; in most
+  lexed languages that is a syntax error, but JSX text with a host followed by `,`, `:` or the
+  end of the line is not. A string the lexer misreads (Rust `r#"…"#`, C# `@"…\"`, nested block
+  comments) can hide a host on that line.
 
 ## Temperature on the Anthropic backend (UNVAR-69)
 

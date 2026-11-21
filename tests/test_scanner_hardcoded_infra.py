@@ -255,3 +255,22 @@ def test_hostnames_in_strings_comments_and_config_are_still_reported(path, langu
                                                                      expected):
     hosts = [f[1] for f in find_infra(text, path, language) if f[0] == "host"]
     assert hosts == [expected]
+
+
+@pytest.mark.parametrize(("path", "language", "text", "expected"), [
+    ("Config.kt", "kotlin", 'val cfg = """\n  host: db.acme.internal\n"""', "db.acme.internal"),
+    ("Config.java", "java", 'String s = """\n    db.acme.internal,\n    """;',
+     "db.acme.internal"),
+    ("Jenkinsfile", "groovy", "sh '''\n  ssh build.corp\n'''", "build.corp"),
+    ("tool.c", "c", "/*/ the old box\nbuild.corp;\n*/", "build.corp"),
+    ("config.rb", "ruby", "cfg = <<~EOS\n  host: db.acme.internal\nEOS", "db.acme.internal"),
+    ("hosts.rb", "ruby", "HOSTS = %w[build.corp]", "build.corp"),
+    ("hosts.lua", "lua", "--[[ hosts\n db.acme.internal,\n]]", "db.acme.internal"),
+    ("page.php", "php", "<?php ?>\n<a>db.acme.internal</a>", "db.acme.internal"),
+    ("App.jsx", "javascript", "return <p>Use db.acme.internal</p>", "db.acme.internal"),
+])
+def test_multiline_strings_heredocs_and_markup_still_report_hosts(path, language, text,
+                                                                  expected):
+    """UNVAR-75 review: text the lexer would misread as code still reports its hostname."""
+    hosts = [f[1] for f in find_infra(text, path, language) if f[0] == "host"]
+    assert hosts == [expected]

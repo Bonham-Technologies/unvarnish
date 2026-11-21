@@ -178,31 +178,37 @@ def _free(m: re.Match, taken: list[tuple[int, int]]) -> bool:
 
 
 # Languages where text outside string literals and comments is code, so a bare dotted name
-# ending in an internal TLD there is attribute access, not a hostname (UNVAR-75). Shell, Make, Dockerfiles, HTML and the
-# config languages are left out: a bare hostname in them can be a real one.
-HASH_COMMENT_LANGS = {"python", "ruby", "r", "perl", "elixir"}
+# ending in an internal TLD there is attribute access, not a hostname (UNVAR-75). Shell,
+# Make, Dockerfiles, HTML and the config languages are left out: a bare hostname in them can
+# be a real one. So are Ruby, Perl, PHP, Lua, R and Elixir: their heredocs, word lists
+# (%w, qw), sigils, long brackets, multi-line strings and PHP's HTML mode would read as code.
+HASH_COMMENT_LANGS = {"python"}
 SLASH_COMMENT_LANGS = {"javascript", "typescript", "tsx", "go", "rust", "java", "kotlin",
                        "scala", "c_sharp", "swift", "c", "cpp", "objc", "dart", "groovy"}
-CODE_LANGS = HASH_COMMENT_LANGS | SLASH_COMMENT_LANGS | {"php", "lua"}
+CODE_LANGS = HASH_COMMENT_LANGS | SLASH_COMMENT_LANGS
+# Languages whose triple-quoted strings (text blocks, raw and multi-line strings) span lines.
+TRIPLE_QUOTE_LANGS = {"python", "java", "kotlin", "scala", "swift", "c_sharp", "dart", "groovy"}
 # What follows an attribute in an expression: a closing bracket or separator, the end of the
-# line, or an operator.
+# line, or an operator. "<", ">", "/" and "-" count only after whitespace, so JSX text such as
+# `db.acme.internal</p>` and a host followed by a path are not taken for code.
 ATTRIBUTE_AFTER_RE = re.compile(
-    r"\s*(?:$|[:)\]},;]|(?:and|or|not|in|is|if|else|then|do)\b|[=!<>+\-*/%&|^?]+)")
+    r"\s*(?:$|[:)\]},;]|[=!+*%&|^?]+)"
+    r"|\s+(?:(?:and|or|not|in|is|if|else|then|do)\b|[=!<>+\-*/%&|^?]+)")
 
 
 def code_masks(text: str, language: str | None) -> list[list[bool]] | None:
     """Per line, per character: True where the character is code, False inside a string
     literal or a comment. None for a language this does not lex (not in CODE_LANGS).
 
-    A small lexer, not a parser: quotes with backslash escapes, Python triple quotes and
-    JavaScript/Go backticks may span lines, other strings end at the line end; `#`, `//`,
-    `--` (Lua) and `/* */` comments follow the language."""
+    A small lexer, not a parser: quotes with backslash escapes, triple quotes and
+    JavaScript/Go backticks may span lines, other strings end at the line end; `#` (Python),
+    `//` and `/* */` comments follow the language."""
     if language not in CODE_LANGS:
         return None
-    hash_comments = language in HASH_COMMENT_LANGS or language == "php"
-    slash_comments = language in SLASH_COMMENT_LANGS or language == "php"
+    hash_comments = language in HASH_COMMENT_LANGS
+    slash_comments = language in SLASH_COMMENT_LANGS
     multiline_quotes = {"`"} if language in {"javascript", "typescript", "tsx", "go"} else set()
-    triple = language == "python"
+    triple = language in TRIPLE_QUOTE_LANGS
     masks: list[list[bool]] = []
     quote: str | None = None  # the open string's delimiter, carried across lines when allowed
     block_comment = False
@@ -237,13 +243,14 @@ def code_masks(text: str, language: str | None) -> list[list[bool]] | None:
                 i += 1
                 continue
             ch = line[i]
-            if (hash_comments and ch == "#") or (slash_comments and line.startswith("//", i)) \
-                    or (language == "lua" and line.startswith("--", i)):
+            if (hash_comments and ch == "#") or (slash_comments and line.startswith("//", i)):
                 for k in range(i, len(line)):
                     mask[k] = False
                 break
             if slash_comments and line.startswith("/*", i):
-                block_comment = True
+                block_comment = True  # the "*" of "/*" never closes it: "/*/" stays open
+                mask[i] = mask[i + 1] = False
+                i += 2
                 continue
             if ch in "\"'`":
                 quote = ch * 3 if triple and line.startswith(ch * 3, i) else ch
