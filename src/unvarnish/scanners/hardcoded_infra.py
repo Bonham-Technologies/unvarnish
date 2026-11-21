@@ -177,6 +177,100 @@ def _free(m: re.Match, taken: list[tuple[int, int]]) -> bool:
     return not any(s <= m.start() < e or s < m.end() <= e for s, e in taken)
 
 
+# Languages where text outside string literals and comments is code, so a bare dotted name
+# ending in an internal TLD there is attribute access, not a hostname (UNVAR-75). Shell,
+# Make, Dockerfiles, HTML and the config languages are left out: a bare hostname in them can
+# be a real one. So are Ruby, Perl, PHP, Lua, R and Elixir: their heredocs, word lists
+# (%w, qw), sigils, long brackets, multi-line strings and PHP's HTML mode would read as code.
+HASH_COMMENT_LANGS = {"python"}
+SLASH_COMMENT_LANGS = {"javascript", "typescript", "tsx", "go", "rust", "java", "kotlin",
+                       "scala", "c_sharp", "swift", "c", "cpp", "objc", "dart", "groovy"}
+CODE_LANGS = HASH_COMMENT_LANGS | SLASH_COMMENT_LANGS
+# Languages whose triple-quoted strings (text blocks, raw and multi-line strings) span lines.
+TRIPLE_QUOTE_LANGS = {"python", "java", "kotlin", "scala", "swift", "c_sharp", "dart", "groovy"}
+# What follows an attribute in an expression: a closing bracket or separator, the end of the
+# line, or an operator. "<", ">", "/" and "-" count only after whitespace, so JSX text such as
+# `db.acme.internal</p>` and a host followed by a path are not taken for code.
+ATTRIBUTE_AFTER_RE = re.compile(
+    r"\s*(?:$|[:)\]},;]|[=!+*%&|^?]+)"
+    r"|\s+(?:(?:and|or|not|in|is|if|else|then|do)\b|[=!<>+\-*/%&|^?]+)")
+
+
+def code_masks(text: str, language: str | None) -> list[list[bool]] | None:
+    """Per line, per character: True where the character is code, False inside a string
+    literal or a comment. None for a language this does not lex (not in CODE_LANGS).
+
+    A small lexer, not a parser: quotes with backslash escapes, triple quotes and
+    JavaScript/Go backticks may span lines, other strings end at the line end; `#` (Python),
+    `//` and `/* */` comments follow the language."""
+    if language not in CODE_LANGS:
+        return None
+    hash_comments = language in HASH_COMMENT_LANGS
+    slash_comments = language in SLASH_COMMENT_LANGS
+    multiline_quotes = {"`"} if language in {"javascript", "typescript", "tsx", "go"} else set()
+    triple = language in TRIPLE_QUOTE_LANGS
+    masks: list[list[bool]] = []
+    quote: str | None = None  # the open string's delimiter, carried across lines when allowed
+    block_comment = False
+    for line in text.split("\n"):
+        mask = [True] * len(line)
+        i = 0
+        if quote and quote not in multiline_quotes and len(quote) == 1:
+            quote = None  # an ordinary string never continues onto the next line
+        while i < len(line):
+            if block_comment:
+                mask[i] = False
+                if line.startswith("*/", i):
+                    mask[i + 1] = False
+                    block_comment = False
+                    i += 2
+                    continue
+                i += 1
+                continue
+            if quote:
+                mask[i] = False
+                if line[i] == "\\":
+                    if i + 1 < len(line):
+                        mask[i + 1] = False
+                    i += 2
+                    continue
+                if line.startswith(quote, i):
+                    for k in range(i, min(i + len(quote), len(line))):
+                        mask[k] = False
+                    i += len(quote)
+                    quote = None
+                    continue
+                i += 1
+                continue
+            ch = line[i]
+            if (hash_comments and ch == "#") or (slash_comments and line.startswith("//", i)):
+                for k in range(i, len(line)):
+                    mask[k] = False
+                break
+            if slash_comments and line.startswith("/*", i):
+                block_comment = True  # the "*" of "/*" never closes it: "/*/" stays open
+                mask[i] = mask[i + 1] = False
+                i += 2
+                continue
+            if ch in "\"'`":
+                quote = ch * 3 if triple and line.startswith(ch * 3, i) else ch
+                for k in range(i, min(i + len(quote), len(line))):
+                    mask[k] = False
+                i += len(quote)
+                continue
+            i += 1
+        masks.append(mask)
+    return masks
+
+
+def _attribute_access(m: re.Match, line: str, mask: list[bool] | None) -> bool:
+    """A dotted name in code (outside strings and comments) used as an expression: followed by
+    a colon, a closing bracket, a separator, an operator or the end of the line."""
+    if mask is None or not all(mask[m.start():m.end()]):
+        return False
+    return bool(ATTRIBUTE_AFTER_RE.match(line, m.end()))
+
+
 def _code_not_host(m: re.Match, line: str) -> bool:
     """A dotted name ending in .local/.internal that is really code: an import, a namespace,
     an attribute call like threading.local(), or a module path like settings.local.x."""
@@ -297,8 +391,11 @@ def find_infra(text: str, path: str = "",
     container = _is_container_file(name, language)
     web = language in WEB_LANGUAGES
     out: list[tuple[str, str, int]] = []
-    for n, line in enumerate(text.split("\n"), start=1):
-        line = mask_userinfo(line[:MAX_LINE_CHARS])
+    lines = [mask_userinfo(line[:MAX_LINE_CHARS]) for line in text.split("\n")]
+    # Lexing costs a pass per character, so only files with an internal-TLD candidate pay it.
+    masks = code_masks("\n".join(lines), language) if TLD_RE.search(text) else None
+    for n, line in enumerate(lines, start=1):
+        mask = masks[n - 1] if masks is not None else None
         taken: list[tuple[int, int]] = []
         # Schema declarations name identifiers, and URLs in comments are documentation links.
         schema_line = bool(SCHEMA_DECLARATION_RE.search(line) or COMMENT_LINE_RE.match(line))
@@ -314,7 +411,7 @@ def find_infra(text: str, path: str = "",
         for m in iter_hosts(line):
             if _free(m, taken):
                 taken.append((m.start(), m.end()))
-                if not _code_not_host(m, line):
+                if not (_code_not_host(m, line) or _attribute_access(m, line, mask)):
                     out.append(("host", m.group(0).lower(), n))
         for m in IP_RE.finditer(line):
             if _free(m, taken):
