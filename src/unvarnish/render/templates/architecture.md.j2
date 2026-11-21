@@ -75,11 +75,15 @@
 
 ## 4. Module map and interactions
 
+{% if module_mermaid %}
 <!-- unvarnish-diagram: modules -->
 ```mermaid
 {{ module_mermaid }}
 ```
-{% if module_diagram_note %}
+{% else %}
+No module map was identified, so there is no diagram of how the files depend on each other.
+{% endif %}
+{% if module_mermaid and module_diagram_note %}
 
 {{ module_diagram_note }}
 {% endif %}

@@ -8,6 +8,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Architecture document without a module map
+
+- When the tool model has no module map, `architecture.md` now says in one sentence that none
+  was identified instead of printing a Mermaid block containing `None`, and the HTML, DOCX and
+  PDF exports carry no blank module-map image (UNVAR-77).
+
 ### unvarnish.com in the new Bonham Technologies design system
 
 - The product site is rebuilt on the design system bonham.tech now uses: a light Daylight
