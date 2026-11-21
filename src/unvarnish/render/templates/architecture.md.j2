@@ -123,7 +123,7 @@
 {% prose "deployment" %}{{ "" }}
 
 {% for a in tm.deployment_assumptions | cap %}
-- {{ a | cell }}
+- {{ a | cell | inert_block }}
 {% else %}
 - No deployment assumptions were identified in the code.
 {% endfor %}

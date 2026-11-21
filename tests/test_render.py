@@ -206,6 +206,8 @@ def test_inert_block_neutralises_every_block_opener():
     assert inert_block("one\n\n## two\n\nthree") == "one\n\n\\## two\n\nthree"
     assert inert_block(None) == "" and inert_block("#hashtag and 3 files") == \
         "#hashtag and 3 files"
+    assert inert_block("<!-- x") == "\\<!-- x"
+    assert inert_block("[a\\]b]: http://x") == "\\[a\\]b]: http://x"
 
 
 def test_prose_cannot_open_a_section_heading():
@@ -218,3 +220,20 @@ def test_prose_cannot_open_a_section_heading():
     assert cap_headings("Title\n===\n") == "Title\n\\===\n"
     assert cap_headings("Title\n---") == "Title\n\\---"
     assert cap_headings("Plain prose.") == "Plain prose."
+    assert cap_headings("- ## Fake\n> # Fake\n1. ## Fake") == \
+        "- \\## Fake\n> \\# Fake\n1. \\## Fake"
+    assert cap_headings("Fake\n-") == "Fake\n\\-"
+    assert cap_headings("> Fake\n> ---") == "> Fake\n> \\---"
+    assert cap_headings("<!--\nhidden") == "\\<!--\nhidden"
+
+
+def test_model_list_items_cannot_open_a_block():
+    """UNVAR-76: a template list item filled with `cell` also goes through `inert_block`."""
+    import re
+    from pathlib import Path
+
+    templates = Path(__file__).parent.parent / "src/unvarnish/render/templates"
+    bare = [f"{p.name}:{n}" for p in sorted(templates.glob("*.md.j2"))
+            for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+            if re.match(r"\s*- \{\{[^}]*\| cell \}\}\s*$", line)]
+    assert bare == []

@@ -102,7 +102,7 @@ No capability matrix{% if cmp.skipped_reason %} ({{ cmp.skipped_reason }}){% end
 ### Conflicts with the constraints
 
 {% for c in cmp.consolidation.constraint_conflicts %}
-- {{ c | cell }}
+- {{ c | cell | inert_block }}
 {% else %}
 - None found.
 {% endfor %}
@@ -111,7 +111,7 @@ No capability matrix{% if cmp.skipped_reason %} ({{ cmp.skipped_reason }}){% end
 ### Union of capabilities
 
 {% for c in cmp.consolidation.union_capabilities %}
-- {{ c | cell }}
+- {{ c | cell | inert_block }}
 {% else %}
 - None listed.
 {% endfor %}
@@ -139,7 +139,7 @@ No capability matrix{% if cmp.skipped_reason %} ({{ cmp.skipped_reason }}){% end
 ### Gaps and conflicts
 
 {% for g in cmp.consolidation.gaps %}
-- {{ g | cell }}
+- {{ g | cell | inert_block }}
 {% else %}
 - None listed.
 {% endfor %}
@@ -147,7 +147,7 @@ No capability matrix{% if cmp.skipped_reason %} ({{ cmp.skipped_reason }}){% end
 ### Open questions
 
 {% for q in cmp.consolidation.open_questions %}
-- {{ q | cell }}
+- {{ q | cell | inert_block }}
 {% else %}
 - None listed.
 {% endfor %}

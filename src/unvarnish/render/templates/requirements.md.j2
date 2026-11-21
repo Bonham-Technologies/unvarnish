@@ -76,7 +76,7 @@
 Raised directly by the analysis:
 
 {% for q in req.open_questions | cap %}
-- {{ q | cell }}
+- {{ q | cell | inert_block }}
 {% endfor %}
 {% if more(req.open_questions) %}
 

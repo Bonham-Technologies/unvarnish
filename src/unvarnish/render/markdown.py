@@ -84,12 +84,18 @@ def cell(v: object) -> str:
 # A line that would open a block: an ATX heading, a blockquote, a bullet, a fence, a table row,
 # a link reference or footnote definition. Ordered-list markers are handled apart (the
 # backslash goes before their "." or ")").
-BLOCK_START_RE = re.compile(r"(?:#{1,6}(?=\s|$)|>|[-*+](?=\s|$)|`{3,}|~{3,}|\||\[[^\]]*\]:)")
+BLOCK_START_RE = re.compile(r"(?:#{1,6}(?=\s|$)|>|[-*+](?=\s|$)|`{3,}|~{3,}|\||<[!?/A-Za-z]"
+                            r"|\[(?:\\.|[^\]\\])*\]:)")
 ORDERED_RE = re.compile(r"(\d{1,9})([.)])(?=\s|$)")
 # A thematic break, a setext underline, or a table delimiter row.
 RULE_LINE_RE = re.compile(r"(?:[-*_](?:\s*[-*_]){2,}|=+|-+|[\s|:-]*-[\s|:-]*\|[\s|:-]*"
                           r"|[\s|:-]*\|[\s|:-]*-[\s|:-]*)\s*$")
 ATX_RE = re.compile(r"(#{1,6})(?=\s|$)")
+# An HTML block opener: a comment, <pre> or <script> block runs on past the template's next
+# heading. inert-html.lua shows raw HTML as text anyway, so escaping it loses nothing.
+HTML_START_RE = re.compile(r"<[!?/A-Za-z]")
+# Blockquote and list markers a heading can sit behind inside a prose block.
+CONTAINER_RE = re.compile(r"\s*(?:>|[-*+](?=\s|$)|\d{1,9}[.)](?=\s|$))\s?")
 
 
 def inert_block(v: object) -> str:
@@ -117,16 +123,23 @@ def inert_block(v: object) -> str:
 def cap_headings(text: str, top: int = 3) -> str:
     """Prose with every heading above level `top` made literal, so a model-written block
     cannot open a section of the document's own outline (UNVAR-76). Deeper headings, lists
-    and the rest of the Markdown are left alone."""
+    and the rest of the Markdown are left alone. A heading inside a list item or blockquote
+    counts too, so container markers are looked through."""
     out: list[str] = []
     prev = ""
     for raw in text.splitlines():
-        line = raw.lstrip()
-        atx = ATX_RE.match(line)
-        if atx and len(atx.group(1)) < top:
-            raw = "\\" + line
-        elif prev.strip() and re.fullmatch(r"\s*(?:=+|-+)\s*", raw):
-            raw = "\\" + line  # a setext underline would make the line above a heading
+        body = raw
+        while True:  # check each level: the line itself, then inside each container marker
+            line = body.lstrip()
+            atx = ATX_RE.match(line)
+            if (atx and len(atx.group(1)) < top) or HTML_START_RE.match(line) or (
+                    prev.strip() and re.fullmatch(r"(?:=+|-+)\s*", line)):
+                raw = raw[: len(raw) - len(line)] + "\\" + line  # setext: line above
+                break
+            m = CONTAINER_RE.match(body)
+            if m is None:
+                break
+            body = body[m.end():]
         out.append(raw)
         prev = raw
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
