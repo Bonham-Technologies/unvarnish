@@ -1299,6 +1299,20 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   *Cost if wrong:* none beyond re-adding an entry; whole-token fixtures are still built from
   fragments (UNVAR-36).
 
+## Attribute access is not a hostname (UNVAR-75)
+
+- **In code, a dotted name ending in an internal TLD is a hostname only inside a string or a
+  comment, or where it is not used as an expression.** A small per-file lexer
+  (`code_masks` in `scanners/hardcoded_infra.py`) marks strings (escapes, Python triple
+  quotes and JavaScript/Go backticks across lines) and comments (`#`, `//`, `/* */`, Lua
+  `--`) for the languages in `CODE_LANGS`. A match wholly in code and followed by a colon, a
+  closing bracket, a separator, an operator or the end of the line is attribute access and is
+  dropped. Shell, Make, Dockerfiles, HTML, Vue and Svelte templates, and the config languages
+  are not lexed, because a bare hostname in them can be real; a file with no internal-TLD
+  candidate is not lexed at all. *Cost if wrong:* a real hostname written bare in code (a
+  syntax error in every lexed language, so only in a broken file) is missed, and a string the
+  lexer misreads (a raw-string or heredoc form it does not know) can hide a host on that line.
+
 ## Temperature on the Anthropic backend (UNVAR-69)
 
 - **`CompletionRequest.temperature` is honoured by the OpenAI-compatible backend only.** The
