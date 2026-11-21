@@ -1299,6 +1299,21 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   *Cost if wrong:* none beyond re-adding an entry; whole-token fixtures are still built from
   fragments (UNVAR-36).
 
+## Model text is inline Markdown only (UNVAR-76)
+
+- **Model-written fields in paragraph slots go through `inert_block`; prose blocks go through
+  `cap_headings`.** The vetted code is untrusted and can steer the model, and the templates
+  render with `autoescape=False`, so a summary could add a heading or a whole fake finding
+  block. `inert_block` strips each line's indentation and puts a backslash before any block
+  opener (ATX heading, blockquote, bullet or ordered marker, fence, table row or delimiter
+  row, thematic break, setext underline, link reference or footnote definition); inline
+  emphasis, code spans and links still render, and HTML stays with `inert-html.lua`. Prose
+  blocks keep lists and `###` and deeper headings, but a `#` or `##` heading or a setext
+  underline is made literal, because every prose block sits under a `##` section. Scanner
+  findings pass through the same filter, which leaves their single-paragraph text unchanged.
+  *Cost if wrong:* a model that answers with a legitimate list in a finding's remediation now
+  shows it as lines with visible markers instead of a list.
+
 ## Temperature on the Anthropic backend (UNVAR-69)
 
 - **`CompletionRequest.temperature` is honoured by the OpenAI-compatible backend only.** The

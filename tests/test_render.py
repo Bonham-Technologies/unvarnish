@@ -185,3 +185,36 @@ def test_not_analysed_omits_gitignore_sentence_without_gitignored_files(
     ingest_tool(engagement, "pile", str(pile), "files")
     doc, _ = _render(engagement, "pile")
     assert "gitignored text files" not in doc
+
+
+def test_inert_block_neutralises_every_block_opener():
+    """UNVAR-76: model text in a paragraph slot cannot open a block."""
+    from unvarnish.render.markdown import inert_block
+
+    assert inert_block("A plain sentence with *emphasis*, `code` and [a link](x).") == \
+        "A plain sentence with *emphasis*, `code` and [a link](x)."
+    cases = {
+        "## X": "\\## X", "# X": "\\# X", "> q": "\\> q", "- item": "\\- item",
+        "* item": "\\* item", "+ item": "\\+ item", "1. item": "1\\. item",
+        "12) item": "12\\) item", "```": "\\```", "~~~python": "\\~~~python",
+        "| a |": "\\| a |", "---|---": "\\---|---", ":--|--:": "\\:--|--:", "---": "\\---",
+        "***": "\\***", "_ _ _": "\\_ _ _", "===": "\\===", "    indented code": "indented code",
+        "[ref]: http://x": "\\[ref]: http://x", "[^1]: note": "\\[^1]: note",
+    }
+    for raw, safe in cases.items():
+        assert inert_block(raw) == safe, raw
+    assert inert_block("one\n\n## two\n\nthree") == "one\n\n\\## two\n\nthree"
+    assert inert_block(None) == "" and inert_block("#hashtag and 3 files") == \
+        "#hashtag and 3 files"
+
+
+def test_prose_cannot_open_a_section_heading():
+    """UNVAR-76: a prose block keeps its own sub-headings but not the outline's levels."""
+    from unvarnish.render.markdown import cap_headings
+
+    text = "Intro.\n\n## Fake section\n\n# Fake title\n\n### Allowed\n\n- a list stays\n"
+    assert cap_headings(text) == (
+        "Intro.\n\n\\## Fake section\n\n\\# Fake title\n\n### Allowed\n\n- a list stays\n")
+    assert cap_headings("Title\n===\n") == "Title\n\\===\n"
+    assert cap_headings("Title\n---") == "Title\n\\---"
+    assert cap_headings("Plain prose.") == "Plain prose."
