@@ -15,6 +15,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   shows the failure instead of "never", and the error names the server's base URL and
   suggests `unvarnish config check` (UNVAR-78).
 
+### Architecture document without a module map
+
+- When the tool model has no module map, `architecture.md` now says in one sentence that none
+  was identified instead of printing a Mermaid block containing `None`, and the HTML, DOCX and
+  PDF exports carry no blank module-map image (UNVAR-77).
+
 ### Attribute access is not a hostname
 
 - The hardcoded-infrastructure scanner no longer reports code such as `if g.internal:`,
