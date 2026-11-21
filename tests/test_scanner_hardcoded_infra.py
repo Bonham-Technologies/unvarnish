@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from tests.conftest import LEAKED_DB_URL
 from unvarnish.artifacts import read_artifact
 from unvarnish.phases.base import PhaseRunner, PhaseStatus, build_context
@@ -212,3 +214,63 @@ def test_package_metadata_urls_are_not_infrastructure():
     assert len(urls(ISSUE_CONFIG, "deploy/config.yml")) == 1
     assert len(urls(ISSUE_CONFIG, "foo.github/ISSUE_TEMPLATE/config.yml")) == 1
     assert len(urls(ISSUE_CONFIG, ".github/ISSUE_TEMPLATE/fetch.py")) == 1
+
+
+ATTRIBUTE_ACCESS_LINES = [
+    ("tool.py", "python", "if g.internal:"),
+    ("tool.py", "python", "    return [n for n in g.nodes if n.local]"),
+    ("tool.py", "python", "pair = (cfg.internal, cfg.corp)"),
+    ("tool.py", "python", "ok = user.private and opts.local"),
+    ("tool.ts", "typescript", "const x = net.lan;"),
+    ("tool.ts", "typescript", "if (a.internal || b.corp) { go(c.local) }"),
+    ("tool.go", "go", "return cfg.private == nil"),
+]
+
+
+@pytest.mark.parametrize(("path", "language", "line"), ATTRIBUTE_ACCESS_LINES)
+def test_attribute_access_in_code_is_not_a_hostname(path, language, line):
+    """UNVAR-75: `if g.internal:` is code, not a hardcoded internal hostname."""
+    assert [f for f in find_infra(line, path, language) if f[0] == "host"] == []
+
+
+def test_attribute_access_lines_together_yield_no_hosts():
+    py = "\n".join(line for _, lang, line in ATTRIBUTE_ACCESS_LINES if lang == "python")
+    assert find_infra(py, "tool.py", "python") == []
+    assert find_infra("export const v = net.lan;\n", "tool.ts", "typescript") == []
+
+
+@pytest.mark.parametrize(("path", "language", "text", "expected"), [
+    ("tool.py", "python", 'host = "db.acme.internal"', "db.acme.internal"),
+    ("tool.py", "python", "host = 'db.acme.internal'", "db.acme.internal"),
+    ("tool.ts", "typescript", "const h = `db.acme.internal`;", "db.acme.internal"),
+    ("tool.py", "python", '"""Talks to\nbuild.corp, the CI box."""', "build.corp"),
+    ("tool.py", "python", "x = 1  # the old box was db.acme.internal", "db.acme.internal"),
+    ("tool.ts", "typescript", "go(); // see build.corp", "build.corp"),
+    ("deploy.yaml", "yaml", "host: db.acme.internal", "db.acme.internal"),
+    ("settings.ini", "ini", "host = db.acme.internal", "db.acme.internal"),
+    (".env", "dotenv", "DB_HOST=db.acme.internal", "db.acme.internal"),
+    ("run.sh", "bash", "ssh build.corp", "build.corp"),
+])
+def test_hostnames_in_strings_comments_and_config_are_still_reported(path, language, text,
+                                                                     expected):
+    hosts = [f[1] for f in find_infra(text, path, language) if f[0] == "host"]
+    assert hosts == [expected]
+
+
+@pytest.mark.parametrize(("path", "language", "text", "expected"), [
+    ("Config.kt", "kotlin", 'val cfg = """\n  host: db.acme.internal\n"""', "db.acme.internal"),
+    ("Config.java", "java", 'String s = """\n    db.acme.internal,\n    """;',
+     "db.acme.internal"),
+    ("Jenkinsfile", "groovy", "sh '''\n  ssh build.corp\n'''", "build.corp"),
+    ("tool.c", "c", "/*/ the old box\nbuild.corp;\n*/", "build.corp"),
+    ("config.rb", "ruby", "cfg = <<~EOS\n  host: db.acme.internal\nEOS", "db.acme.internal"),
+    ("hosts.rb", "ruby", "HOSTS = %w[build.corp]", "build.corp"),
+    ("hosts.lua", "lua", "--[[ hosts\n db.acme.internal,\n]]", "db.acme.internal"),
+    ("page.php", "php", "<?php ?>\n<a>db.acme.internal</a>", "db.acme.internal"),
+    ("App.jsx", "javascript", "return <p>Use db.acme.internal</p>", "db.acme.internal"),
+])
+def test_multiline_strings_heredocs_and_markup_still_report_hosts(path, language, text,
+                                                                  expected):
+    """UNVAR-75 review: text the lexer would misread as code still reports its hostname."""
+    hosts = [f[1] for f in find_infra(text, path, language) if f[0] == "host"]
+    assert hosts == [expected]

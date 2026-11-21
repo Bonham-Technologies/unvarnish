@@ -8,6 +8,14 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Attribute access is not a hostname
+
+- The hardcoded-infrastructure scanner no longer reports code such as `if g.internal:`,
+  `user.private and opts.local` or `net.lan;` as internal hostnames. In Python, JavaScript,
+  TypeScript, Go and the other languages it lexes, a dotted name outside strings and comments
+  that is used as an expression is code; hostnames in strings, comments, config files and
+  shell scripts are still reported (UNVAR-75).
+
 ### unvarnish.com in the new Bonham Technologies design system
 
 - The product site is rebuilt on the design system bonham.tech now uses: a light Daylight
