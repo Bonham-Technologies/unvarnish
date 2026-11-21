@@ -1299,6 +1299,17 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   *Cost if wrong:* none beyond re-adding an entry; whole-token fixtures are still built from
   fragments (UNVAR-36).
 
+## A backend outage is recorded as one (UNVAR-78)
+
+- **`ExtractState.backend_unreachable` is a new field, separate from `stopped_for_budget`.**
+  A `BackendUnavailable` (connection refused, bad key, server errors after retries) sets it,
+  and the phase stays stale, so a rerun resumes as after a budget stop. Older states read it
+  as false. When a fatal backend error stops a tool, `PhaseRunner` attaches the results so far
+  to the exception and `run` records them, so `status` shows the failed phase. The error names
+  the base URL with any user info and query removed (`display_url`). *Cost if wrong:* a state
+  written by this version and read by an older one ignores the new field and shows neither
+  reason; an outage in a later phase still shows only through "last run".
+
 ## Attribute access is not a hostname (UNVAR-75)
 
 - **In code, a dotted name ending in an internal TLD is a hostname only inside a string or a

@@ -58,6 +58,23 @@ class BackendUnavailable(BackendError):
     fatal = True
 
 
+def display_url(url: str | None) -> str:
+    """A base URL safe to print: scheme, host, port and path, never user info or a query."""
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url or "")
+        host = parts.hostname or ""
+        port = f":{parts.port}" if parts.port is not None else ""
+    except ValueError:
+        return "(unparseable URL)"
+    if not parts.scheme or not host:
+        return "(unparseable URL)"
+    if ":" in host:  # an IPv6 literal keeps its brackets
+        host = f"[{host}]"
+    return f"{parts.scheme}://{host}{port}{parts.path}".rstrip("/")
+
+
 log = logging.getLogger("unvarnish.model")
 
 
