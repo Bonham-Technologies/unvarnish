@@ -12,6 +12,7 @@ from unvarnish.model.registry import resolve_model_ref
 from unvarnish.phases.base import PhaseResult, PhaseStatus, ToolContext
 from unvarnish.schemas.analysis import SkippedFile, Unit, UnitsIndex
 from unvarnish.schemas.inventory import Census, FileRecord
+from unvarnish.util.plural import plural
 
 log = logging.getLogger("unvarnish.split")
 
@@ -92,9 +93,10 @@ class SplitPhase:
         units, modules, skipped = index.units, index.modules, index.skipped
         write_artifact(ctx.paths.units_index, index, produced_by=self.name,
                        inputs_hash=self.inputs_hash(ctx))
-        log.info("split %s: %d units across %d files (%d skipped)", ctx.tool, len(units),
-                 len(modules), len(skipped))
+        log.info("split %s: %s across %s (%d skipped)", ctx.tool, plural(len(units), "unit"),
+                 plural(len(modules), "file"), len(skipped))
         return PhaseResult(
             phase=self.name, status=PhaseStatus.ok, failures=failures,
-            message=f"{len(units)} units in {len(modules)} files, {len(skipped)} skipped",
+            message=(f"{plural(len(units), 'unit')} in {plural(len(modules), 'file')}, "
+                     f"{len(skipped)} skipped"),
         )

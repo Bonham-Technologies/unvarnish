@@ -197,7 +197,7 @@ class InventoryPhase:
                                     advisories=advisories, advisories_note=note,
                                     eol_data_date=eol_date),
                        produced_by=self.name, inputs_hash=h)
-        message = f"{totals.files} files, {len(metrics)} measured"
+        message = f"{plural(totals.files, 'file')}, {len(metrics)} measured"
         if gaps:
             message += f"; no tree-sitter grammar for {', '.join(gaps)}"
         return PhaseResult(phase=self.name, status=PhaseStatus.ok, failures=failures,

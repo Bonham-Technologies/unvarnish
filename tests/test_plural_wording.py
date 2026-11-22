@@ -112,3 +112,78 @@ def test_export_all_failed_message_agrees(engagement, synthetic_repo, monkeypatc
     r = runner.invoke(cli.app, ["export", "-e", str(engagement.root)], env={"COLUMNS": "400"})
     assert r.exit_code == 1
     assert expected in r.output and "All 1 " not in r.output
+
+
+# ---------------------------------------------------------------- phase lines (UNVAR-81)
+
+ONE_PLURAL = re.compile(
+    r"(?<![\d,.])1 (commits|files|units|tools|capabilities|findings|modules|scanners|docs"
+    r"|chunks|documents)\b")
+
+
+def _one_file_repo(root: Path) -> Path:
+    import subprocess
+
+    root.mkdir()
+    (root / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+    env = {"GIT_AUTHOR_NAME": "A", "GIT_AUTHOR_EMAIL": "a@example.com",
+           "GIT_COMMITTER_NAME": "A", "GIT_COMMITTER_EMAIL": "a@example.com",
+           "PATH": __import__("os").environ["PATH"], "HOME": str(root)}
+    for args in (["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q", "-m", "one"]):
+        subprocess.run(["git", *args], cwd=root, env=env, check=True)
+    return root
+
+
+def test_one_commit_one_file_tool_reads_in_the_singular(tmp_path, fake_llm):
+    # UNVAR-81: UNVAR-68 fixed the console and error messages but the phase lines and status
+    # cells still said "1 commits", "1 files", "1 units in 1 files" and "1 docs".
+    from typer.testing import CliRunner
+
+    from tests.conftest import model_config
+    from unvarnish.cli import app
+    from unvarnish.config import EngagementConfig
+    from unvarnish.engagement import Engagement
+
+    eng = Engagement.create(tmp_path / "acme", client="Acme")
+    eng.config = EngagementConfig.model_validate({**eng.config.model_dump(),
+                                                  **model_config(fake_llm)})
+    eng.save_config()
+    fake_llm.autofill = True
+    repo = _one_file_repo(tmp_path / "one")
+    runner = CliRunner()
+    wide = {"COLUMNS": "400"}
+    added = runner.invoke(app, ["add", "one", "--repo", str(repo), "-e", str(eng.root)])
+    assert added.exit_code == 0, added.output
+    out = runner.invoke(app, ["run", "-e", str(eng.root)], env=wide)
+    assert out.exit_code == 0, out.output
+    assert re.search(r"\b1 commit\b", out.output) and re.search(r"\b1 file\b", out.output)
+    assert "1 unit in 1 file" in out.output
+    compared = runner.invoke(app, ["compare", "-e", str(eng.root)], env=wide)
+    status = runner.invoke(app, ["status", "-e", str(eng.root)], env=wide)
+    assert status.exit_code == 0, status.output
+    text = "\n".join((out.output, compared.output, status.output))
+    assert not ONE_PLURAL.search(text), ONE_PLURAL.findall(text)
+
+
+def test_phase_messages_and_status_cells_use_plural():
+    # Every count in a phase message or a status cell goes through util.plural, so a count of
+    # one reads in the singular whatever the data (UNVAR-81).
+    nouns = "commits|files|units|tools|capabilities|findings|modules|scanners|docs|chunks"
+    pattern = re.compile(r"\{[^{}]*\}(?:/\{[^{}]*\})? (" + nouns + r"|documents)\b")
+    files = [*(SRC / "phases").glob("*.py"), SRC / "cli.py", SRC / "model" / "estimate.py",
+             SRC / "scanners" / "bus_factor.py", SRC / "scanners" / "vendored_bulk.py"]
+    hits = [f"{p.relative_to(SRC)}:{i}" for p in files
+            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+            if pattern.search(line)]
+    assert hits == []
+
+
+@pytest.mark.parametrize(("routes", "verb", "pronoun"), [(1, "has", "it"), (2, "have", "them")])
+def test_route_handler_sentence_agrees_in_number(routes, verb, pronoun):
+    from types import SimpleNamespace
+
+    from unvarnish.scanners.client_exposure import _routes_summary
+
+    text = _routes_summary([SimpleNamespace(path="a.js")] * routes, 25)
+    assert f" {verb} no authentication identifier" in text
+    assert f"near {pronoun}." in text
