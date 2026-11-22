@@ -90,7 +90,7 @@
                     <h3>Run it</h3>
                     <p>This run had no model configured, so the four model phases were
                         skipped and the findings document comes from the deterministic scanners
-                        alone. The whole run took about twelve seconds.</p>
+                        alone. The whole run took about ten seconds.</p>
                     <pre class="term" tabindex="0"><code><span class="prompt">$</span> unvarnish run
 <span class="out">[11/22/26 10:06:34] INFO     split nodegoat: 106 units across 85 files (0 skipped)</span>
 <span class="out">                    INFO     render nodegoat: wrote findings.md</span>
@@ -217,9 +217,9 @@ Private key material found in artifacts/cert/server.key. The value is redacted h
                     the run; without that data the end-of-life check is reported as not run. The
                     Docker image bundles all three.</li>
                 <li>One medium finding is a heuristic: it lists route handlers with no
-                    authentication identifier nearby, and here it includes routes guarded by
-                    NodeGoat's <code>isLoggedIn</code> middleware. With a model configured,
-                    extraction is asked to confirm each one.</li>
+                    authentication identifier nearby, here the two routes that serve NodeGoat's
+                    tutorial pages. With a model configured, extraction is asked to confirm
+                    each one.</li>
                 <li>NodeGoat is meant to be insecure. These findings describe a training
                     application, not a product anyone runs in production.</li>
             </ul>
