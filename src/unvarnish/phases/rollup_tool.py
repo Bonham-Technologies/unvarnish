@@ -41,6 +41,7 @@ from unvarnish.schemas.toolmodel import (
     ToolRollup,
     capability_id,
 )
+from unvarnish.util.plural import plural
 
 log = logging.getLogger("unvarnish.rollup_tool")
 MODULE_MAP_CAP = 60
@@ -414,9 +415,11 @@ class RollupToolPhase:
         write_artifact(ctx.paths.capabilities, requirements_inventory(tm), produced_by=self.name,
                        inputs_hash=h)
         self._finish(ctx, backend, usage, failures)
-        how = (f"hierarchical, {tm.chunks}/{tm.chunks_attempted} chunks" if tm.hierarchical
+        chunks = plural(tm.chunks_attempted, "chunk")
+        how = (f"hierarchical, {tm.chunks}/{chunks}" if tm.hierarchical
                else "single pass")
-        msg = (f"{len(tm.capabilities)} capabilities, {len(tm.findings)} findings, {how}, "
+        msg = (f"{plural(len(tm.capabilities), 'capability')}, "
+               f"{plural(len(tm.findings), 'finding')}, {how}, "
                f"{usage.total():,} tokens")
         log.info("rollup_tool %s: %s", ctx.tool, msg)
         return PhaseResult(phase=self.name, status=PhaseStatus.ok, message=msg,

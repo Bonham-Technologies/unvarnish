@@ -234,6 +234,19 @@ class _Scan:
     supabase_sql: bool = False
 
 
+def _routes_summary(routes: list, max_shown: int) -> str:
+    """The unauthenticated-routes summary, in the singular for one handler (UNVAR-81)."""
+    n, files = len(routes), len({r.path for r in routes})
+    one = n == 1
+    shown = f" Showing the first {max_shown}." if n > max_shown else ""
+    return (f"{plural(n, 'route handler')} in {plural(files, 'file')} "
+            f"{'has' if one else 'have'} no authentication identifier (auth, session, jwt, "
+            f"current user, guard) near {'it' if one else 'them'}. This is a heuristic for "
+            f"review: middleware or a wrapper elsewhere may protect {'it' if one else 'them'}. "
+            f"Model extraction, when configured, is asked to confirm "
+            f"{'it' if one else 'each one'}.{shown}")
+
+
 class ClientExposureScanner:
     name = NAME
     category = Category.security
@@ -547,16 +560,10 @@ class ClientExposureScanner:
                 "the app is used further; the anon key itself is meant to be public.",
                 s.anon_keys, [f"{NAME}:anon_open"]))
         if s.routes:
-            files = len({r.path for r in s.routes})
-            shown = (f" Showing the first {self._max}." if len(s.routes) > self._max else "")
             out.append(self._finding(
                 "unauthenticated_routes", Severity.medium,
                 "Route handlers with no authentication check nearby",
-                f"{plural(len(s.routes), 'route handler')} in {plural(files, 'file')} "
-                f"{'has' if len(s.routes) == 1 else 'have'} no authentication "
-                "identifier (auth, session, jwt, current user, guard) near them. This is a "
-                "heuristic for review: middleware or a wrapper elsewhere may protect them. "
-                f"Model extraction, when configured, is asked to confirm each one.{shown}",
+                _routes_summary(s.routes, self._max),
                 "An unprotected handler that reads or changes data exposes it to anyone who "
                 "can reach the server.",
                 "Confirm each handler is protected; add authentication middleware or an "

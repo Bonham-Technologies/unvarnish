@@ -15,6 +15,7 @@ from unvarnish.schemas.analysis import UnitResult, UnitsIndex
 from unvarnish.schemas.cost import Usage
 from unvarnish.schemas.finding import Severity
 from unvarnish.schemas.rollup import Module
+from unvarnish.util.plural import plural
 
 MODEL_PHASES = ("extract", "rollup_modules", "rollup_tool", "verify", "render")
 
@@ -183,23 +184,23 @@ def estimate_phase(ctx: ToolContext, phase: str,
     """Token estimate and a short note for one model phase, or None when not estimable yet."""
     if phase == "render":
         n = tool_prose_block_count(make_env(template_override_dirs(ctx)))
-        return estimate_render(n), f"{n} prose blocks"
+        return estimate_render(n), plural(n, "prose block")
     if phase == "verify":
         n = count_high_findings(ctx)
-        return estimate_verify(n), f"{n} high/critical model findings recorded so far"
+        return estimate_verify(n), f"{plural(n, 'high/critical model finding')} recorded so far"
     if index is None:
         return None
     if phase == "extract":
         done = extracted_units(ctx, index)
         remaining = sum(1 for u in index.units if u.id not in done)
         return (estimate_extract(index, done, cached_system=_caches(ctx, phase)),
-                f"{remaining} of {len(index.units)} units new or changed")
+                f"{remaining} of {plural(len(index.units), 'unit')} new or changed")
     if phase == "rollup_modules":
         single = ctx.config.pipeline.rollup_single_unit_modules
         called = sum(1 for ids in index.modules.values() if single or len(ids) > 1)
         return (estimate_rollup_modules(index, single_unit_calls=single),
-                f"{called} of {len(index.modules)} modules need a model call")
+                f"{called} of {plural(len(index.modules), 'module')} need a model call")
     if phase == "rollup_tool":
         return (estimate_rollup_tool(len(index.modules), ctx.config.pipeline.rollup_input_tokens),
-                f"{len(index.modules)} module digests")
+                plural(len(index.modules), "module digest"))
     return None

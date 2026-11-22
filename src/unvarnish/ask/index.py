@@ -15,6 +15,7 @@ from unvarnish.schemas.rollup import Module
 from unvarnish.schemas.scan import ScannerFindings
 from unvarnish.schemas.toolmodel import RequirementsInventory, ToolModel
 from unvarnish.schemas.verify import ModelFindings
+from unvarnish.util.plural import plural
 
 log = logging.getLogger("unvarnish.ask")
 SNIPPET_CHARS = 240
@@ -152,5 +153,5 @@ def load_or_build_index(eng: Engagement) -> tuple[AskIndex, bool]:
             log.warning("ask index unreadable; rebuilding")
     index = build_index(eng)
     write_artifact(eng.index_file, index, produced_by="ask", inputs_hash=current)
-    log.info("ask index built: %d documents", len(index.docs))
+    log.info("ask index built: %s", plural(len(index.docs), "document"))
     return index, True

@@ -14,6 +14,20 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   published sample has the plural wording, the HTML main landmark, row headers and author
   metadata, and a tagged PDF; `tests/test_site.py` checks for each (UNVAR-79).
 
+### One commit, one file, one unit
+
+- Phase lines, `status` cells, the run log and `ask`'s index line now say "1 commit",
+  "1 file", "1 unit in 1 file", "1 doc" and so on instead of "1 commits"; the route-handler
+  finding says "has ... near it" for a single handler. Scans rerun once to pick up the new
+  text (UNVAR-81).
+
+### A repeated value on one line is one piece of evidence
+
+- The hardcoded-infrastructure scanner lists a value once per line, so an href and its link
+  text no longer give two identical evidence rows that use up the evidence cap, and the
+  "N locations" count is the number of distinct file lines. Finding ids do not change
+  (UNVAR-82).
+
 ### Model-written text stays inside its paragraph
 
 - A finding's summary, impact, remediation, effort note and verifier note can no longer start
