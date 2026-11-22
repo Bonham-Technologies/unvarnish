@@ -16,8 +16,8 @@ from unvarnish.schemas.scan import ScannerFindings, SkippedScanner
 
 # Bump when scanner summaries, notes or detection rules change, so a scan written by an
 # earlier version reruns once (deterministic, no model calls) instead of rendering the old
-# text or findings (UNVAR-57, UNVAR-67).
-SCANNER_TEXT_VERSION = "2026-11-16.1"
+# text or findings (UNVAR-57, UNVAR-67, UNVAR-82).
+SCANNER_TEXT_VERSION = "2026-11-22.2"
 
 
 def sort_findings(findings: list[Finding]) -> list[Finding]:
