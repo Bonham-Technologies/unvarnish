@@ -1288,6 +1288,19 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   32 minutes a slow apt mirror once took. *Cost if wrong:* a legitimately slow run is
   cancelled and fails `ci-status`, and needs a rerun.
 
+## CI builds and runs the image (UNVAR-80)
+
+- **The `docker` job lives in `ci.yml` and decides for itself whether to build.** `ci-status`
+  can only wait for jobs in its own workflow, so a separate workflow with a `paths:` filter
+  could not gate the merge. On a pull request the job diffs its merge commit against the
+  first parent and builds only when `Dockerfile`, `.dockerignore`, `docker/`,
+  `pyproject.toml`, `uv.lock`, `ci.yml` or its fixture changed; otherwise its steps skip and
+  the job passes. Every push to `main` builds. The built image then runs `--version`, `init`,
+  `add --files`, a no-model `run` and `export --format html` on `tests/data/docker-smoke/`
+  with `--network none` and the caller's uid, as the site kit runs it. *Cost if wrong:* a
+  change outside those paths that breaks only the image (a source file the image needs at
+  build time, say) is caught on `main` after the merge, not on its pull request.
+
 ## No gitleaks ignore file (UNVAR-72)
 
 - **`.gitleaksignore` is gone.** Its 17 fingerprints named commits of the private archive, so

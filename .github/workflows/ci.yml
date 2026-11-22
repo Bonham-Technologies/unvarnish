@@ -43,6 +43,57 @@ jobs:
       - run: uv run pytest -q
       - run: uv build
 
+
+  # The distributable image, built and run on a fixture (UNVAR-80). Dependabot moves the four
+  # digest-pinned images in the Dockerfile, and the text checks in test_distribution.py cannot
+  # tell whether the result still builds or runs. It builds on every push to main, and on a pull
+  # request only when the image's inputs change; otherwise its steps skip and the job passes.
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          # A pull request checks out its merge commit, whose first parent is the base branch,
+          # so `git diff HEAD^1 HEAD` lists exactly the files the pull request changes.
+          fetch-depth: 2
+      - name: Does this change touch the image?
+        id: image
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          echo "$changed"
+          if echo "$changed" | grep -qE '^(Dockerfile|\.dockerignore|pyproject\.toml|uv\.lock|\.github/workflows/ci\.yml)$|^docker/|^tests/data/docker-smoke/'; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build the image
+        if: steps.image.outputs.build == 'true'
+        run: docker build --progress plain -t unvarnish:ci .
+      - name: Run the image on a fixture with no network
+        if: steps.image.outputs.build == 'true'
+        run: |
+          set -eu
+          E="$RUNNER_TEMP/engagement"
+          mkdir -p "$E"
+          cp -r tests/data/docker-smoke "$E/fixture"
+          # As the site kit runs it: the caller's uid, the engagement mounted, no network.
+          u() { docker run --rm --network none --user "$(id -u):$(id -g)" -v "$E:/engagement" unvarnish:ci "$@"; }
+          u --version
+          u init /engagement --client "CI" --consultant "CI"
+          u add smoke --files /engagement/fixture
+          u run
+          u export --format html --doc findings
+          ls -l "$E/tools/smoke/docs/findings.md" "$E"/exports/findings-smoke-*.html
+          grep -q "<main>" "$E"/exports/findings-smoke-*.html
+
   # Aggregate job: the single required check. List EVERY other job in `needs`.
   # A skipped job is allowed (some jobs run on pull requests only); a failed
   # or cancelled one fails the gate.
@@ -51,7 +102,7 @@ jobs:
     # this repo; a fork's pull request, a push and any other event use a hosted runner (UNVAR-70).
     runs-on: ${{ vars.RUNS_ON && github.event.pull_request.head.repo.full_name == github.repository && fromJSON(vars.RUNS_ON) || 'ubuntu-24.04' }}
     timeout-minutes: 10
-    needs: [test]          # every other job, no exceptions
+    needs: [test, docker]  # every other job, no exceptions
     if: always()
     concurrency:
       group: ci-status-${{ github.event.pull_request.number || github.ref }}

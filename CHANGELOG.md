@@ -8,6 +8,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### CI builds the Docker image
+
+- A new `docker` CI job builds the image and runs a no-model review and an HTML export on a
+  small fixture inside it, with no network, so Dockerfile and base-image bumps no longer merge
+  untested; `ci-status` waits for it (UNVAR-80).
+
 ### Model-written text stays inside its paragraph
 
 - A finding's summary, impact, remediation, effort note and verifier note can no longer start

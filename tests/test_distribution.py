@@ -149,6 +149,32 @@ def test_ci_and_verify_install_from_the_lockfile():
     assert verify in (ROOT / "docs/operations.md").read_text(encoding="utf-8")
 
 
+
+@pytest.mark.skipif(not (ROOT / ".github").exists(), reason="needs the repository checkout")
+def test_ci_builds_the_image_and_runs_it_on_a_fixture():
+    # UNVAR-80: CI checked the Dockerfile as text only, so a Dependabot bump of one of its
+    # digest-pinned images could merge with an image that no longer builds or runs.
+    import yaml
+
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    jobs = ci["jobs"]
+    assert "docker" in jobs, "ci.yml has no docker job"
+    script = "\n".join(step.get("run", "") for step in jobs["docker"]["steps"])
+    assert re.search(r"docker build\b.*-t unvarnish:ci", script)
+    for command in ("--version", "init /engagement", "add smoke --files", " run\n",
+                    "export --format html"):
+        assert command in script, command
+    assert "--network none" in script
+    assert (ROOT / "tests/data/docker-smoke/app.py").is_file()
+    # It builds on every push to main, and on a pull request that touches the image's inputs.
+    triggers = ci[True]  # PyYAML reads the bare key `on` as true
+    assert triggers["push"]["branches"] == ["main"] and "pull_request" in triggers
+    for path in ("Dockerfile", "docker/", "pyproject\\.toml", "uv\\.lock"):
+        assert path in script, path
+    # The single required check waits for every other job, the image build included.
+    needs = jobs["ci-status"]["needs"]
+    assert set(needs) == set(jobs) - {"ci-status"}, needs
+
 # ---------------------------------------------------------------- end-of-life bundle (UNVAR-44)
 
 
