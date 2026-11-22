@@ -103,5 +103,7 @@ advisories are published, so a rerun will not reproduce these numbers exactly.
 
 The 2026-11-06 checks (axe-core 4.10 and Lighthouse 12.6, desktop and an iPhone 13 viewport):
 axe found no violations on either page, and Lighthouse scored accessibility 100 on both. The
-exported findings HTML, published as produced, has three axe findings that are the export's
-own: links told apart by colour only (UNVAR-23), and no `main` landmark.
+exported findings HTML, published as produced, had axe findings that were the export's own:
+links told apart by colour only (UNVAR-23), and no `main` landmark. The export has written a
+`main` landmark since UNVAR-64, and the 2026-11-22 recording has it; axe has not been run on
+that recording.

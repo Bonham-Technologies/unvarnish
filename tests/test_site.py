@@ -197,6 +197,7 @@ def test_demo_report_shows_the_shipped_fixes():
     for marker in (rb"/MarkInfo\s*<<\s*/Marked\s+true", rb"/StructTreeRoot"):
         assert any(re.search(marker, o) for o in objects), marker
 
+
 def test_scanner_table_lists_every_registered_scanner():
     # UNVAR-55: the site said "Eight scanners" after client_exposure and end_of_life shipped.
     from unvarnish.scanners import load_scanners
