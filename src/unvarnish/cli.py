@@ -685,7 +685,7 @@ def _ask(eng: Engagement, backend, question: str | None, *, tool: str | None,
     log_path = setup_run_logging(eng, verbose, prefix="ask")
     index, rebuilt = load_or_build_index(eng)
     if rebuilt:
-        console.print(f"[dim]Index built: {len(index.docs)} documents.[/dim]")
+        console.print(f"[dim]Index built: {plural(len(index.docs), 'document')}.[/dim]")
     tools = AskTools(eng, index)
     ref = resolve_model_ref(eng.config, "ask")
     effort = ref.effort if ref else None
@@ -836,7 +836,7 @@ def _phase_cell(p, ctx) -> str:
         return f"[red]failed[/red]: {escape(missing)}"
     if p.name == "extract" and ctx.paths.extract_state.exists():
         st = read_artifact(ctx.paths.extract_state, ExtractState).data
-        cell = f"{st.units_done}/{st.units_total} units"
+        cell = f"{st.units_done}/{plural(st.units_total, 'unit')}"
         if st.backend_unreachable:
             cell += " stopped: backend unreachable"
         elif st.stopped_for_budget:
@@ -848,7 +848,7 @@ def _phase_cell(p, ctx) -> str:
         return f"[{colour}]{cell}[/{colour}]"
     if p.name == "rollup_modules" and ctx.paths.modules_index.exists():
         mi = read_artifact(ctx.paths.modules_index, ModulesIndex).data
-        cell = f"{len(mi.modules)} modules"
+        cell = plural(len(mi.modules), "module")
         if mi.failed:
             cell += f" ({len(mi.failed)} failed)"
         if mi.stopped_for_budget:
@@ -857,7 +857,7 @@ def _phase_cell(p, ctx) -> str:
         return f"[{colour}]{cell}[/{colour}]"
     if p.name == "verify" and ctx.paths.model_findings.exists():
         mf = read_artifact(ctx.paths.model_findings, ModelFindings).data
-        cell = f"{len(mf.findings)} findings, {mf.verified} verified"
+        cell = f"{plural(len(mf.findings), 'finding')}, {mf.verified} verified"
         if mf.unverified:
             cell += f" ({mf.unverified} unverified)"
         if mf.stopped_for_budget:
@@ -869,7 +869,7 @@ def _phase_cell(p, ctx) -> str:
                                  ctx.paths.requirements_doc) if d.exists())
         fresh = is_fresh(p, ctx)
         colour = "green" if fresh else "yellow"
-        return f"[{colour}]{n_docs} docs{'' if fresh else ' (stale)'}[/{colour}]"
+        return f"[{colour}]{plural(n_docs, 'doc')}{'' if fresh else ' (stale)'}[/{colour}]"
     outputs = p.outputs(ctx)
     if not all(o.exists() for o in outputs):
         return "[red]missing[/red]"

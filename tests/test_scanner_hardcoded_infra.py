@@ -274,3 +274,37 @@ def test_multiline_strings_heredocs_and_markup_still_report_hosts(path, language
     """UNVAR-75 review: text the lexer would misread as code still reports its hostname."""
     hosts = [f[1] for f in find_infra(text, path, language) if f[0] == "host"]
     assert hosts == [expected]
+
+
+def test_the_same_value_twice_on_one_line_is_one_location(engagement, synthetic_repo):
+    # UNVAR-82: a value repeated on one line (an href and its link text, say) gave two
+    # identical evidence rows, used up the evidence cap and inflated the location count.
+    body = 'p = "/opt/app/data /opt/app/data"\nq = "/srv/a /srv/b"\n'
+    _, findings = _scan(engagement, synthetic_repo, {"m.py": body})
+    f = next(f for f in findings if f.title == "Hardcoded absolute file paths")
+    rows = [(e.path, e.line_start, e.note) for e in f.evidence]
+    assert len(rows) == len(set(rows)) == 3, rows
+    assert ("m.py", 1, "value: /opt/app/data") in rows
+    # Three distinct values, on two distinct lines.
+    assert f.summary.startswith("3 distinct absolute paths hardcoded at 2 locations,"), f.summary
+
+
+def test_a_value_once_per_line_keeps_its_finding_id(engagement, synthetic_repo):
+    # Deduplicating evidence must not move the id of a finding it does not change.
+    from unvarnish.schemas.finding import compute_finding_id
+
+    _, findings = _scan(engagement, synthetic_repo, {"m.py": 'p = "/opt/app/data"\n'})
+    f = next(f for f in findings if f.title == "Hardcoded absolute file paths")
+    assert f.id == compute_finding_id("alpha", f.category, f.title, f.evidence[0])
+    assert f.summary.startswith("1 distinct absolute path hardcoded at 1 location,")
+
+
+def test_the_cap_note_counts_occurrences_not_locations(engagement, synthetic_repo):
+    # Two values on each of 13 lines: 26 evidence rows at 13 locations; the cap note must not
+    # claim to show 25 of 13 locations.
+    body = "".join(f'p{i} = "/srv/a{i} /srv/b{i}"\n' for i in range(13))
+    _, findings = _scan(engagement, synthetic_repo, {"m.py": body})
+    f = next(f for f in findings if f.title == "Hardcoded absolute file paths")
+    assert "hardcoded at 13 locations" in f.summary, f.summary
+    assert "Showing the first 25 of 26 occurrences." in f.summary, f.summary
+    assert len(f.evidence) == 25

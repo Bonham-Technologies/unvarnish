@@ -13,11 +13,12 @@ from unvarnish.schemas.finding import SEVERITY_ORDER, Finding
 from unvarnish.schemas.git import GitStats
 from unvarnish.schemas.inventory import Census, Dependencies, Metrics
 from unvarnish.schemas.scan import ScannerFindings, SkippedScanner
+from unvarnish.util.plural import plural
 
 # Bump when scanner summaries, notes or detection rules change, so a scan written by an
 # earlier version reruns once (deterministic, no model calls) instead of rendering the old
-# text or findings (UNVAR-57, UNVAR-67).
-SCANNER_TEXT_VERSION = "2026-11-16.1"
+# text or findings (UNVAR-57, UNVAR-67, UNVAR-81, UNVAR-82).
+SCANNER_TEXT_VERSION = "2026-11-22.3"
 
 
 def sort_findings(findings: list[Finding]) -> list[Finding]:
@@ -82,6 +83,7 @@ class ScanPhase:
                        inputs_hash=self.inputs_hash(ctx))
         return PhaseResult(
             phase=self.name, status=PhaseStatus.ok,
-            message=f"{len(findings)} findings from {len(run_names) - len(skipped)} scanners",
+            message=(f"{plural(len(findings), 'finding')} from "
+                     f"{plural(len(run_names) - len(skipped), 'scanner')}"),
             failures=[f"{s.name}: {s.error}" for s in skipped],
         )

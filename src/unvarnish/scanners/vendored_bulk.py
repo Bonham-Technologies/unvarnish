@@ -6,7 +6,7 @@ from unvarnish.analysis.languages import Classification
 from unvarnish.scanners.base import ScanContext
 from unvarnish.scanners.effort import rule_effort
 from unvarnish.schemas.finding import Category, Evidence, Finding, Severity, Source
-from unvarnish.util.plural import plural
+from unvarnish.util.plural import is_are, plural, pluralize
 
 MAX_LISTED = 20
 
@@ -44,15 +44,15 @@ class VendoredBulkScanner:
             tool=ctx.tool, category=self.category, severity=Severity.medium,
             title="Dependency or build directories in the source",
             summary=(f"{len(dirs)} director{'y' if len(dirs) == 1 else 'ies'} of third-party or "
-                     f"build output ({files:,} files, {mb(size)}) are part of the source: "
-                     f"{names}."),
+                     f"build output ({files:,} {pluralize(files, 'file')}, {mb(size)}) "
+                     f"{is_are(len(dirs))} part of the source: {names}."),
             impact=("Third-party code is versioned alongside the tool's own: it bloats every "
                     "clone, hides local edits to dependencies, and never receives security "
                     "updates."),
             remediation=("Remove these directories from the source, list them in .gitignore, "
                          "and restore them from the package manager's manifest and lockfile "
                          "at build time."),
-            evidence=[Evidence(path=d, note=f"{n:,} files, {mb(b)}")
+            evidence=[Evidence(path=d, note=f"{n:,} {pluralize(n, 'file')}, {mb(b)}")
                       for d, (n, b) in ranked[:MAX_LISTED]],
             source=Source.scanner, scanner=self.name, tags=["vendored"],
             **rule_effort(ctx, self.name, "vendored_directories"),

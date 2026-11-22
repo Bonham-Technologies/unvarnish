@@ -35,6 +35,7 @@ from unvarnish.schemas.analysis import (
 from unvarnish.schemas.cost import CostEntry, Usage
 from unvarnish.schemas.finding import Evidence, Finding, Source
 from unvarnish.schemas.inventory import Census
+from unvarnish.util.plural import plural
 
 log = logging.getLogger("unvarnish.extract")
 
@@ -247,7 +248,7 @@ class ExtractPhase:
         stopped = budget_hit.is_set()
         status = PhaseStatus.stopped if stopped else PhaseStatus.ok
         failed = f"{len(failures)} failed; rerun to retry" if failures else "0 failed"
-        msg = f"{done}/{len(index.units)} units, {failed}, {usage.total():,} tokens"
+        msg = f"{done}/{plural(len(index.units), 'unit')}, {failed}, {usage.total():,} tokens"
         if stopped:
             msg = f"{budget.stop_reason}: " + msg
         log.info("extract %s: %s", ctx.tool, msg)
