@@ -452,7 +452,11 @@ class HardcodedInfraScanner:
                 continue
             lines = text.split("\n")
             for kind, value, n in find_infra(text, rec.path, rec.language):
-                hits[kind][value].append((rec.path, n, lines[n - 1]))
+                occurrences = hits[kind][value]
+                # One row per (path, line, value): a value repeated on a line, such as an
+                # href and its link text, is one piece of evidence (UNVAR-82).
+                if not occurrences or occurrences[-1][:2] != (rec.path, n):
+                    occurrences.append((rec.path, n, lines[n - 1]))
         findings: list[Finding] = []
         for kind in KINDS:
             values = hits.get(kind)
@@ -466,12 +470,13 @@ class HardcodedInfraScanner:
             sample = redact_text(", ".join(list(values)[:5]))
             shown = (f" Showing the first {max_evidence} locations."
                      if len(located) > max_evidence else "")
+            places = len({(p, n) for _, p, n, _ in located})  # two values on a line: one place
             findings.append(Finding(
                 tool=ctx.tool,
                 category=Category.data_handling if kind == "email" else self.category,
                 severity=Severity.medium, title=TITLES[kind],
                 summary=(f"{plural(len(values), 'distinct ' + LABELS[kind])} hardcoded at "
-                         f"{plural(len(located), 'location')}, for example {sample}.{shown}"),
+                         f"{plural(places, 'location')}, for example {sample}.{shown}"),
                 impact=IMPACT[kind], remediation=REMEDIATION, evidence=evidence,
                 source=Source.scanner, scanner=self.name,
                 tags=[f"hardcoded:{kind}", f"distinct:{len(values)}", f"group:{kind}"],
