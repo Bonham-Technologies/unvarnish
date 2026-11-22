@@ -17,6 +17,7 @@ from unvarnish.schemas.git import (
     WeeklyBucket,
 )
 from unvarnish.util.gitcmd import GitError, git, is_git_repo
+from unvarnish.util.plural import plural
 
 LOG_FORMAT = "%x1e%H%x1f%aN%x1f%aE%x1f%aI%x1f%B%x1d"
 
@@ -156,7 +157,8 @@ class GitPhase:
         stats = self._compute(ctx, self._threshold(ctx))
         write_artifact(ctx.paths.git, stats, produced_by=self.name,
                        inputs_hash=self.inputs_hash(ctx))
-        msg = f"{stats.commit_count} commits" if stats.available else f"skipped: {stats.reason}"
+        msg = (plural(stats.commit_count, "commit") if stats.available
+               else f"skipped: {stats.reason}")
         return PhaseResult(phase=self.name, status=PhaseStatus.ok, message=msg)
 
     def _compute(self, ctx: ToolContext, threshold: int) -> GitStats:

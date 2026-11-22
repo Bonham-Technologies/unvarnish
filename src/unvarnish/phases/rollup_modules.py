@@ -36,6 +36,7 @@ from unvarnish.schemas.rollup import (
     ModulesIndex,
     module_file_id,
 )
+from unvarnish.util.plural import plural
 
 log = logging.getLogger("unvarnish.rollup_modules")
 DIGEST_LIST_CAP = 20
@@ -237,7 +238,7 @@ class RollupModulesPhase:
             raise outcome.fatal
         n_failed = (f"{len(failed) or len(outcome.failures)} failed; rerun to retry"
                     if outcome.failures else "0 failed")
-        msg = (f"{len(outcome.results)}/{len(work)} modules, {n_failed}, "
+        msg = (f"{len(outcome.results)}/{plural(len(work), 'module')}, {n_failed}, "
                f"{len(skipped)} without units, {outcome.usage.total():,} tokens")
         status = PhaseStatus.stopped if outcome.stopped_for_budget else PhaseStatus.ok
         if outcome.stopped_for_budget:

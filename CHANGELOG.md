@@ -8,6 +8,13 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### One commit, one file, one unit
+
+- Phase lines, `status` cells, the run log and `ask`'s index line now say "1 commit",
+  "1 file", "1 unit in 1 file", "1 doc" and so on instead of "1 commits"; the route-handler
+  finding says "has ... near it" for a single handler. Scans rerun once to pick up the new
+  text (UNVAR-81).
+
 ### A repeated value on one line is one piece of evidence
 
 - The hardcoded-infrastructure scanner lists a value once per line, so an href and its link
