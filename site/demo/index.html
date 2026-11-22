@@ -42,7 +42,7 @@
 <main id="main">
     <section class="page-head">
         <div class="container">
-            <p class="eyebrow">Demo · recorded 14 November 2026</p>
+            <p class="eyebrow">Demo · recorded 22 November 2026</p>
             <h1>Unvarnish on <em>OWASP NodeGoat</em></h1>
             <p class="lede"><a href="https://github.com/OWASP/NodeGoat">NodeGoat</a> is an
                 OWASP training application that is insecure on purpose, so a review should find
@@ -92,8 +92,8 @@
                         skipped and the findings document comes from the deterministic scanners
                         alone. The whole run took about twelve seconds.</p>
                     <pre class="term" tabindex="0"><code><span class="prompt">$</span> unvarnish run
-<span class="out">[11/14/26 10:11:23] INFO     split nodegoat: 106 units across 85 files (0 skipped)</span>
-<span class="out">[11/14/26 10:11:24] INFO     render nodegoat: wrote findings.md</span>
+<span class="out">[11/22/26 10:06:34] INFO     split nodegoat: 106 units across 85 files (0 skipped)</span>
+<span class="out">                    INFO     render nodegoat: wrote findings.md</span>
 <span class="out">                                            run</span>
 <span class="out">┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓</span>
 <span class="out">┃ tool     ┃ phase          ┃ status  ┃ detail                                            ┃</span>
@@ -108,7 +108,7 @@
 <span class="out">│ nodegoat │ verify         │ skipped │ skipped: no model configured (set models.default) │</span>
 <span class="out">│ nodegoat │ render         │ ok      │ wrote findings.md                                 │</span>
 <span class="out">└──────────┴────────────────┴─────────┴───────────────────────────────────────────────────┘</span>
-<span class="out">Log: logs/run-20261114-101112.log</span></code></pre>
+<span class="out">Log: logs/run-20261122-100624.log</span></code></pre>
                 </li>
                 <li>
                     <h3>Check where it stands</h3>
@@ -139,9 +139,9 @@
                     <p>The summary at the top of <code>findings.md</code>:</p>
                     <pre class="term md" tabindex="0"><code>## Summary
 
-164 finding(s): 34 critical, 86 high, 37 medium, 7 low.
+164 findings: 34 critical, 86 high, 37 medium, 7 low.
 
-**120 finding(s) are critical or high severity and need action before this tool is relied on further.**
+**120 findings are critical or high severity and need action before this tool is relied on further.**
 
 ## By the numbers
 
@@ -158,8 +158,8 @@
 | Client-exposed credentials / open tables | 0 / 0 |
 | Dependencies declared | 36 |
 | Dependency vulnerabilities | 311 (33 critical, 170 high, 94 medium, 14 low) |
-| End-of-life runtimes and frameworks | 1 past end of life, 0 near it; endoflife.date data dated 2026-11-14 |
-| Hardcoded infrastructure | 33 URLs · 0 internal host(s) · 1 IP(s) · 0 path(s) · 0 email(s) |
+| End-of-life runtimes and frameworks | 1 past end of life, 0 near it; endoflife.date data dated 2026-11-22 |
+| Hardcoded infrastructure | 33 URLs · 0 internal hosts · 1 IP · 0 paths · 0 emails |
 | Commits · authors · active days | 499 · 40 · 204 |
 | History span | 2013-10-21 to 2023-06-21 |
 | Top author share · bus factor | 49% · 2 |
@@ -193,7 +193,7 @@ Private key material found in artifacts/cert/server.key. The value is redacted h
 **Effort.** S: rotate one credential and move it to configuration (scanner rule secrets.credential)
 
 **Evidence.**
-- `artifacts/cert/server.key:1` — `…[redacted 31 chars]` (fingerprint 71960cee9226; also appears in 1 commit(s) in git history)</code></pre>
+- `artifacts/cert/server.key:1` — `…[redacted 31 chars]` (fingerprint 71960cee9226; also appears in 1 commit in git history)</code></pre>
                     <p><a href="/demo/nodegoat-findings.html">The full document</a> lists all
                         164 findings with their evidence, then what was not analysed and
                         why.</p>

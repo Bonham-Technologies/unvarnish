@@ -4,9 +4,10 @@
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <title>nodegoat: Findings</title>
+  <meta name="author" content="Unvarnish demo" />
   <link rel="canonical" href="https://unvarnish.com/demo/nodegoat-findings.html" />
   <meta name="description" content="The findings document Unvarnish wrote for OWASP NodeGoat, exactly as produced." />
+  <title>nodegoat: Findings</title>
   <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -72,12 +73,14 @@ th {
 background: var(--wash); color: var(--accent); font-weight: 600; text-align: left;
 border-bottom: 2px solid var(--accent); padding: .45em .6em; vertical-align: bottom;
 }
-td {
+
+td, tbody th {
 border-bottom: 1px solid var(--rule); padding: .4em .6em; vertical-align: top;
 overflow-wrap: break-word;
 }
+tbody th { background: none; color: inherit; font-weight: normal; }
 tr { page-break-inside: avoid; break-inside: avoid; }
-tbody tr:nth-child(even) td { background: #fafbfc; }
+tbody tr:nth-child(even) td, tbody tr:nth-child(even) th { background: #fafbfc; }
 code {
 font-family: var(--mono); font-size: .86em; background: var(--wash);
 padding: .05em .3em; border-radius: 2px;
@@ -109,9 +112,10 @@ a { color: var(--ink); }
 </style>
 </head>
 <body>
+<main>
 <h1 id="nodegoat-findings">nodegoat: Findings</h1>
 <p><strong>Client:</strong> Demo client · <strong>Prepared by:</strong>
-Unvarnish demo · <strong>Generated:</strong> 2026-11-14 10:11 UTC<br />
+Unvarnish demo · <strong>Generated:</strong> 2026-11-22 10:06 UTC<br />
 <strong>Source:</strong> repo
 <code>https://github.com/OWASP/NodeGoat.git</code> at
 <code>c5cb68a7084e</code></p>
@@ -124,90 +128,90 @@ analysis was not run for this document.</p>
 <p><em>No model-written text for this section: no model
 configured.</em></p>
 <h2 id="summary">Summary</h2>
-<p>164 finding(s): 34 critical, 86 high, 37 medium, 7 low.</p>
-<p><strong>120 finding(s) are critical or high severity and need action
+<p>164 findings: 34 critical, 86 high, 37 medium, 7 low.</p>
+<p><strong>120 findings are critical or high severity and need action
 before this tool is relied on further.</strong></p>
 <h2 id="by-the-numbers">By the numbers</h2>
 <table>
 <thead>
 <tr class="header">
-<th>Measure</th>
-<th>Value</th>
+<th scope="col">Measure</th>
+<th scope="col">Value</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Files analysed / total</td>
+<th scope="row">Files analysed / total</th>
 <td>92 / 111</td>
 </tr>
 <tr class="even">
-<td>Source lines</td>
+<th scope="row">Source lines</th>
 <td>4,956</td>
 </tr>
 <tr class="odd">
-<td>Largest source file</td>
+<th scope="row">Largest source file</th>
 <td><code>app/views/tutorial/a1.html</code> (409 lines)</td>
 </tr>
 <tr class="even">
-<td>Longest source function</td>
+<th scope="row">Longest source function</th>
 <td><code>SessionHandler</code> in <code>app/routes/session.js</code>
 (268 lines)</td>
 </tr>
 <tr class="odd">
-<td>Languages (source lines)</td>
+<th scope="row">Languages (source lines)</th>
 <td>html 2,933; javascript 2,005; dockerfile 18</td>
 </tr>
 <tr class="even">
-<td>Frameworks</td>
+<th scope="row">Frameworks</th>
 <td>Express</td>
 </tr>
 <tr class="odd">
-<td>Automated tests</td>
+<th scope="row">Automated tests</th>
 <td>present</td>
 </tr>
 <tr class="even">
-<td>Secrets (current / history only)</td>
+<th scope="row">Secrets (current / history only)</th>
 <td>6 / 19</td>
 </tr>
 <tr class="odd">
-<td>Client-exposed credentials / open tables</td>
+<th scope="row">Client-exposed credentials / open tables</th>
 <td>0 / 0</td>
 </tr>
 <tr class="even">
-<td>Dependencies declared</td>
+<th scope="row">Dependencies declared</th>
 <td>36</td>
 </tr>
 <tr class="odd">
-<td>Dependency vulnerabilities</td>
+<th scope="row">Dependency vulnerabilities</th>
 <td>311 (33 critical, 170 high, 94 medium, 14 low)</td>
 </tr>
 <tr class="even">
-<td>End-of-life runtimes and frameworks</td>
+<th scope="row">End-of-life runtimes and frameworks</th>
 <td>1 past end of life, 0 near it; endoflife.date data dated
-2026-11-14</td>
+2026-11-22</td>
 </tr>
 <tr class="odd">
-<td>Hardcoded infrastructure</td>
-<td>33 URLs · 0 internal host(s) · 1 IP(s) · 0 path(s) · 0 email(s)</td>
+<th scope="row">Hardcoded infrastructure</th>
+<td>33 URLs · 0 internal hosts · 1 IP · 0 paths · 0 emails</td>
 </tr>
 <tr class="even">
-<td>Commits · authors · active days</td>
+<th scope="row">Commits · authors · active days</th>
 <td>499 · 40 · 204</td>
 </tr>
 <tr class="odd">
-<td>History span</td>
+<th scope="row">History span</th>
 <td>2013-10-21 to 2023-06-21</td>
 </tr>
 <tr class="even">
-<td>Top author share · bus factor</td>
+<th scope="row">Top author share · bus factor</th>
 <td>49% · 2</td>
 </tr>
 <tr class="odd">
-<td>Commits over 2,000 lines</td>
+<th scope="row">Commits over 2,000 lines</th>
 <td>7</td>
 </tr>
 <tr class="even">
-<td>AI tooling indicators</td>
+<th scope="row">AI tooling indicators</th>
 <td>none found</td>
 </tr>
 </tbody>
@@ -216,9 +220,9 @@ before this tool is relied on further.</strong></p>
 <table>
 <thead>
 <tr class="header">
-<th>File</th>
-<th style="text-align: right;">Lines</th>
-<th>Longest function</th>
+<th scope="col">File</th>
+<th style="text-align: right;" scope="col">Lines</th>
+<th scope="col">Longest function</th>
 </tr>
 </thead>
 <tbody>
@@ -258,18 +262,18 @@ judgment, not a quote.</p>
 <table>
 <thead>
 <tr class="header">
-<th>Severity</th>
-<th style="text-align: right;">S</th>
-<th style="text-align: right;">M</th>
-<th style="text-align: right;">L</th>
-<th style="text-align: right;">XL</th>
-<th style="text-align: right;">Not estimated</th>
-<th style="text-align: right;">Total</th>
+<th scope="col">Severity</th>
+<th style="text-align: right;" scope="col">S</th>
+<th style="text-align: right;" scope="col">M</th>
+<th style="text-align: right;" scope="col">L</th>
+<th style="text-align: right;" scope="col">XL</th>
+<th style="text-align: right;" scope="col">Not estimated</th>
+<th style="text-align: right;" scope="col">Total</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>critical</td>
+<th scope="row">critical</th>
 <td style="text-align: right;">34</td>
 <td style="text-align: right;">0</td>
 <td style="text-align: right;">0</td>
@@ -278,7 +282,7 @@ judgment, not a quote.</p>
 <td style="text-align: right;">34</td>
 </tr>
 <tr class="even">
-<td>high</td>
+<th scope="row">high</th>
 <td style="text-align: right;">66</td>
 <td style="text-align: right;">19</td>
 <td style="text-align: right;">1</td>
@@ -287,7 +291,7 @@ judgment, not a quote.</p>
 <td style="text-align: right;">86</td>
 </tr>
 <tr class="odd">
-<td>medium</td>
+<th scope="row">medium</th>
 <td style="text-align: right;">31</td>
 <td style="text-align: right;">4</td>
 <td style="text-align: right;">2</td>
@@ -296,7 +300,7 @@ judgment, not a quote.</p>
 <td style="text-align: right;">37</td>
 </tr>
 <tr class="even">
-<td>low</td>
+<th scope="row">low</th>
 <td style="text-align: right;">7</td>
 <td style="text-align: right;">0</td>
 <td style="text-align: right;">0</td>
@@ -305,7 +309,7 @@ judgment, not a quote.</p>
 <td style="text-align: right;">7</td>
 </tr>
 <tr class="odd">
-<td><strong>Total</strong></td>
+<th scope="row"><strong>Total</strong></th>
 <td style="text-align: right;">138</td>
 <td style="text-align: right;">23</td>
 <td style="text-align: right;">3</td>
@@ -334,7 +338,7 @@ configuration (scanner rule secrets.credential)</p>
 <ul>
 <li><code>artifacts/cert/server.key:1</code> —
 <code>…[redacted 31 chars]</code> (fingerprint 71960cee9226; also
-appears in 1 commit(s) in git history)</li>
+appears in 1 commit in git history)</li>
 </ul>
 <h4 id="hardcoded-credential-assignment">Hardcoded credential
 assignment</h4>
@@ -354,14 +358,14 @@ configuration (scanner rule secrets.credential)</p>
 <ul>
 <li><code>artifacts/db-reset.js:18</code> —
 <code>&quot;password&quot;: &quot;…[redacted 9 chars]&quot;,</code> (fingerprint
-d07e7c4cce2a; also appears in 2 commit(s) in git history)</li>
+d07e7c4cce2a; also appears in 2 commits in git history)</li>
 </ul>
 <h4 id="hardcoded-credential-assignment-1">Hardcoded credential
 assignment</h4>
 <p><code>security</code> · source: scanner (secrets) · effort: S · id
 <code>3946d6a7836769cb</code></p>
 <p>Hardcoded credential assignment found in artifacts/db-reset.js (1
-more occurrence(s) with the same value). The value is redacted here and
+more occurrence with the same value). The value is redacted here and
 identified by fingerprint.</p>
 <p><strong>Impact.</strong> Anyone who can read this code or its history
 holds a working credential. Rotation is required regardless of whether
@@ -375,7 +379,7 @@ configuration (scanner rule secrets.credential)</p>
 <ul>
 <li><code>artifacts/db-reset.js:27</code> —
 <code>&quot;password&quot;: &quot;…[redacted 9 chars]&quot;</code> (fingerprint
-b4ea3116d868; also appears in 4 commit(s) in git history)</li>
+b4ea3116d868; also appears in 4 commits in git history)</li>
 </ul>
 <h4 id="hardcoded-credential-assignment-2">Hardcoded credential
 assignment</h4>
@@ -395,7 +399,7 @@ configuration (scanner rule secrets.credential)</p>
 <ul>
 <li><code>artifacts/db-reset.js:35</code> —
 <code>&quot;password&quot;: &quot;…[redacted 9 chars]&quot;</code> (fingerprint
-5238f6fe78d6; also appears in 2 commit(s) in git history)</li>
+5238f6fe78d6; also appears in 2 commits in git history)</li>
 </ul>
 <h4 id="hardcoded-credential-assignment-3">Hardcoded credential
 assignment</h4>
@@ -415,14 +419,14 @@ configuration (scanner rule secrets.credential)</p>
 <ul>
 <li><code>config/env/all.js:8</code> —
 <code>cookieSecret: &quot;…[redacted 30 chars]&quot;,</code> (fingerprint
-6f983a53bf8b; also appears in 1 commit(s) in git history)</li>
+6f983a53bf8b; also appears in 1 commit in git history)</li>
 </ul>
 <h4 id="hardcoded-credential-assignment-4">Hardcoded credential
 assignment</h4>
 <p><code>security</code> · source: scanner (secrets) · effort: S · id
 <code>f5a688cb1a6b4647</code></p>
 <p>Hardcoded credential assignment found in config/env/development.js (1
-more occurrence(s) with the same value). The value is redacted here and
+more occurrence with the same value). The value is redacted here and
 identified by fingerprint.</p>
 <p><strong>Impact.</strong> Anyone who can read this code or its history
 holds a working credential. Rotation is required regardless of whether
@@ -436,7 +440,7 @@ configuration (scanner rule secrets.credential)</p>
 <ul>
 <li><code>config/env/development.js:6</code> —
 <code>zapApiKey: &quot;…[redacted 26 chars]&quot;,</code> (fingerprint
-e0f1906c2cc8; also appears in 3 commit(s) in git history)</li>
+e0f1906c2cc8; also appears in 3 commits in git history)</li>
 </ul>
 <h4 id="known-vulnerabilities-in-babel-traverse-6114">Known
 vulnerabilities in babel-traverse 6.11.4</h4>
@@ -1095,7 +1099,7 @@ life</h4>
 id <code>ad1e243c348a1c96</code></p>
 <p>Node.js 12 reached end of life on 2022-04-30: its maintainers no
 longer fix bugs or security issues in it. It is declared in Dockerfile.
-Dates are from endoflife.date data dated 2026-11-14.</p>
+Dates are from endoflife.date data dated 2026-11-22.</p>
 <p><strong>Impact.</strong> Security flaws found from now on in this
 release are not fixed upstream, so the tool accumulates known
 vulnerabilities, and libraries drop support for it, which blocks routine
@@ -1108,9 +1112,9 @@ update every place it is pinned (scanner rule end_of_life.past)</p>
 <p><strong>Evidence.</strong></p>
 <ul>
 <li><code>Dockerfile:1</code> (FROM node:12-alpine; end of life
-2022-04-30; endoflife.date data dated 2026-11-14)</li>
+2022-04-30; endoflife.date data dated 2026-11-22)</li>
 <li><code>Dockerfile:7</code> (FROM node:12-alpine; end of life
-2022-04-30; endoflife.date data dated 2026-11-14)</li>
+2022-04-30; endoflife.date data dated 2026-11-22)</li>
 </ul>
 <h4 id="private-key-material-in-git-history">Private key material in git
 history</h4>
@@ -3009,7 +3013,7 @@ GHSA-c4w7-xm78-47vh)</li>
 <h4 id="bulk-commits">Bulk commits</h4>
 <p><code>process</code> · source: scanner (generated_bulk) · effort: L ·
 id <code>51577234fe744da5</code></p>
-<p>7 commit(s) each changed more than 2,000 lines (677,783 lines, 51% of
+<p>7 commits each changed more than 2,000 lines (677,783 lines, 51% of
 all changed lines).</p>
 <p><strong>Impact.</strong> Changes this large are rarely reviewed line
 by line; they are typical of generated code pasted in wholesale, so
@@ -3021,21 +3025,21 @@ code nobody owns, and require smaller, reviewed changes from now on.</p>
 <p><strong>Evidence.</strong></p>
 <ul>
 <li><code>.</code> (a7b556da2a25 2013-12-02 Chetan Karande: +625,625 -1
-in 4313 file(s): Included node_modules for faster and consistent
+in 4313 files: Included node_modules for faster and consistent
 deployemnts)</li>
 <li><code>.</code> (5848aad1d8b4 2023-03-06 Liran Tal: +15,684 -924 in 2
-file(s): fix: revert marked changes back to make sure we use the
+files: fix: revert marked changes back to make sure we use the
 vulnerable version)</li>
 <li><code>.</code> (aad96e69ce76 2019-03-03 ckarande: +11,290 -0 in 1
-file(s): Update package versions)</li>
+file: Update package versions)</li>
 <li><code>.</code> (a58571ada601 2013-11-17 Chetan Karande: +9,837 -0 in
-47 file(s): closes #1, closes # 3, closes #4, closes #5, closes #6)</li>
+47 files: closes #1, closes # 3, closes #4, closes #5, closes #6)</li>
 <li><code>.</code> (60f02d28b384 2019-08-07 Josep: +3,384 -3,410 in 3
-file(s): Add nodemon as npm script)</li>
+files: Add nodemon as npm script)</li>
 <li><code>.</code> (7593798f995e 2020-04-02 fabre-pierre-jean: +2,744
--2,064 in 3 file(s): add forever node_modules)</li>
+-2,064 in 3 files: add forever node_modules)</li>
 <li><code>.</code> (199e6b58e6a3 2014-03-11 Chetan Karande: +2,283 -537
-in 57 file(s): Update for release)</li>
+in 57 files: Update for release)</li>
 </ul>
 <h4 id="dependency-or-build-directories-in-the-source">Dependency or
 build directories in the source</h4>
@@ -3055,67 +3059,6 @@ build time (scanner rule vendored_bulk.vendored_directories)</p>
 <ul>
 <li><code>app/assets/vendor</code> (15 files, 0.8 MB)</li>
 </ul>
-<h4 id="route-handlers-with-no-authentication-check-nearby">Route
-handlers with no authentication check nearby</h4>
-<p><code>security</code> · source: scanner (client_exposure) · effort: L
-· id <code>8b4a401cca718575</code></p>
-<p>15 route handler(s) in 2 file(s) have no authentication identifier
-(auth, session, jwt, current user, guard) near them. This is a heuristic
-for review: middleware or a wrapper elsewhere may protect them. Model
-extraction, when configured, is asked to confirm each one.</p>
-<p><strong>Impact.</strong> An unprotected handler that reads or changes
-data exposes it to anyone who can reach the server.</p>
-<p><strong>Remediation.</strong> Confirm each handler is protected; add
-authentication middleware or an explicit check where it is not.</p>
-<p><strong>Effort.</strong> L: confirm and add authentication across the
-handlers (scanner rule client_exposure.unauthenticated_routes)</p>
-<p><strong>Evidence.</strong></p>
-<ul>
-<li><code>app/routes/index.js:47</code> —
-<code>app.get(&quot;/profile&quot;, isLoggedIn, profileHandler.displayProfile);</code>
-(GET /profile)</li>
-<li><code>app/routes/index.js:48</code> —
-<code>app.post(&quot;/profile&quot;, isLoggedIn, profileHandler.handleProfileUpdate);</code>
-(POST /profile)</li>
-<li><code>app/routes/index.js:51</code> —
-<code>app.get(&quot;/contributions&quot;, isLoggedIn, contributionsHandler.displayContributions);</code>
-(GET /contributions)</li>
-<li><code>app/routes/index.js:52</code> —
-<code>app.post(&quot;/contributions&quot;, isLoggedIn, contributionsHandler.handleContributionsUpdate);</code>
-(POST /contributions)</li>
-<li><code>app/routes/index.js:55</code> —
-<code>app.get(&quot;/benefits&quot;, isLoggedIn, benefitsHandler.displayBenefits);</code>
-(GET /benefits)</li>
-<li><code>app/routes/index.js:56</code> —
-<code>app.post(&quot;/benefits&quot;, isLoggedIn, benefitsHandler.updateBenefits);</code>
-(POST /benefits)</li>
-<li><code>app/routes/index.js:58</code> —
-<code>app.get(&quot;/benefits&quot;, isLoggedIn, isAdmin, benefitsHandler.displayBenefits);</code>
-(GET /benefits)</li>
-<li><code>app/routes/index.js:59</code> —
-<code>app.post(&quot;/benefits&quot;, isLoggedIn, isAdmin, benefitsHandler.updateBenefits);</code>
-(POST /benefits)</li>
-<li><code>app/routes/index.js:63</code> —
-<code>app.get(&quot;/allocations/:userId&quot;, isLoggedIn, allocationsHandler.displayAllocations);</code>
-(GET /allocations/:userId)</li>
-<li><code>app/routes/index.js:66</code> —
-<code>app.get(&quot;/memos&quot;, isLoggedIn, memosHandler.displayMemos);</code>
-(GET /memos)</li>
-<li><code>app/routes/index.js:67</code> —
-<code>app.post(&quot;/memos&quot;, isLoggedIn, memosHandler.addMemos);</code>
-(POST /memos)</li>
-<li><code>app/routes/index.js:70</code> —
-<code>app.get(&quot;/learn&quot;, isLoggedIn, (req, res) =&gt; {</code> (GET
-/learn)</li>
-<li><code>app/routes/index.js:76</code> —
-<code>app.get(&quot;/research&quot;, isLoggedIn, researchHandler.displayResearch);</code>
-(GET /research)</li>
-<li><code>app/routes/tutorial.js:8</code> —
-<code>router.get(&quot;/&quot;, (req, res) =&gt; {</code> (GET /)</li>
-<li><code>app/routes/tutorial.js:31</code> —
-<code>router.get(&#39;/${page}&#39;, (req, res) =&gt; {</code> (GET
-/${page})</li>
-</ul>
 <h4 id="oversized-functions">Oversized functions</h4>
 <p><code>maintainability</code> · source: scanner (oversized_files) ·
 effort: M · id <code>0df185b9a631a705</code></p>
@@ -3133,10 +3076,32 @@ functions (scanner rule oversized_files.function)</p>
 lines)</li>
 <li><code>Gruntfile.js:14-194</code> (&lt;anonymous&gt;: 181 lines)</li>
 </ul>
+<h4 id="route-handlers-with-no-authentication-check-nearby">Route
+handlers with no authentication check nearby</h4>
+<p><code>security</code> · source: scanner (client_exposure) · effort: L
+· id <code>f960c818909b8dc7</code></p>
+<p>2 route handlers in 1 file have no authentication identifier (auth,
+session, jwt, current user, guard) near them. This is a heuristic for
+review: middleware or a wrapper elsewhere may protect them. Model
+extraction, when configured, is asked to confirm each one.</p>
+<p><strong>Impact.</strong> An unprotected handler that reads or changes
+data exposes it to anyone who can reach the server.</p>
+<p><strong>Remediation.</strong> Confirm each handler is protected; add
+authentication middleware or an explicit check where it is not.</p>
+<p><strong>Effort.</strong> L: confirm and add authentication across the
+handlers (scanner rule client_exposure.unauthenticated_routes)</p>
+<p><strong>Evidence.</strong></p>
+<ul>
+<li><code>app/routes/tutorial.js:8</code> —
+<code>router.get(&quot;/&quot;, (req, res) =&gt; {</code> (GET /)</li>
+<li><code>app/routes/tutorial.js:31</code> —
+<code>router.get(&#39;/${page}&#39;, (req, res) =&gt; {</code> (GET
+/${page})</li>
+</ul>
 <h4 id="hardcoded-urls">Hardcoded URLs</h4>
 <p><code>operability</code> · source: scanner (hardcoded_infra) ·
 effort: M · id <code>fbde30d1cd4f9e51</code></p>
-<p>33 distinct URLs hardcoded at 34 location(s), for example <a href="https://github.com/vuejs/vue-router/issues/261">https://github.com/vuejs/vue-router/issues/261</a>,
+<p>33 distinct URLs hardcoded at 34 locations, for example <a href="https://github.com/vuejs/vue-router/issues/261">https://github.com/vuejs/vue-router/issues/261</a>,
 <a href="https://raw.github.com/bekk/retire.js/master/repository/jsrepository.json">https://raw.github.com/bekk/retire.js/master/repository/jsrepository.json</a>,
 <a href="https://raw.github.com/bekk/retire.js/master/repository/npmrepository.json">https://raw.github.com/bekk/retire.js/master/repository/npmrepository.json</a>,
 <a href="https://www.owasp.org/index.php/Projects/OWASP_Node_js_Goat_Project">https://www.owasp.org/index.php/Projects/OWASP_Node_js_Goat_Project</a>,
@@ -3231,7 +3196,7 @@ environment (scanner rule hardcoded_infra.url)</p>
 <h4 id="hardcoded-ip-addresses">Hardcoded IP addresses</h4>
 <p><code>operability</code> · source: scanner (hardcoded_infra) ·
 effort: M · id <code>cb11e2dae7b2c585</code></p>
-<p>1 distinct IP addresses hardcoded at 2 location(s), for example
+<p>1 distinct IP address hardcoded at 2 locations, for example
 192.168.56.20.</p>
 <p><strong>Impact.</strong> Fixed addresses break silently when
 infrastructure moves and expose network layout.</p>
@@ -3878,11 +3843,11 @@ can explain any of them.</p>
 <table>
 <thead>
 <tr class="header">
-<th>Finding</th>
-<th>Category</th>
-<th>Source</th>
-<th>Effort</th>
-<th>Location</th>
+<th scope="col">Finding</th>
+<th scope="col">Category</th>
+<th scope="col">Source</th>
+<th scope="col">Effort</th>
+<th scope="col">Location</th>
 </tr>
 </thead>
 <tbody>
@@ -3940,9 +3905,9 @@ can explain any of them.</p>
 <h2 id="not-analysed">Not analysed</h2>
 <p>Excluded from analysis but counted in totals:</p>
 <ul>
-<li><strong>lockfile</strong>: 1 file(s) — e.g.
+<li><strong>lockfile</strong>: 1 file — e.g.
 <code>package-lock.json</code></li>
-<li><strong>vendored:vendor</strong>: 15 file(s) — e.g.
+<li><strong>vendored:vendor</strong>: 15 files — e.g.
 <code>app/assets/vendor/bootstrap/bootstrap-tour.css</code>,
 <code>app/assets/vendor/bootstrap/bootstrap-tour.js</code>,
 <code>app/assets/vendor/bootstrap/bootstrap.css</code>,
@@ -3954,5 +3919,6 @@ can explain any of them.</p>
 <code>app/assets/images/owasplogo.png</code></p>
 <p>Hardcoded-infrastructure scanning reads the first 4,000 characters of
 each line.</p>
+</main>
 </body>
 </html>

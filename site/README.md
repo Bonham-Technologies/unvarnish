@@ -75,10 +75,10 @@ The repository went public on 2026-11-18 (UNVAR-37). The licence section and bot
 
 ## Refreshing the demo
 
-The demo was recorded on 2026-11-14 with Unvarnish at `main`, gitleaks 8.30.1 and
-osv-scanner 2.7.1 on PATH (the versions the Dockerfile pins), pandoc 3.1.3 and WeasyPrint 61.1
-for the exports, `UNVARNISH_EOL_DIR` pointing at a bundle `unvarnish eol refresh` wrote that
-day, no model configured, and `scanners.dependencies.offline: false`:
+The demo was recorded on 2026-11-22 with Unvarnish at `main`, gitleaks 8.30.1 and
+osv-scanner 2.7.1 on PATH (the versions the Dockerfile pins), pandoc 3.1.3 and WeasyPrint 70.0
+from `docker/weasyprint.txt` (the image's, so the PDF is tagged) for the exports,
+`UNVARNISH_EOL_DIR` pointing at a bundle `unvarnish eol refresh` wrote that day, no model configured, and `scanners.dependencies.offline: false`:
 
     unvarnish eol refresh --dir "$UNVARNISH_EOL_DIR"
     unvarnish init nodegoat-review --client "Demo client" --consultant "Unvarnish demo"
@@ -88,7 +88,9 @@ day, no model configured, and `scanners.dependencies.offline: false`:
     unvarnish status
     unvarnish export --format html --format pdf --doc findings
 
-Copy `tools/nodegoat/docs/findings.md` and the two exports into `demo/`, paste the new
+Copy `tools/nodegoat/docs/findings.md` and the two exports into `demo/`, add the canonical
+link and description lines after the author meta in `nodegoat-findings.html`'s head (the
+search checks need them; the export does not write them), paste the new
 terminal output and the report's summary, remediation outlook and first critical finding
 into `demo/index.html`, and update the four numbers in `index.html`'s demo section;
 `tests/test_site.py` fails until they match the report. It also fails when the scanner table

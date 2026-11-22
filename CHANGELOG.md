@@ -8,6 +8,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### The unvarnish.com demo shows the current report
+
+- The NodeGoat demo was recorded again with current `main` and the image's WeasyPrint, so the
+  published sample has the plural wording, the HTML main landmark, row headers and author
+  metadata, and a tagged PDF; `tests/test_site.py` checks for each (UNVAR-79).
+
 ### Model-written text stays inside its paragraph
 
 - A finding's summary, impact, remediation, effort note and verifier note can no longer start
