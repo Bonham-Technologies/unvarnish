@@ -268,7 +268,8 @@ class ComparePhase:
                                        at=datetime.now(UTC)))
         merge_engagement_failures(eng, self.name, failures)
         msg = (f"{plural(len(inputs), 'tool')} ({len(models)} with a tool model), "
-               f"{len(matrix)} matrix rows, {len(integration)} shared systems/stores, "
+               f"{plural(len(matrix), 'matrix row')}, "
+               f"{plural(len(integration), 'shared system/store', 'shared systems/stores')}, "
                f"{'proposal written' if consolidation else 'no proposal'}, "
                f"{usage.total():,} tokens")
         if not_run:

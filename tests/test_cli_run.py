@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -70,7 +71,8 @@ def test_status(tmp_path: Path, synthetic_repo: Path):
     assert after.exit_code == 0
     # inventory, git, scan, split are fresh; render shows its document count; model phases
     # never ran because no model is configured
-    assert after.output.count("fresh") == 4 and "1 doc " in after.output  # singular (UNVAR-81)
+    assert after.output.count("fresh") == 4
+    assert re.search(r"\b1 doc\b", after.output)  # singular since UNVAR-81
 
 
 def test_scanners_list(tmp_path: Path):

@@ -246,6 +246,7 @@ def _routes_summary(routes: list, max_shown: int) -> str:
             f"Model extraction, when configured, is asked to confirm "
             f"{'it' if one else 'each one'}.{shown}")
 
+
 class ClientExposureScanner:
     name = NAME
     category = Category.security

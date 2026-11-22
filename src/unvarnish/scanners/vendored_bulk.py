@@ -6,7 +6,7 @@ from unvarnish.analysis.languages import Classification
 from unvarnish.scanners.base import ScanContext
 from unvarnish.scanners.effort import rule_effort
 from unvarnish.schemas.finding import Category, Evidence, Finding, Severity, Source
-from unvarnish.util.plural import plural, pluralize
+from unvarnish.util.plural import is_are, plural, pluralize
 
 MAX_LISTED = 20
 
@@ -44,8 +44,8 @@ class VendoredBulkScanner:
             tool=ctx.tool, category=self.category, severity=Severity.medium,
             title="Dependency or build directories in the source",
             summary=(f"{len(dirs)} director{'y' if len(dirs) == 1 else 'ies'} of third-party or "
-                     f"build output ({files:,} {pluralize(files, 'file')}, {mb(size)}) are part of "
-                     f"the source: {names}."),
+                     f"build output ({files:,} {pluralize(files, 'file')}, {mb(size)}) "
+                     f"{is_are(len(dirs))} part of the source: {names}."),
             impact=("Third-party code is versioned alongside the tool's own: it bloats every "
                     "clone, hides local edits to dependencies, and never receives security "
                     "updates."),

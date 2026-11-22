@@ -289,7 +289,7 @@ No CI pipeline definition was found.
 
 `maintainability` · source: scanner (vendored_bulk) · effort: M · id `52364e4135515550`
 
-1 directory of third-party or build output (1 file, 0.0 MB) are part of the source: node_modules.
+1 directory of third-party or build output (1 file, 0.0 MB) is part of the source: node_modules.
 
 **Impact.** Third-party code is versioned alongside the tool's own: it bloats every clone, hides local edits to dependencies, and never receives security updates.
 

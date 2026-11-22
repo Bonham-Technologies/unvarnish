@@ -168,8 +168,12 @@ def test_one_commit_one_file_tool_reads_in_the_singular(tmp_path, fake_llm):
 def test_phase_messages_and_status_cells_use_plural():
     # Every count in a phase message or a status cell goes through util.plural, so a count of
     # one reads in the singular whatever the data (UNVAR-81).
-    nouns = "commits|files|units|tools|capabilities|findings|modules|scanners|docs|chunks"
-    pattern = re.compile(r"\{[^{}]*\}(?:/\{[^{}]*\})? (" + nouns + r"|documents)\b")
+    nouns = ("commits|files|units|tools|capabilities|findings|modules|scanners|docs|chunks"
+             "|documents|rows|digests|blocks|stores")
+    # A count, an optional fraction, then at most one word ("model findings", "matrix rows")
+    # before the noun; "{n} without units" and "{n} of {m}" read fine as they are.
+    pattern = re.compile(r"\{[^{}]*\}(?:/\{[^{}]*\})? (?:(?!without\b|of\b)[a-z/-]+ )?(?:"
+                         + nouns + r")\b")
     files = [*(SRC / "phases").glob("*.py"), SRC / "cli.py", SRC / "model" / "estimate.py",
              SRC / "scanners" / "bus_factor.py", SRC / "scanners" / "vendored_bulk.py"]
     hits = [f"{p.relative_to(SRC)}:{i}" for p in files

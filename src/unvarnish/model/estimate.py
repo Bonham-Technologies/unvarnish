@@ -184,10 +184,10 @@ def estimate_phase(ctx: ToolContext, phase: str,
     """Token estimate and a short note for one model phase, or None when not estimable yet."""
     if phase == "render":
         n = tool_prose_block_count(make_env(template_override_dirs(ctx)))
-        return estimate_render(n), f"{n} prose blocks"
+        return estimate_render(n), plural(n, "prose block")
     if phase == "verify":
         n = count_high_findings(ctx)
-        return estimate_verify(n), f"{n} high/critical model findings recorded so far"
+        return estimate_verify(n), f"{plural(n, 'high/critical model finding')} recorded so far"
     if index is None:
         return None
     if phase == "extract":
@@ -202,5 +202,5 @@ def estimate_phase(ctx: ToolContext, phase: str,
                 f"{called} of {plural(len(index.modules), 'module')} need a model call")
     if phase == "rollup_tool":
         return (estimate_rollup_tool(len(index.modules), ctx.config.pipeline.rollup_input_tokens),
-                f"{len(index.modules)} module digests")
+                plural(len(index.modules), "module digest"))
     return None

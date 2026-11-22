@@ -31,6 +31,7 @@ from unvarnish.schemas.finding import (
 from unvarnish.schemas.rollup import Module, module_file_id
 from unvarnish.schemas.toolmodel import ToolModel
 from unvarnish.schemas.verify import ModelFindings, Verdict
+from unvarnish.util.plural import plural
 
 log = logging.getLogger("unvarnish.verify")
 VERIFY_SEVERITIES = {Severity.critical, Severity.high}
@@ -463,7 +464,7 @@ class VerifyPhase:
         merge_failures(ctx, self.name, outcome.failures)
         if outcome.fatal is not None:
             raise outcome.fatal
-        msg = (f"{len(findings)} model findings, {len(high)} high or critical, "
+        msg = (f"{plural(len(findings), 'model finding')}, {len(high)} high or critical, "
                f"{len(to_verify) + placeholders} verifiable: "
                f"{counts['confirmed']} confirmed, {counts['downgraded']} downgraded, "
                f"{counts['rejected']} rejected, {unverified} unverified, "
