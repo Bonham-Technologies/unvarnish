@@ -297,3 +297,14 @@ def test_a_value_once_per_line_keeps_its_finding_id(engagement, synthetic_repo):
     f = next(f for f in findings if f.title == "Hardcoded absolute file paths")
     assert f.id == compute_finding_id("alpha", f.category, f.title, f.evidence[0])
     assert f.summary.startswith("1 distinct absolute path hardcoded at 1 location,")
+
+
+def test_the_cap_note_counts_occurrences_not_locations(engagement, synthetic_repo):
+    # Two values on each of 13 lines: 26 evidence rows at 13 locations; the cap note must not
+    # claim to show 25 of 13 locations.
+    body = "".join(f'p{i} = "/srv/a{i} /srv/b{i}"\n' for i in range(13))
+    _, findings = _scan(engagement, synthetic_repo, {"m.py": body})
+    f = next(f for f in findings if f.title == "Hardcoded absolute file paths")
+    assert "hardcoded at 13 locations" in f.summary, f.summary
+    assert "Showing the first 25 of 26 occurrences." in f.summary, f.summary
+    assert len(f.evidence) == 25

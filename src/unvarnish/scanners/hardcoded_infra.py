@@ -468,7 +468,8 @@ class HardcodedInfraScanner:
                                  note=f"value: {redact_text(v)}")
                         for v, p, n, t in located[:max_evidence]]
             sample = redact_text(", ".join(list(values)[:5]))
-            shown = (f" Showing the first {max_evidence} locations."
+            # Evidence rows are occurrences (a line with two values has two); the cap counts them.
+            shown = (f" Showing the first {max_evidence} of {len(located)} occurrences."
                      if len(located) > max_evidence else "")
             places = len({(p, n) for _, p, n, _ in located})  # two values on a line: one place
             findings.append(Finding(
