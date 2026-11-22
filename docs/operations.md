@@ -101,7 +101,7 @@ The scale rehearsal is repeatable without spending tokens:
 - CI's `docker` job builds the image and runs it on `tests/data/docker-smoke/` with no
   network, on every push to `main` and on pull requests that change the image's inputs
   (UNVAR-80). A Dependabot bump of a pinned image therefore shows a build failure on its pull
-  request; the job's first step lists the changed files it looked at.
+  request; its "Does this change touch the image?" step lists the changed files it looked at.
 
 ## Tree-sitter grammars
 

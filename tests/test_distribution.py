@@ -165,12 +165,18 @@ def test_ci_builds_the_image_and_runs_it_on_a_fixture():
                     "export --format html"):
         assert command in script, command
     assert "--network none" in script
+    assert "--entrypoint gitleaks" in script and "--entrypoint osv-scanner" in script
     assert (ROOT / "tests/data/docker-smoke/app.py").is_file()
     # It builds on every push to main, and on a pull request that touches the image's inputs.
-    triggers = ci[True]  # PyYAML reads the bare key `on` as true
+    triggers = ci.get("on", ci.get(True))  # PyYAML reads a bare `on` key as true
     assert triggers["push"]["branches"] == ["main"] and "pull_request" in triggers
     for path in ("Dockerfile", "docker/", "pyproject\\.toml", "uv\\.lock"):
         assert path in script, path
+    # Only the steps skip when nothing relevant changed: a skipped job would pass the gate.
+    assert "if" not in jobs["docker"]
+    gated = [step for step in jobs["docker"]["steps"] if "docker build" in step.get("run", "")
+             or "docker run" in step.get("run", "")]
+    assert gated and all(step["if"] == "steps.image.outputs.build == 'true'" for step in gated)
     # The single required check waits for every other job, the image build included.
     needs = jobs["ci-status"]["needs"]
     assert set(needs) == set(jobs) - {"ci-status"}, needs

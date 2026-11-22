@@ -43,7 +43,6 @@ jobs:
       - run: uv run pytest -q
       - run: uv build
 
-
   # The distributable image, built and run on a fixture (UNVAR-80). Dependabot moves the four
   # digest-pinned images in the Dockerfile, and the text checks in test_distribution.py cannot
   # tell whether the result still builds or runs. It builds on every push to main, and on a pull
@@ -67,9 +66,9 @@ jobs:
             echo "build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          changed=$(git diff --name-only HEAD^1 HEAD)
+          changed=$(git diff --name-only --no-renames HEAD^1 HEAD)
           echo "$changed"
-          if echo "$changed" | grep -qE '^(Dockerfile|\.dockerignore|pyproject\.toml|uv\.lock|\.github/workflows/ci\.yml)$|^docker/|^tests/data/docker-smoke/'; then
+          if echo "$changed" | grep -qE '^(Dockerfile|\.dockerignore|pyproject\.toml|uv\.lock|README\.md|LICENSE|NOTICE|\.github/workflows/ci\.yml)$|^docker/|^tests/data/docker-smoke/'; then
             echo "build=true" >> "$GITHUB_OUTPUT"
           else
             echo "build=false" >> "$GITHUB_OUTPUT"
@@ -93,6 +92,12 @@ jobs:
           u export --format html --doc findings
           ls -l "$E/tools/smoke/docs/findings.md" "$E"/exports/findings-smoke-*.html
           grep -q "<main>" "$E"/exports/findings-smoke-*.html
+          # A missing or broken scanner is a note, not a failed run, so check the bundled
+          # tools and the scan's notes directly: these are what Dependabot bumps.
+          docker run --rm --network none --entrypoint gitleaks unvarnish:ci version
+          docker run --rm --network none --entrypoint osv-scanner unvarnish:ci --version
+          jq -e '.data.skipped == [] and ([.data.notes[] | select(test("not installed|no end-of-life data bundle"))] | length == 0)' \
+            "$E/tools/smoke/inventory/scanner-findings.json"
 
   # Aggregate job: the single required check. List EVERY other job in `needs`.
   # A skipped job is allowed (some jobs run on pull requests only); a failed
