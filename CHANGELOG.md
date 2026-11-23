@@ -8,6 +8,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### The site lives at unvarnish.tech
+
+- The public site's canonical address, Open Graph and structured-data URLs, sitemap, robots
+  file, `security.txt` and the package's Homepage now use `https://unvarnish.tech`.
+  `unvarnish.com` and `www.unvarnish.com` redirect there (UNVAR-96).
+
 ### One commit, one file, one unit
 
 - Phase lines, `status` cells, the run log and `ask`'s index line now say "1 commit",

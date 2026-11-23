@@ -1431,3 +1431,13 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   a reader who wants the other theme changes a system setting; and the site is plainer than
   its siblings by design, which a later identity pass can revisit by changing one token and
   one drawing.
+
+## The site moves to unvarnish.tech (UNVAR-96)
+
+- **unvarnish.tech is the primary address; unvarnish.com redirects to it (owner's choice,
+  2026-11-22).** The .tech No Excuses Fund asks that an applicant's site live on its .tech
+  domain and that the project's own links point there, and that the domain stay on .tech for
+  24 months if awarded. Vercel serves `unvarnish.tech`; `www.unvarnish.tech`, `unvarnish.com`
+  and `www.unvarnish.com` answer with a 308 to it, so old links and search results keep
+  working. *Cost if wrong:* search engines re-index the site under the new host, and the
+  .com keeps renewing as a redirect.

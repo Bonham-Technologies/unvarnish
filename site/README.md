@@ -1,4 +1,4 @@
-# unvarnish.com
+# unvarnish.tech
 
 The product site: static HTML and one stylesheet, no build step and no JavaScript. Decided in
 BORG-70: the site lives here in `site/`, deployed by its own Vercel project, and the demo at
@@ -58,13 +58,14 @@ repository while `LICENSE` is still the proprietary notice.
 1. Create the Vercel project from `Bonham-Technologies/unvarnish` with **Root Directory**
    `site`, framework preset **Other**, no build command, output directory `.`.
 2. Production branch `main` only; keep **Git Fork Protection** on.
-3. Add `unvarnish.com` and `www.unvarnish.com` to the project (redirect `www` to the apex);
+3. Add `unvarnish.tech` (primary), `www.unvarnish.tech`, `unvarnish.com` and `www.unvarnish.com`
+   to the project, the last three redirecting (308) to `unvarnish.tech`;
    set the DNS records Vercel shows at Porkbun, and turn on the registrar lock.
 4. Confirm the Vercel plan: Hobby is for non-commercial use, so a product site likely needs
    Pro (about $20 a month per seat).
 5. GitHub: require approval before workflows run for outside contributors; passkeys or 2FA on
    GitHub, Vercel and Porkbun.
-6. After the first deploy, check that `https://unvarnish.com/README.md` returns 404
+6. After the first deploy, check that `https://unvarnish.tech/README.md` returns 404
    (`.vercelignore` keeps it off the site) and that the response headers match `vercel.json`.
 
 ## Since launch
