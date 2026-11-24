@@ -79,6 +79,10 @@ EFFORT_RULES: dict[str, dict[str, tuple[Effort, str]]] = {
         "past": (L, "move to a supported release, retest and update every place it is pinned"),
         "near": (L, "plan the move to a supported release before support ends"),
     },
+    "sast": {
+        "rule": (M, "fix each flagged place and add a test that exercises it"),
+        "suppression": (S, "review each suppression entry"),
+    },
 }
 
 

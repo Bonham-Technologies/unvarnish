@@ -361,6 +361,7 @@ Scanner notes:
 
 - gitleaks: disabled by UNVARNISH_DISABLE_GITLEAKS
 - end_of_life: no end-of-life data bundle; runtime and framework versions were not checked against end-of-life dates (run `unvarnish eol refresh` while online, or set UNVARNISH_EOL_DIR to a folder holding endoflife.json, then rerun)
+- sast: not checked (no rules directory configured; set scanners.sast.rules to a local Opengrep rules directory)
 
 1 model finding was rejected on verification and is excluded above; it remains in `analysis/findings.json` for inspection.
 

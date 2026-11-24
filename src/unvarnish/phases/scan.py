@@ -48,8 +48,12 @@ class ScanPhase:
         options = json.dumps({n: ctx.config.scanners.get(n, {}) for n in names}, sort_keys=True)
         # The band table (UNVAR-42): a scan from before the bands, or of other bands, reruns.
         bands = json.dumps(EFFORT_RULES, sort_keys=True)
+        # What a scanner reads outside the source, such as sast's rule files (UNVAR-89).
+        extra = [digest(dict(ctx.config.scanners.get(s.name, {})), ctx.engagement.root)
+                 for s in self.scanners()
+                 if (digest := getattr(s, "inputs_digest", None)) is not None]
         return hash_inputs([hash_files(self._artifacts(ctx)), ",".join(names), options, bands,
-                            SCANNER_TEXT_VERSION])
+                            SCANNER_TEXT_VERSION, *[e for e in extra if e]])
 
     def outputs(self, ctx: ToolContext) -> list[Path]:
         return [ctx.paths.scanner_findings]
@@ -70,6 +74,7 @@ class ScanPhase:
                 tool=ctx.tool, source_root=ctx.source_root, census=census, metrics=metrics,
                 git=git, dependencies=deps,
                 options=dict(ctx.config.scanners.get(scanner.name, {})),
+                engagement_root=ctx.engagement.root,
             )
             try:
                 findings.extend(scanner.run(sctx))
