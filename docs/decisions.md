@@ -1059,6 +1059,7 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   | bus_factor | `single_author` | L |
   | bus_factor | `low_bus_factor` | M |
   | dependencies | `advisories`, `unpinned` | S |
+  | dependencies | `licences` (UNVAR-93) | M |
   | hardcoded_infra | `url`, `host`, `ip`, `path` | M |
   | hardcoded_infra | `email` | S |
   | vendored_bulk | `vendored_directories` | M |
@@ -1508,3 +1509,49 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   `#model_version`/`score_date` comment then `cve,epss,percentile`), and both can be
   overridden (`--kev-url`, `--epss-url`) if a feed moves again. *Cost if wrong:* a feed that
   changes shape fails the refresh by name and leaves the old bundle in place.
+
+## CycloneDX SBOM and dependency licences (UNVAR-93)
+
+- **SBOM export now, licences only online (owner's choice, option A).** `export --format
+  cyclonedx` builds the document from `dependencies.json` and its stored advisories, so it runs
+  offline and adds no osv-scanner call at export time. Licences come only from deps.dev, which
+  osv-scanner reaches online (`--licenses` with no allowlist, plus `--all-packages` so packages
+  without advisories are listed); offline nothing is filled in and the findings document and
+  the SBOM's metadata say "licences: not checked". *Cost if wrong:* an air-gapped engagement
+  never gets licences; the consultant runs the inventory online where the site allows it.
+- **CycloneDX 1.6 JSON, written by hand, not by a library.** The document needs a few dozen
+  fields, and a dependency would ship in the image for one export. The suite validates it
+  against the vendored 1.6 schema (with its SPDX and JSF schemas) using `jsonschema`, a new
+  dev-only dependency. Licences are one SPDX expression when every licence is a recognised
+  identifier, else each by name, so an unrecognised string never fails the schema's SPDX
+  enumeration. *Cost if wrong:* a field a consumer expects is missing until added here.
+- **Components are the declared dependencies, then what online resolution and advisories add.**
+  A declared dependency carries its exact version when its constraint pins one (or online
+  resolution found exactly one), else its constraint as a property, and its manifest. Packages
+  osv-scanner resolved online that no manifest declares, and packages an advisory names that
+  none does, are listed at their resolved version so every vulnerability's `affects` points at
+  a component. Packages join records by ecosystem, normalised name and folder, since a
+  lockfile resolves the manifest beside it. *Cost if wrong:* a manifest in one folder resolved
+  by a lockfile in another shows the package twice.
+- **Package URLs for osv-scanner's other ecosystems too.** Packages only osv-scanner reports
+  (RubyGems, Packagist, NuGet, Pub, Hex, from lockfiles or advisories) get their purl type
+  (`gem`, `composer`, `nuget`, `pub`, `hex`); a go.mod requirement, pseudo-versions and
+  `+incompatible` included, is always an exact version. Any other ecosystem's component has
+  no purl rather than a guessed one. *Cost if wrong:* a component a consumer cannot match by
+  purl.
+- **The allowlist is Unvarnish's own, applied by the scanner.** It never reaches osv-scanner,
+  whose verdict (`license_violations`) is ignored, and osv-scanner keeps getting Unvarnish's
+  empty `--config`, so a `PackageOverrides` licence override or ignore in the vetted
+  repository's `osv-scanner.toml` has no effect (as for advisories, UNVAR-66's principle).
+  Changing the allowlist reruns the scan, not the lookup. *Cost if wrong:* none known.
+- **Medium for a licence that cannot be met without a copyleft one, low for any other licence
+  outside the allowlist or none deps.dev can name**, one finding per manifest and licence, in
+  the compliance category, band M. A copyleft licence can reach the tool's own source when it
+  is distributed, which is the client's question; an unlisted permissive licence needs a
+  review, not a rewrite. *Cost if wrong:* a weak-copyleft package used unmodified (LGPL, MPL)
+  reads medium; the consultant accepts it in `baseline.accepted`.
+- **No `licences` default in the configuration, and the online lookup joins the inventory's
+  hash.** A new default would change every engagement's inventory hash; the online marker
+  reruns only online inventories, once, so they pick licences up. The new note is scanner
+  text, so the scan reruns once everywhere (SCANNER_TEXT_VERSION 2026-11-24.3). *Cost if
+  wrong:* one osv-scanner call per online tool on upgrade.

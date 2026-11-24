@@ -144,6 +144,42 @@ The scale rehearsal is repeatable without spending tokens:
 - After refreshing the database, rerun `unvarnish run --phase inventory --force` and
   `unvarnish run`.
 - Set `scanners.dependencies.offline: false` to query osv.dev directly where the site allows it.
+  Online, osv-scanner also reads each package's licences from deps.dev (`--licenses`, no
+  allowlist), and the inventory stores them in `dependencies.json` (UNVAR-93).
+
+## Dependency licences and the SBOM
+
+- Licences are checked only online. Offline (the default) the findings document says
+  "licences: not checked (offline mode)" under "Not analysed", and the SBOM lists no licence:
+  none is ever guessed. Switching to `offline: false` reruns the inventory once.
+- Set the client's accepted licences as SPDX identifiers, matched without regard to case:
+
+      scanners:
+        dependencies:
+          offline: false
+          licences: [MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC]
+
+  An expression is accepted when any `OR` branch and every `AND` part is on the list
+  (`MIT OR GPL-3.0` passes with MIT); `X WITH exception` passes when X or the whole of it is
+  listed. Each manifest and licence outside the list is one compliance finding: medium when the
+  licence cannot be met without a copyleft one (GPL, AGPL, LGPL, MPL, EPL, EUPL, CDDL, OSL,
+  SSPL, CC-BY-SA...), low otherwise, and low for a package deps.dev names no licence for. It
+  covers every package osv-scanner resolved, transitive ones from a lockfile included; a
+  declared dependency it resolved no version for (a range without a lockfile) is named in a
+  note, since its licence was not checked. Without the option nothing is flagged and a note
+  says so; changing it reruns the scan only, not the inventory's osv-scanner lookup.
+- The allowlist never reaches osv-scanner, and osv-scanner always gets Unvarnish's own empty
+  `--config`, so an `osv-scanner.toml` in the vetted repository cannot override or ignore a
+  package's licence, just as it cannot hide advisories.
+- `unvarnish export --format cyclonedx [tool...]` writes `exports/sbom-<tool>-<timestamp>.cdx.json`
+  (CycloneDX 1.6, JSON) from `inventory/dependencies.json`, with no osv-scanner call: declared
+  dependencies (package URL, exact version or the constraint as `unvarnish:constraint`, the
+  manifest as `unvarnish:manifest`, dev dependencies with scope `optional`), online also the
+  packages osv-scanner resolved, and each package an advisory names. Advisories are
+  `vulnerabilities` with their aliases as references, the severity Unvarnish rated, the KEV and
+  EPSS data as properties, and `affects` pointing at the component. The metadata says whether
+  licences and advisories were checked. A tool not yet inventoried is skipped. Rerun `export`
+  after `run`: the file is a snapshot.
 
 ## Exploit data (CISA KEV and EPSS)
 
