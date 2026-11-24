@@ -83,6 +83,19 @@ class DependencyRecord(BaseModel):
     constraint: str | None
     manifest: str
     dev: bool = False
+    # The licences deps.dev declares for the package osv-scanner resolved for this record, in
+    # online mode only; None (and left out of the artifact) when not checked (UNVAR-93).
+    licences: list[str] | None = Field(default=None, exclude_if=lambda v: v is None)
+
+
+class PackageLicences(BaseModel):
+    """One package osv-scanner resolved in online mode, declared or transitive, with the
+    licences deps.dev declares for it; an empty list when deps.dev knows none (UNVAR-93)."""
+    ecosystem: str  # osv-scanner's name for it: PyPI, npm, crates.io, Go, Maven
+    name: str
+    version: str
+    manifest: str  # the manifest or lockfile osv-scanner read it from
+    licences: list[str] = Field(default_factory=list)
 
 
 class Dependencies(BaseModel):
@@ -97,3 +110,9 @@ class Dependencies(BaseModel):
     # or None without one, and then why not (UNVAR-90)
     exploit_data_date: str | None = None
     exploit_data_note: str | None = None
+    # Package licences (UNVAR-93): checked only in online mode, from deps.dev through
+    # osv-scanner. Each is left out of the artifact at its default, so an offline inventory's
+    # dependencies.json is what it was before licences existed.
+    licences_checked: bool = Field(default=False, exclude_if=lambda v: not v)
+    licences_note: str | None = Field(default=None, exclude_if=lambda v: v is None)  # why not
+    packages: list[PackageLicences] = Field(default_factory=list, exclude_if=lambda v: not v)
