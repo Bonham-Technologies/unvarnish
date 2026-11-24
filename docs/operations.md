@@ -98,6 +98,10 @@ The scale rehearsal is repeatable without spending tokens:
   yours; the image marks every directory as a git `safe.directory` and sets `HOME=/tmp`.
 - `docker save unvarnish | gzip > unvarnish.tar.gz` moves the image to an air-gapped site.
 - Tools added with `--link` are invisible inside the container; use `--repo` or `--files`.
+- CI's `docker` job builds the image and runs it on `tests/data/docker-smoke/` with no
+  network, on every push to `main` and on pull requests that change the image's inputs
+  (UNVAR-80). A Dependabot bump of a pinned image therefore shows a build failure on its pull
+  request; its "Does this change touch the image?" step lists the changed files it looked at.
 
 ## Tree-sitter grammars
 

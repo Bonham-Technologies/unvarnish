@@ -1,6 +1,6 @@
 # nodegoat: Findings
 
-**Client:** Demo client · **Prepared by:** Unvarnish demo · **Generated:** 2026-11-14 10:11 UTC\
+**Client:** Demo client · **Prepared by:** Unvarnish demo · **Generated:** 2026-11-22 10:06 UTC\
 **Source:** repo `https://github.com/OWASP/NodeGoat.git` at `c5cb68a7084e`
 
 > Produced by Unvarnish's deterministic scanners. Every finding below is reproducible and traceable to a
@@ -12,9 +12,9 @@ _No model-written text for this section: no model configured._
 
 ## Summary
 
-164 finding(s): 34 critical, 86 high, 37 medium, 7 low.
+164 findings: 34 critical, 86 high, 37 medium, 7 low.
 
-**120 finding(s) are critical or high severity and need action before this tool is relied on further.**
+**120 findings are critical or high severity and need action before this tool is relied on further.**
 
 ## By the numbers
 
@@ -31,8 +31,8 @@ _No model-written text for this section: no model configured._
 | Client-exposed credentials / open tables | 0 / 0 |
 | Dependencies declared | 36 |
 | Dependency vulnerabilities | 311 (33 critical, 170 high, 94 medium, 14 low) |
-| End-of-life runtimes and frameworks | 1 past end of life, 0 near it; endoflife.date data dated 2026-11-14 |
-| Hardcoded infrastructure | 33 URLs · 0 internal host(s) · 1 IP(s) · 0 path(s) · 0 email(s) |
+| End-of-life runtimes and frameworks | 1 past end of life, 0 near it; endoflife.date data dated 2026-11-22 |
+| Hardcoded infrastructure | 33 URLs · 0 internal hosts · 1 IP · 0 paths · 0 emails |
 | Commits · authors · active days | 499 · 40 · 204 |
 | History span | 2013-10-21 to 2023-06-21 |
 | Top author share · bus factor | 49% · 2 |
@@ -78,7 +78,7 @@ Private key material found in artifacts/cert/server.key. The value is redacted h
 **Effort.** S: rotate one credential and move it to configuration (scanner rule secrets.credential)
 
 **Evidence.**
-- `artifacts/cert/server.key:1` — `…[redacted 31 chars]` (fingerprint 71960cee9226; also appears in 1 commit(s) in git history)
+- `artifacts/cert/server.key:1` — `…[redacted 31 chars]` (fingerprint 71960cee9226; also appears in 1 commit in git history)
 
 #### Hardcoded credential assignment
 
@@ -93,13 +93,13 @@ Hardcoded credential assignment found in artifacts/db-reset.js. The value is red
 **Effort.** S: rotate one credential and move it to configuration (scanner rule secrets.credential)
 
 **Evidence.**
-- `artifacts/db-reset.js:18` — `"password": "…[redacted 9 chars]",` (fingerprint d07e7c4cce2a; also appears in 2 commit(s) in git history)
+- `artifacts/db-reset.js:18` — `"password": "…[redacted 9 chars]",` (fingerprint d07e7c4cce2a; also appears in 2 commits in git history)
 
 #### Hardcoded credential assignment
 
 `security` · source: scanner (secrets) · effort: S · id `3946d6a7836769cb`
 
-Hardcoded credential assignment found in artifacts/db-reset.js (1 more occurrence(s) with the same value). The value is redacted here and identified by fingerprint.
+Hardcoded credential assignment found in artifacts/db-reset.js (1 more occurrence with the same value). The value is redacted here and identified by fingerprint.
 
 **Impact.** Anyone who can read this code or its history holds a working credential. Rotation is required regardless of whether the file is still present.
 
@@ -108,7 +108,7 @@ Hardcoded credential assignment found in artifacts/db-reset.js (1 more occurrenc
 **Effort.** S: rotate one credential and move it to configuration (scanner rule secrets.credential)
 
 **Evidence.**
-- `artifacts/db-reset.js:27` — `"password": "…[redacted 9 chars]"` (fingerprint b4ea3116d868; also appears in 4 commit(s) in git history)
+- `artifacts/db-reset.js:27` — `"password": "…[redacted 9 chars]"` (fingerprint b4ea3116d868; also appears in 4 commits in git history)
 
 #### Hardcoded credential assignment
 
@@ -123,7 +123,7 @@ Hardcoded credential assignment found in artifacts/db-reset.js. The value is red
 **Effort.** S: rotate one credential and move it to configuration (scanner rule secrets.credential)
 
 **Evidence.**
-- `artifacts/db-reset.js:35` — `"password": "…[redacted 9 chars]"` (fingerprint 5238f6fe78d6; also appears in 2 commit(s) in git history)
+- `artifacts/db-reset.js:35` — `"password": "…[redacted 9 chars]"` (fingerprint 5238f6fe78d6; also appears in 2 commits in git history)
 
 #### Hardcoded credential assignment
 
@@ -138,13 +138,13 @@ Hardcoded credential assignment found in config/env/all.js. The value is redacte
 **Effort.** S: rotate one credential and move it to configuration (scanner rule secrets.credential)
 
 **Evidence.**
-- `config/env/all.js:8` — `cookieSecret: "…[redacted 30 chars]",` (fingerprint 6f983a53bf8b; also appears in 1 commit(s) in git history)
+- `config/env/all.js:8` — `cookieSecret: "…[redacted 30 chars]",` (fingerprint 6f983a53bf8b; also appears in 1 commit in git history)
 
 #### Hardcoded credential assignment
 
 `security` · source: scanner (secrets) · effort: S · id `f5a688cb1a6b4647`
 
-Hardcoded credential assignment found in config/env/development.js (1 more occurrence(s) with the same value). The value is redacted here and identified by fingerprint.
+Hardcoded credential assignment found in config/env/development.js (1 more occurrence with the same value). The value is redacted here and identified by fingerprint.
 
 **Impact.** Anyone who can read this code or its history holds a working credential. Rotation is required regardless of whether the file is still present.
 
@@ -153,7 +153,7 @@ Hardcoded credential assignment found in config/env/development.js (1 more occur
 **Effort.** S: rotate one credential and move it to configuration (scanner rule secrets.credential)
 
 **Evidence.**
-- `config/env/development.js:6` — `zapApiKey: "…[redacted 26 chars]",` (fingerprint e0f1906c2cc8; also appears in 3 commit(s) in git history)
+- `config/env/development.js:6` — `zapApiKey: "…[redacted 26 chars]",` (fingerprint e0f1906c2cc8; also appears in 3 commits in git history)
 
 #### Known vulnerabilities in babel-traverse 6.11.4
 
@@ -581,7 +581,7 @@ Hardcoded credential assignment found in config/env/development.js (1 more occur
 
 `dependency` · source: scanner (end_of_life) · effort: L · id `ad1e243c348a1c96`
 
-Node.js 12 reached end of life on 2022-04-30: its maintainers no longer fix bugs or security issues in it. It is declared in Dockerfile. Dates are from endoflife.date data dated 2026-11-14.
+Node.js 12 reached end of life on 2022-04-30: its maintainers no longer fix bugs or security issues in it. It is declared in Dockerfile. Dates are from endoflife.date data dated 2026-11-22.
 
 **Impact.** Security flaws found from now on in this release are not fixed upstream, so the tool accumulates known vulnerabilities, and libraries drop support for it, which blocks routine upgrades.
 
@@ -590,8 +590,8 @@ Node.js 12 reached end of life on 2022-04-30: its maintainers no longer fix bugs
 **Effort.** L: move to a supported release, retest and update every place it is pinned (scanner rule end_of_life.past)
 
 **Evidence.**
-- `Dockerfile:1` (FROM node:12-alpine; end of life 2022-04-30; endoflife.date data dated 2026-11-14)
-- `Dockerfile:7` (FROM node:12-alpine; end of life 2022-04-30; endoflife.date data dated 2026-11-14)
+- `Dockerfile:1` (FROM node:12-alpine; end of life 2022-04-30; endoflife.date data dated 2026-11-22)
+- `Dockerfile:7` (FROM node:12-alpine; end of life 2022-04-30; endoflife.date data dated 2026-11-22)
 
 #### Private key material in git history
 
@@ -1874,7 +1874,7 @@ Database connection string with embedded password found in node_modules/mongodb/
 
 `process` · source: scanner (generated_bulk) · effort: L · id `51577234fe744da5`
 
-7 commit(s) each changed more than 2,000 lines (677,783 lines, 51% of all changed lines).
+7 commits each changed more than 2,000 lines (677,783 lines, 51% of all changed lines).
 
 **Impact.** Changes this large are rarely reviewed line by line; they are typical of generated code pasted in wholesale, so defects and copied secrets slip through.
 
@@ -1883,13 +1883,13 @@ Database connection string with embedded password found in node_modules/mongodb/
 **Effort.** L: review the largest unreviewed commits (scanner rule generated_bulk.bulk_commits)
 
 **Evidence.**
-- `.` (a7b556da2a25 2013-12-02 Chetan Karande: +625,625 -1 in 4313 file(s): Included node_modules for faster and consistent deployemnts)
-- `.` (5848aad1d8b4 2023-03-06 Liran Tal: +15,684 -924 in 2 file(s): fix: revert marked changes back to make sure we use the vulnerable version)
-- `.` (aad96e69ce76 2019-03-03 ckarande: +11,290 -0 in 1 file(s): Update package versions)
-- `.` (a58571ada601 2013-11-17 Chetan Karande: +9,837 -0 in 47 file(s): closes #1, closes # 3, closes #4, closes #5, closes #6)
-- `.` (60f02d28b384 2019-08-07 Josep: +3,384 -3,410 in 3 file(s): Add nodemon as npm script)
-- `.` (7593798f995e 2020-04-02 fabre-pierre-jean: +2,744 -2,064 in 3 file(s): add forever node_modules)
-- `.` (199e6b58e6a3 2014-03-11 Chetan Karande: +2,283 -537 in 57 file(s): Update for release)
+- `.` (a7b556da2a25 2013-12-02 Chetan Karande: +625,625 -1 in 4313 files: Included node_modules for faster and consistent deployemnts)
+- `.` (5848aad1d8b4 2023-03-06 Liran Tal: +15,684 -924 in 2 files: fix: revert marked changes back to make sure we use the vulnerable version)
+- `.` (aad96e69ce76 2019-03-03 ckarande: +11,290 -0 in 1 file: Update package versions)
+- `.` (a58571ada601 2013-11-17 Chetan Karande: +9,837 -0 in 47 files: closes #1, closes # 3, closes #4, closes #5, closes #6)
+- `.` (60f02d28b384 2019-08-07 Josep: +3,384 -3,410 in 3 files: Add nodemon as npm script)
+- `.` (7593798f995e 2020-04-02 fabre-pierre-jean: +2,744 -2,064 in 3 files: add forever node_modules)
+- `.` (199e6b58e6a3 2014-03-11 Chetan Karande: +2,283 -537 in 57 files: Update for release)
 
 #### Dependency or build directories in the source
 
@@ -1905,35 +1905,6 @@ Database connection string with embedded password found in node_modules/mongodb/
 
 **Evidence.**
 - `app/assets/vendor` (15 files, 0.8 MB)
-
-#### Route handlers with no authentication check nearby
-
-`security` · source: scanner (client_exposure) · effort: L · id `8b4a401cca718575`
-
-15 route handler(s) in 2 file(s) have no authentication identifier (auth, session, jwt, current user, guard) near them. This is a heuristic for review: middleware or a wrapper elsewhere may protect them. Model extraction, when configured, is asked to confirm each one.
-
-**Impact.** An unprotected handler that reads or changes data exposes it to anyone who can reach the server.
-
-**Remediation.** Confirm each handler is protected; add authentication middleware or an explicit check where it is not.
-
-**Effort.** L: confirm and add authentication across the handlers (scanner rule client_exposure.unauthenticated_routes)
-
-**Evidence.**
-- `app/routes/index.js:47` — `app.get("/profile", isLoggedIn, profileHandler.displayProfile);` (GET /profile)
-- `app/routes/index.js:48` — `app.post("/profile", isLoggedIn, profileHandler.handleProfileUpdate);` (POST /profile)
-- `app/routes/index.js:51` — `app.get("/contributions", isLoggedIn, contributionsHandler.displayContributions);` (GET /contributions)
-- `app/routes/index.js:52` — `app.post("/contributions", isLoggedIn, contributionsHandler.handleContributionsUpdate);` (POST /contributions)
-- `app/routes/index.js:55` — `app.get("/benefits", isLoggedIn, benefitsHandler.displayBenefits);` (GET /benefits)
-- `app/routes/index.js:56` — `app.post("/benefits", isLoggedIn, benefitsHandler.updateBenefits);` (POST /benefits)
-- `app/routes/index.js:58` — `app.get("/benefits", isLoggedIn, isAdmin, benefitsHandler.displayBenefits);` (GET /benefits)
-- `app/routes/index.js:59` — `app.post("/benefits", isLoggedIn, isAdmin, benefitsHandler.updateBenefits);` (POST /benefits)
-- `app/routes/index.js:63` — `app.get("/allocations/:userId", isLoggedIn, allocationsHandler.displayAllocations);` (GET /allocations/:userId)
-- `app/routes/index.js:66` — `app.get("/memos", isLoggedIn, memosHandler.displayMemos);` (GET /memos)
-- `app/routes/index.js:67` — `app.post("/memos", isLoggedIn, memosHandler.addMemos);` (POST /memos)
-- `app/routes/index.js:70` — `app.get("/learn", isLoggedIn, (req, res) => {` (GET /learn)
-- `app/routes/index.js:76` — `app.get("/research", isLoggedIn, researchHandler.displayResearch);` (GET /research)
-- `app/routes/tutorial.js:8` — `router.get("/", (req, res) => {` (GET /)
-- `app/routes/tutorial.js:31` — `router.get('/${page}', (req, res) => {` (GET /${page})
 
 #### Oversized functions
 
@@ -1951,11 +1922,27 @@ Database connection string with embedded password found in node_modules/mongodb/
 - `app/routes/session.js:8-275` (SessionHandler: 268 lines)
 - `Gruntfile.js:14-194` (<anonymous>: 181 lines)
 
+#### Route handlers with no authentication check nearby
+
+`security` · source: scanner (client_exposure) · effort: L · id `f960c818909b8dc7`
+
+2 route handlers in 1 file have no authentication identifier (auth, session, jwt, current user, guard) near them. This is a heuristic for review: middleware or a wrapper elsewhere may protect them. Model extraction, when configured, is asked to confirm each one.
+
+**Impact.** An unprotected handler that reads or changes data exposes it to anyone who can reach the server.
+
+**Remediation.** Confirm each handler is protected; add authentication middleware or an explicit check where it is not.
+
+**Effort.** L: confirm and add authentication across the handlers (scanner rule client_exposure.unauthenticated_routes)
+
+**Evidence.**
+- `app/routes/tutorial.js:8` — `router.get("/", (req, res) => {` (GET /)
+- `app/routes/tutorial.js:31` — `router.get('/${page}', (req, res) => {` (GET /${page})
+
 #### Hardcoded URLs
 
 `operability` · source: scanner (hardcoded_infra) · effort: M · id `fbde30d1cd4f9e51`
 
-33 distinct URLs hardcoded at 34 location(s), for example https://github.com/vuejs/vue-router/issues/261, https://raw.github.com/bekk/retire.js/master/repository/jsrepository.json, https://raw.github.com/bekk/retire.js/master/repository/npmrepository.json, https://www.owasp.org/index.php/Projects/OWASP_Node_js_Goat_Project, https://www.owasp.org/skins/owasplogo.png. Showing the first 25 locations.
+33 distinct URLs hardcoded at 34 locations, for example https://github.com/vuejs/vue-router/issues/261, https://raw.github.com/bekk/retire.js/master/repository/jsrepository.json, https://raw.github.com/bekk/retire.js/master/repository/npmrepository.json, https://www.owasp.org/index.php/Projects/OWASP_Node_js_Goat_Project, https://www.owasp.org/skins/owasplogo.png. Showing the first 25 locations.
 
 **Impact.** Endpoints are fixed in code: moving a service or adding an environment means a code change, and the code reveals where the organisation's systems live.
 
@@ -1994,7 +1981,7 @@ Database connection string with embedded password found in node_modules/mongodb/
 
 `operability` · source: scanner (hardcoded_infra) · effort: M · id `cb11e2dae7b2c585`
 
-1 distinct IP addresses hardcoded at 2 location(s), for example 192.168.56.20.
+1 distinct IP address hardcoded at 2 locations, for example 192.168.56.20.
 
 **Impact.** Fixed addresses break silently when infrastructure moves and expose network layout.
 
@@ -2490,8 +2477,8 @@ One row per finding. Impact, remediation, and excerpts for each are in
 
 Excluded from analysis but counted in totals:
 
-- **lockfile**: 1 file(s) — e.g. `package-lock.json`
-- **vendored:vendor**: 15 file(s) — e.g. `app/assets/vendor/bootstrap/bootstrap-tour.css`, `app/assets/vendor/bootstrap/bootstrap-tour.js`, `app/assets/vendor/bootstrap/bootstrap.css`, `app/assets/vendor/bootstrap/bootstrap.js`, `app/assets/vendor/chart/morris-0.4.3.min.js`
+- **lockfile**: 1 file — e.g. `package-lock.json`
+- **vendored:vendor**: 15 files — e.g. `app/assets/vendor/bootstrap/bootstrap-tour.css`, `app/assets/vendor/bootstrap/bootstrap-tour.js`, `app/assets/vendor/bootstrap/bootstrap.css`, `app/assets/vendor/bootstrap/bootstrap.js`, `app/assets/vendor/chart/morris-0.4.3.min.js`
 
 Binary files (3): `app/assets/favicon.ico`, `app/assets/images/nodegoat_logo.png`, `app/assets/images/owasplogo.png`
 
