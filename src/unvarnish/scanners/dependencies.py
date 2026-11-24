@@ -21,7 +21,7 @@ from unvarnish.schemas.finding import (
     Source,
 )
 from unvarnish.schemas.inventory import DependencyRecord
-from unvarnish.util.plural import plural
+from unvarnish.util.plural import is_are, plural
 
 LOCKFILE_NAMES: dict[str, set[str]] = {
     "pypi": {"poetry.lock", "uv.lock", "Pipfile.lock", "pdm.lock"},
@@ -213,6 +213,18 @@ class DependenciesScanner:
                 source=Source.scanner, scanner=self.name, tags=["licence"],
                 **rule_effort(ctx, self.name, "licences"),
             ))
+        # A declared dependency osv-scanner resolved no version for (a range without a
+        # lockfile, say) has no licence to check: say so, rather than let it pass silently.
+        unresolved = list(dict.fromkeys(f"{r.name} ({r.manifest})" for r in deps.dependencies
+                                        if r.licences is None))
+        if unresolved:
+            n = len(unresolved)
+            listed = ", ".join(unresolved[:MAX_UNPINNED])
+            extra = f" (+{n - MAX_UNPINNED} more)" if n > MAX_UNPINNED else ""
+            self.notes.append(
+                f"{NAME}: licences: {plural(n, 'declared dependency')} {is_are(n)} not among "
+                f"the packages osv-scanner resolved, so {'its' if n == 1 else 'their'} "
+                f"licence was not checked against the allowlist: {listed}{extra}")
         return out
 
     def _exploit_notes(self, ctx: ScanContext) -> list[str]:

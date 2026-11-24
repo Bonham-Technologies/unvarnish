@@ -539,3 +539,69 @@ def test_two_exports_in_one_second_do_not_overwrite(sbom_tool):
                           template=None, timestamp=STAMP)
     names = sorted(p.name for p in sbom_tool.exports_dir.glob("sbom-alpha-*"))
     assert names == [f"sbom-alpha-{STAMP}-2.cdx.json", f"sbom-alpha-{STAMP}.cdx.json"]
+
+
+# --- review fixes -------------------------------------------------------------------------------
+
+def test_changing_the_allowlist_reruns_the_scan_not_the_lookup(ingested):
+    """The allowlist is applied by the scanner, so setting or changing it must not rerun the
+    inventory's osv-scanner lookup (with the network, online), as the docs say."""
+    eng, tool = ingested
+    eng.config.scanners["dependencies"]["offline"] = False
+    ctx = build_context(eng, tool)
+    before = InventoryPhase().inputs_hash(ctx)
+    eng.config.scanners["dependencies"]["licences"] = ["MIT"]
+    assert InventoryPhase().inputs_hash(ctx) == before
+    eng.config.scanners["dependencies"]["licences"] = ["MIT", "Apache-2.0"]
+    assert InventoryPhase().inputs_hash(ctx) == before
+
+
+@pytest.mark.parametrize("expr", ["MIT WITH (", "MIT WITH )", "MIT WITH AND", "MIT WITH OR x"])
+def test_a_with_needs_an_exception_identifier(expr):
+    assert satisfied(expr, lambda i: True) is False
+
+
+def test_go_pseudo_versions_and_incompatible_are_exact():
+    from unvarnish.export.sbom import exact_version
+
+    for v in ("v0.0.0-20210101000000-abcdef123456", "v2.0.0+incompatible", "v1.9.1"):
+        rec = DependencyRecord(ecosystem="go", name="golang.org/x/net", constraint=v,
+                               manifest="go.mod")
+        assert exact_version(rec) == v
+
+
+@pytest.mark.parametrize(("eco", "name", "want"), [
+    ("RubyGems", "rails", "pkg:gem/rails@7.0.1"),
+    ("Packagist", "laravel/framework", "pkg:composer/laravel/framework@7.0.1"),
+    ("NuGet", "Newtonsoft.Json", "pkg:nuget/Newtonsoft.Json@7.0.1"),
+    ("Pub", "http", "pkg:pub/http@7.0.1"),
+    ("Hex", "phoenix", "pkg:hex/phoenix@7.0.1"),
+])
+def test_packages_osv_scanner_reports_in_other_ecosystems_carry_a_purl(eco, name, want):
+    from datetime import UTC, datetime
+
+    from unvarnish.export.sbom import cyclonedx_document
+
+    deps = Dependencies(tool="t", dependencies=[], advisories_checked=True, advisories=[
+        {"id": "GHSA-aaaa-bbbb-cccc", "ids": ["GHSA-aaaa-bbbb-cccc"], "package": name,
+         "version": "7.0.1", "ecosystem": eco, "manifest": "lock", "severity": "high"}])
+    doc = cyclonedx_document("t", deps, timestamp=datetime.now(UTC))
+    assert schema_errors(doc) == []
+    assert [c.get("purl") for c in doc["components"]] == [want]
+
+
+def test_declared_dependencies_no_resolved_package_covers_are_noted_online():
+    """Online, a declared dependency osv-scanner resolved no version for has no licence to
+    check; the scan says so rather than implying every dependency passed the allowlist."""
+    records = [DependencyRecord(ecosystem="pypi", name="flask", constraint="==1.0",
+                                manifest="requirements.txt"),
+               DependencyRecord(ecosystem="pypi", name="gplthing", constraint=">=1",
+                                manifest="pyproject.toml")]
+    packages = [{"ecosystem": "PyPI", "name": "flask", "version": "1.0",
+                 "manifest": "requirements.txt", "licences": ["BSD-3-Clause"]}]
+    deps = Dependencies(tool="svc", dependencies=attach_licences(records, packages),
+                        advisories_checked=True, licences_checked=True, packages=packages)
+    found, notes = _licence_findings(deps, {"offline": False, "licences": ["BSD-3-Clause"]})
+    assert found == []
+    [note] = [n for n in notes if "licences" in n]
+    assert "gplthing" in note and "1 declared dependency" in note

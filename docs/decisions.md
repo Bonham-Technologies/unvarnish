@@ -1517,6 +1517,12 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   a component. Packages join records by ecosystem, normalised name and folder, since a
   lockfile resolves the manifest beside it. *Cost if wrong:* a manifest in one folder resolved
   by a lockfile in another shows the package twice.
+- **Package URLs for osv-scanner's other ecosystems too.** Packages only osv-scanner reports
+  (RubyGems, Packagist, NuGet, Pub, Hex, from lockfiles or advisories) get their purl type
+  (`gem`, `composer`, `nuget`, `pub`, `hex`); a go.mod requirement, pseudo-versions and
+  `+incompatible` included, is always an exact version. Any other ecosystem's component has
+  no purl rather than a guessed one. *Cost if wrong:* a component a consumer cannot match by
+  purl.
 - **The allowlist is Unvarnish's own, applied by the scanner.** It never reaches osv-scanner,
   whose verdict (`license_violations`) is ignored, and osv-scanner keeps getting Unvarnish's
   empty `--config`, so a `PackageOverrides` licence override or ignore in the vetted

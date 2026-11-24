@@ -107,7 +107,11 @@ class InventoryPhase:
         # The advisory lookup depends on whether osv-scanner is installed and on its options,
         # so installing it or changing them makes the inventory stale. Tracking or untracking a
         # gitignored file changes what is excluded without touching the tree (UNVAR-28).
-        deps_options = json.dumps(ctx.config.scanners.get("dependencies", {}), sort_keys=True)
+        # The licence allowlist is the scanner's, never osv-scanner's (UNVAR-93): changing it
+        # reruns the scan, not the lookup. Left out, an engagement without it hashes as before.
+        deps_options = json.dumps({k: v for k, v in ctx.config.scanners.get("dependencies",
+                                                                             {}).items()
+                                   if k != "licences"}, sort_keys=True)
         tracked = tracked_files(ctx)
         index = "no-index" if tracked is None else hash_inputs(sorted(tracked))
         parts = [hash_tree(ctx.source_root), deps_options,

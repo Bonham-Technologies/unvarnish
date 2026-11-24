@@ -18,8 +18,15 @@ from unvarnish.analysis.licences import cyclonedx_licences, ecosystem, normal_na
 from unvarnish.schemas.inventory import Dependencies, DependencyRecord
 
 SPEC_VERSION = "1.6"
-PURL_TYPES = {"pypi": "pypi", "npm": "npm", "cargo": "cargo", "go": "golang", "maven": "maven"}
+PURL_TYPES = {"pypi": "pypi", "npm": "npm", "cargo": "cargo", "go": "golang", "maven": "maven",
+              # ecosystems only osv-scanner reports (lockfiles, advisories), by its lower-cased
+              # name; the purl type is the package-url specification's
+              "rubygems": "gem", "packagist": "composer", "nuget": "nuget", "pub": "pub",
+              "hex": "hex"}
 EXACT_RE = re.compile(r"^v?\d+(?:\.\d+)*(?:[-+][\w.]+)?$")
+# A go.mod requirement is always one exact version: a release, a pseudo-version
+# (v0.0.0-20210101000000-abcdef123456) or one with +incompatible.
+GO_VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+incompatible)?$")
 FULL_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][\w.]+)?$")
 RATINGS = {"critical", "high", "medium", "low", "info", "none"}
 
@@ -36,6 +43,8 @@ def exact_version(rec: DependencyRecord) -> str | None:
         c = c.removeprefix("=")
         if not FULL_RE.match(c):
             return None  # "1" or "1.2" is a range in npm
+    elif rec.ecosystem == "go":
+        return c if GO_VERSION_RE.match(c) else None
     elif rec.ecosystem == "maven" and any(t in c for t in "[(,$"):
         return None
     return c if c and EXACT_RE.match(c) else None
@@ -56,7 +65,7 @@ def purl(eco: str, name: str, version: str | None) -> str | None:
         parts = name.split(":", 1)
     elif eco == "go":
         parts = name.split("/")
-    elif eco == "npm" and name.startswith("@") and "/" in name:
+    elif (eco == "npm" and name.startswith("@") or eco == "packagist") and "/" in name:
         parts = name.split("/", 1)
     else:
         parts = [name]

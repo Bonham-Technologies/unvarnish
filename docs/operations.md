@@ -160,8 +160,10 @@ The scale rehearsal is repeatable without spending tokens:
   listed. Each manifest and licence outside the list is one compliance finding: medium when the
   licence cannot be met without a copyleft one (GPL, AGPL, LGPL, MPL, EPL, EUPL, CDDL, OSL,
   SSPL, CC-BY-SA...), low otherwise, and low for a package deps.dev names no licence for. It
-  covers every package osv-scanner resolved, transitive ones from a lockfile included. Without
-  the option nothing is flagged and a note says so; changing it reruns the scan only.
+  covers every package osv-scanner resolved, transitive ones from a lockfile included; a
+  declared dependency it resolved no version for (a range without a lockfile) is named in a
+  note, since its licence was not checked. Without the option nothing is flagged and a note
+  says so; changing it reruns the scan only, not the inventory's osv-scanner lookup.
 - The allowlist never reaches osv-scanner, and osv-scanner always gets Unvarnish's own empty
   `--config`, so an `osv-scanner.toml` in the vetted repository cannot override or ignore a
   package's licence, just as it cannot hide advisories.

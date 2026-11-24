@@ -100,6 +100,8 @@ def satisfied(expr: str, ok: Callable[[str], bool]) -> bool:
         if (peek() or "").upper() == "WITH":
             take()
             exception = take()
+            if exception in ("(", ")") or exception.upper() in ("AND", "OR", "WITH"):
+                raise ValueError(f"no exception after WITH: {exception}")
             return ok(f"{tok} WITH {exception}") or ok(tok)
         return ok(tok)
 
