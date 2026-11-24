@@ -1513,8 +1513,11 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
 - **Low false positives over breadth.** Model ids count only in a file with a provider signal
   (an import, an endpoint or a client class), or on a `model` line when the id's pattern
   names its provider; call patterns shared with other APIs (`.messages.create(` is also
-  Twilio's) count only beside that provider's import; data flow is per file, by assignment,
-  scope-blind. An SDK pointed at a gateway's endpoint (the OpenAI client at
+  Twilio's) count only beside that provider's import; a JavaScript-only package name
+  (`ai`, `llamaindex`) imported in Python is the tool's own package; data flow is per file,
+  by assignment, scope-blind, over an index of the file's assignments built once, so its
+  cost follows the names reached rather than the file's length per prompt line (a
+  whole-file pass per line took minutes on a 15,000-line handler file). An SDK pointed at a gateway's endpoint (the OpenAI client at
   `localhost:11434`) is recorded as the gateway, via the SDK. *Cost if wrong:* flows across
   files and through function parameters are missed (known issues).
 - **Severities: output to eval/exec, a shell or SQL text is high; request input in a prompt

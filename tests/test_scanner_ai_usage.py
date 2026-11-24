@@ -290,6 +290,29 @@ def test_a_tool_without_ai_usage_has_no_rows_and_no_findings(tmp_path: Path):
     assert usage.tool_definitions == []
 
 
+def test_a_python_package_named_ai_is_not_the_vercel_ai_sdk(tmp_path: Path):
+    files = {"app/main.py": "from ai.prompts import build\nimport ai\nx = build()\n",
+             "ai/__init__.py": "", "web/chat.ts": 'import { generateText } from "ai";\n'}
+    findings, usage = _run(tmp_path, files)
+    assert {(s.provider, s.path) for s in usage.services} == {("Vercel AI SDK", "web/chat.ts")}
+    assert findings == []
+
+
+def test_a_large_handler_file_scans_in_linear_time(tmp_path: Path):
+    import time
+
+    handlers = "".join(
+        f"def h{i}():\n    q{i} = request.args.get('q')\n    msg{i} = f'hi {{q{i}}}'\n"
+        f"    log(msg{i})\n\n" for i in range(3000))
+    body = ("from flask import request\nfrom openai import OpenAI\nclient = OpenAI()\n"
+            + handlers + "r = client.chat.completions.create(model='gpt-4o', messages=[],"
+            " max_tokens=5)\n")
+    start = time.monotonic()
+    findings, usage = _run(tmp_path, {"big.py": body})
+    assert time.monotonic() - start < 20  # a whole-file pass per prompt line took minutes
+    assert findings == [] and len(usage.calls) == 1
+
+
 # --- acceptance 5: tests and vendored code -----------------------------------------------------
 
 def test_tests_vendored_and_docs_are_excluded_unless_tests_are_included(tmp_path: Path):

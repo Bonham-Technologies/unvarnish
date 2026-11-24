@@ -11,6 +11,7 @@ language); a false positive costs more than a miss. Offline and deterministic.""
 from __future__ import annotations
 
 import functools
+import heapq
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -107,6 +108,8 @@ IMPORTS: dict[str, tuple[str, str | None]] = {
     "crewai": ("CrewAI", None), "autogen": ("AutoGen", None),
     "autogen_agentchat": ("AutoGen", None),
 }
+# JavaScript package names that are ordinary Python package names (a local `ai/` package).
+JS_ONLY_IMPORTS = {"ai", "llamaindex"}
 # Declared dependencies (lower case; PyPI names compared with "_" as "-").
 PACKAGES: dict[str, str] = {
     **{name.replace("_", "-"): provider for name, (provider, _) in IMPORTS.items()
@@ -273,6 +276,14 @@ def _targets(m: re.Match[str]) -> list[str]:
     return out
 
 
+TOKEN_RE = re.compile(r"(?<![\w.])\w+")
+
+
+def _tokens(text: str) -> set[str]:
+    """The names `_word(name)` would find in `text`: each whole word not after a dot."""
+    return set(TOKEN_RE.findall(text))
+
+
 def _span_end(text: str, start: int) -> int:
     """The index just past the parenthesis that closes the one at `start` (approximate:
     brackets in strings count)."""
@@ -317,6 +328,25 @@ class _File:
     @property
     def text(self) -> str:
         return "\n".join(self.lines)
+
+    @functools.cached_property
+    def assigns(self) -> list[tuple[int, list[str], set[str]]]:
+        """(line, names bound, names read) for each assignment on a code line."""
+        out = []
+        for n, line in enumerate(self.lines, start=1):
+            m = ASSIGN_RE.match(line) if self.code[n - 1] else None
+            if m:
+                out.append((n, _targets(m), _tokens(line[m.end():])))
+        return out
+
+    @functools.cached_property
+    def readers(self) -> dict[str, list[int]]:
+        """Each name -> the indices in `assigns` whose right-hand side reads it."""
+        out: dict[str, list[int]] = defaultdict(list)
+        for i, (_, _, names) in enumerate(self.assigns):
+            for name in names:
+                out[name].append(i)
+        return out
 
     def span(self, line: int, col: int) -> tuple[str, int]:
         """The text of the call whose parenthesis is at (line, col), and its last line."""
@@ -401,7 +431,7 @@ class AIUsageScanner:
             if not f.code[n - 1]:
                 continue
             for module in self._imports(f.language, line):
-                hit = _lookup_import(module)
+                hit = _lookup_import(module, f.language)
                 if hit:
                     f.signals.append(_Signal(hit[0], n, "import", hit[1]))
             for rx, provider in MARKERS:
@@ -573,26 +603,27 @@ class AIUsageScanner:
 
     # --- data flow -------------------------------------------------------------------------
 
-    def _propagate(self, f: _File, seeds: dict[str, int]) -> dict[str, int]:
+    @staticmethod
+    def _propagate(f: _File, seeds: dict[str, int]) -> dict[str, int]:
         """Names derived from the seeds by assignment after the line each was bound, one file
-        at a time, scope-blind."""
+        at a time, scope-blind: each name -> the first line it is tainted on. Earliest line
+        first over the file's assignment index, so the cost follows the names reached, not
+        the file's length (a whole-file pass per prompt line was quadratic)."""
         tainted = dict(seeds)
-        for _ in range(4):
-            changed = False
-            for n, line in enumerate(f.lines, start=1):
-                if not f.code[n - 1]:
+        heap = [(since, name) for name, since in seeds.items()]
+        heapq.heapify(heap)
+        while heap:
+            since, name = heapq.heappop(heap)
+            if tainted.get(name) != since:
+                continue  # a stale entry: the name was reached earlier since
+            for i in f.readers.get(name, ()):
+                n, targets, _ = f.assigns[i]
+                if n <= since:
                     continue
-                m = ASSIGN_RE.match(line)
-                if not m:
-                    continue
-                rhs = line[m.end():]
-                if any(since < n and _word(name).search(rhs) for name, since in tainted.items()):
-                    for t in _targets(m):
-                        if t not in tainted:
-                            tainted[t] = n
-                            changed = True
-            if not changed:
-                break
+                for t in targets:
+                    if t not in seeds and n < tainted.get(t, n + 1):
+                        tainted[t] = n
+                        heapq.heappush(heap, (n, t))
         return tainted
 
     def _injections(self, f: _File) -> list[int]:
@@ -607,22 +638,27 @@ class AIUsageScanner:
                     seeds.setdefault(t, n)
         tainted = self._propagate(f, seeds)
         blocks = _string_blocks(f.lines)
+        in_call = {n for c in f.calls for n in range(c.line, c.end_line + 1)}
+        call_names = [(c.line, _tokens(c.text)) for c in f.calls]
+        reaches: dict[tuple[str, int], bool] = {}
         out: list[int] = []
         for n, line in enumerate(f.lines, start=1):
             if not f.code[n - 1] and n not in blocks:
                 continue
-            names = [name for name, since in tainted.items() if since <= n]
+            names = [name for name in _tokens(line) if tainted.get(name, n + 1) <= n]
             if not _interpolates(line, names, n in blocks):
                 continue
-            if any(c.line <= n <= c.end_line for c in f.calls):
+            if n in in_call:
                 out.append(n)
                 continue
             owner = blocks.get(n) or self._owner(f, n)
             if owner is None:
                 continue
-            reach = self._propagate(f, {owner[0]: owner[1] - 1})
-            if any(c.line >= owner[1] and any(_word(r).search(c.text) for r in reach)
-                   for c in f.calls):
+            if owner not in reaches:
+                reach = self._propagate(f, {owner[0]: owner[1] - 1}).keys()
+                reaches[owner] = any(line_ >= owner[1] and not reach.isdisjoint(used)
+                                     for line_, used in call_names)
+            if reaches[owner]:
                 out.append(n)
         return out
 
@@ -646,22 +682,21 @@ class AIUsageScanner:
         if not seeds:
             return []
         tainted = self._propagate(f, seeds)
+        first = min(tainted.values())
         out: list[tuple[int, str]] = []
         for n, line in enumerate(f.lines, start=1):
-            if not f.code[n - 1]:
-                continue
-            names = [name for name, since in tainted.items() if since < n]
-            if not names:
+            if not f.code[n - 1] or n <= first:
                 continue
             m = EXEC_RE.search(line)
             if m:
                 args, _ = f.span(n, m.end() - 1)
-                if any(_word(name).search(args) for name in names):
+                if any(tainted.get(name, n) < n for name in _tokens(args)):
                     out.append((n, "shell or code execution"))
                     continue
             m = SQL_RE.search(line)
             if m:
                 args, _ = f.span(n, m.end() - 1)
+                names = [name for name in _tokens(args) if tainted.get(name, n) < n]
                 if any(re.match(rf"\(\s*{re.escape(name)}\s*[,)]", args) for name in names) \
                         or _interpolates(_first_argument(args), names, False):
                     out.append((n, "SQL text"))
@@ -791,15 +826,17 @@ class AIUsageScanner:
         return out
 
 
-def _lookup_import(module: str) -> tuple[str, str | None] | None:
+def _lookup_import(module: str, language: str | None = None) -> tuple[str, str | None] | None:
     """The provider an import names: the module itself, or its nearest listed parent
-    (`llama_index.llms.openai.base`, `@ai-sdk/openai/internal`)."""
+    (`llama_index.llms.openai.base`, `@ai-sdk/openai/internal`). A JavaScript-only name in
+    Python (`from ai.prompts import ...`) is the tool's own package."""
     sep = "/" if module.startswith("@") or "/" in module else "."
     parts = module.split(sep)
     for i in range(len(parts), 0, -1):
-        hit = IMPORTS.get(sep.join(parts[:i]))
+        name = sep.join(parts[:i])
+        hit = IMPORTS.get(name)
         if hit:
-            return hit
+            return None if language == "python" and name in JS_ONLY_IMPORTS else hit
     return None
 
 
