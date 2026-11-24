@@ -8,6 +8,13 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### `config check` without a model says what works
+
+- With no model configured, `config check` prints one line saying `run` still runs the
+  scanners and how to set `models.default`, instead of an empty table. The table's headers read
+  "json schema" and "tool calling" and wrap in a narrow terminal rather than being cut to
+  "json_sche…" at 80 columns (UNVAR-83).
+
 ### Optional Opengrep SAST scanner
 
 - New `sast` scanner: with `opengrep` on PATH and `scanners.sast.rules` set to a local rules directory, code-level flaws are scanner findings (one per rule, capped by `max_evidence`, redacted, matched by rule on re-audit); otherwise "Not analysed" says `sast: not checked` with the reason. No rules are bundled or fetched; ignore files and `nosem` comments are reported as suppressions (UNVAR-89).
