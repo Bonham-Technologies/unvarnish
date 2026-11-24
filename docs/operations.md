@@ -219,8 +219,9 @@ The scale rehearsal is repeatable without spending tokens:
 - The vetted repository cannot hide results: Opengrep runs with `--no-git-ignore`,
   `--x-ignore-semgrepignore-files` and `--disable-nosem`, and Unvarnish's own census decides
   which files count (excluded, vendored and binary files are dropped). A `.semgrepignore` or
-  `.opengrepignore` file and every `nosem`/`nosemgrep` comment are listed in the "Opengrep
-  suppressions in the source" finding, whether or not Opengrep ran.
+  `.opengrepignore` file (a name clients pass with `--semgrepignore-filename`) and every
+  `nosem`, `nosemgrep` or `noopengrep` comment are listed in the "Opengrep suppressions in
+  the source" finding, whether or not Opengrep ran.
 - One finding per rule, with up to `max_evidence` places (default 25); the summary gives the
   full count. A follow-up review matches it to the baseline by scanner and rule.
 - Changing a rule file, or installing or removing `opengrep`, reruns the scan; a new Opengrep

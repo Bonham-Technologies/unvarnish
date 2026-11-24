@@ -33,11 +33,13 @@ CATEGORIES = {
 IGNORE_FILES = {
     ".semgrepignore": "Opengrep's ignore file; disregarded: Unvarnish runs Opengrep with "
                       "--x-ignore-semgrepignore-files",
-    ".opengrepignore": "Opengrep ignore file; disregarded: Unvarnish runs Opengrep with its "
-                       "own target list",
+    # Not a default name, but what a client passes with --semgrepignore-filename.
+    ".opengrepignore": "an ignore file for Opengrep's --semgrepignore-filename; disregarded: "
+                       "Unvarnish runs Opengrep with --x-ignore-semgrepignore-files",
 }
 NOSEM_NOTE = "inline nosem comment; disregarded: Unvarnish runs Opengrep with --disable-nosem"
-NOSEM_RE = re.compile(r"\bnosem(?:grep)?\b", re.IGNORECASE)
+# Opengrep's default markers: nosem, nosemgrep and (since Opengrep 1.15) noopengrep.
+NOSEM_RE = re.compile(r"\b(?:nosem(?:grep)?|noopengrep)\b", re.IGNORECASE)
 EXCERPT_CHARS = 200
 MESSAGE_CHARS = 400
 
@@ -154,7 +156,8 @@ class SastScanner:
                                                                errors="replace")
             except OSError:
                 continue
-            if "nosem" not in text.lower():
+            lowered = text.lower()
+            if "nosem" not in lowered and "noopengrep" not in lowered:
                 continue
             for lineno, line in enumerate(text.split("\n"), start=1):
                 if NOSEM_RE.search(line):

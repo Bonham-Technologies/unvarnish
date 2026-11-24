@@ -339,3 +339,40 @@ def test_scanners_list_shows_sast_and_its_options():
     assert r.exit_code == 0, r.output
     line = next(line for line in r.output.splitlines() if " sast " in line)
     assert "rules=" in line and "max_evidence=25" in line
+
+
+# --- review fixes ----------------------------------------------------------------------------
+
+def test_noopengrep_comments_are_suppressions_too(tmp_path):
+    """Opengrep 1.15 added `noopengrep` to its default nosem markers (`nosem`, `nosemgrep`)."""
+    eng = _engagement(tmp_path, None)
+    src = eng / "tools" / "vuln" / "source"  # `add --files` copied the source here
+    (src / "db.py").write_text(DB_PY + "x = eval(q)  # noopengrep: rules.eval\n",
+                               encoding="utf-8")
+    scan = _scan(eng)
+    (sup,) = [f for f in _sast(scan) if "suppression" in f.tags]
+    assert any("noopengrep" in (e.excerpt or "") for e in sup.evidence)
+
+
+@pytest.mark.parametrize("errors", [5, "boom", {"message": "x"}, None])
+def test_malformed_errors_never_raise(tmp_path, errors):
+    rules = _rules(tmp_path)
+    out = json.dumps({"results": [], "errors": errors}).encode()
+    proc = subprocess.CompletedProcess([], 1, out, b"")
+    results, errs, note = run_opengrep(tmp_path, rules, which=lambda t: t,
+                                       run=lambda *a, **k: proc)
+    assert results == [] and note is None and isinstance(errs, list)
+
+
+def test_unreadable_rule_file_does_not_break_the_inputs_hash(tmp_path, monkeypatch):
+    from unvarnish.scanners.opengrep import rules_digest
+
+    rules = _rules(tmp_path)
+    good = rules_digest(str(rules), None)
+
+    def boom(self):
+        raise PermissionError(13, "Permission denied", str(self))
+
+    monkeypatch.setattr(Path, "read_bytes", boom)
+    bad = rules_digest(str(rules), None)
+    assert bad and bad != good

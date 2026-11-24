@@ -70,7 +70,10 @@ def rules_digest(value: object, base: Path | None) -> str:
     h = hashlib.sha256()
     for p in rule_files(rules):
         h.update(p.relative_to(rules).as_posix().encode("utf-8") + b"\0")
-        h.update(p.read_bytes() + b"\0")
+        try:
+            h.update(p.read_bytes() + b"\0")
+        except OSError:  # Opengrep reports it when it runs; the hash must not fail the phase
+            h.update(b"\0unreadable\0")
     h.update(str(shutil.which("opengrep") is not None).encode("utf-8"))
     return h.hexdigest()[:16]
 
@@ -133,6 +136,8 @@ def run_opengrep(root: Path, rules: object, *, base: Path | None = None,
     results = [r for r in data.get("results", []) if isinstance(r, dict)]
     for r in results:
         r["path"] = _relative(str(r.get("path", "")), root)
+    raw_errors = data.get("errors")
     errors = [str(e.get("message") or e.get("type") or "error").strip()
-              for e in data.get("errors") or [] if isinstance(e, dict)]
+              for e in (raw_errors if isinstance(raw_errors, list) else [])
+              if isinstance(e, dict)]
     return results, errors, None
