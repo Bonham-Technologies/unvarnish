@@ -10,6 +10,7 @@ language); a false positive costs more than a miss. Offline and deterministic.""
 
 from __future__ import annotations
 
+import bisect
 import functools
 import heapq
 import re
@@ -162,10 +163,11 @@ LOCAL_SERVER = "Local OpenAI-compatible server"
 # signal in the file (an SDK import or an OpenAI-compatible client), or with a model API path.
 LOOPBACK_RE = re.compile(r"https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]"
                          r"|host\.docker\.internal)\b")
-LOCAL_AI_PATH_RE = re.compile(r"/v1/(?:chat/)?completions|/chat/completions|/v1/embeddings"
-                              r"|/v1/messages")
-CLIENT_RE = re.compile(r"(?<![\w.])(?:Async)?(?:Azure)?(?:OpenAI|ChatOpenAI|OpenAILike"
-                       r"|OpenAIEmbeddings)\(")
+LOCAL_AI_PATH_RE = re.compile(r"/v1/(?:chat/)?completions|/chat/completions|/v1/embeddings")
+# Anthropic's path is a common app route too: it counts only beside another AI signal.
+WEAK_AI_PATH_RE = re.compile(r"/v1/messages\b")
+CLIENT_RE = re.compile(r"(?<![\w.])(?<!def )(?<!class )(?<!function )(?:Async)?(?:Azure)?"
+                       r"(?:OpenAI|ChatOpenAI|OpenAILike|OpenAIEmbeddings)\(")
 BASE_KEY_RE = re.compile(r"(?i)base_?url[\"']?\s*[:=]")
 # Model ids, matched whole against string literals; the first match names the provider.
 _MODELS: list[tuple[str, str]] = [
@@ -256,30 +258,60 @@ TOOL_RES: list[tuple[re.Pattern[str], str, str]] = [
 TOOL_NAME_RE = re.compile(r"[\"']name[\"']\s*:\s*[\"']([\w-]+)[\"']")
 DEF_NAME_RE = re.compile(r"^\s*(?:async\s+)?def\s+(\w+)")
 
-# Excerpt redaction (`scrub`). Each pattern is linear: no nested or adjacent unbounded repeats.
+# Excerpt redaction (`scrub`). Excerpts are cut to SCRUB_CHARS first, which bounds the cost
+# of the patterns below (some are quadratic on adversarial quote runs).
+SCRUB_CHARS = 1000
 _QUOTED = r"([\"'`])((?:\\.|(?!\{q})[^\\\n])*)\{q}"
-NAMED_VALUE_RE = re.compile(
-    r"(?<![\w-])([\w-]+)([\"'\]]*(?:\s*:\s*[A-Za-z_][\w\[\]., |]{0,40}?)?\s*[:=]\s*"
-    r"[rbufRBUF]{0,2})" + _QUOTED.format(q=3))
-SECRET_NAME_RE = re.compile(r"(?i)key|auth|token|secret|passw|pwd|sig|credential|cookie")
+NAME_SEP_RE = re.compile(
+    r"(?<![\w-])([\w-]+)[\"'\]]*(?:\s*:\s*[A-Za-z_][\w\[\]., |]{0,40}?)?\s*(=>|[:=])\s*")
+SECRET_NAME_RE = re.compile(
+    r"(?i)key|auth|token|secret|passw|pwd|sig|credential|cookie"
+    r"|(?:^|[-_.])(?:pass|pin|otp|session|sid|pw)(?:$|[-_.])|^(?:pass|pin|otp|pw)[A-Z0-9]")
 URL_USERINFO_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@\"'`]+@")
 URL_QUERY_RE = re.compile(r"([?&][\w.\-\[\]]+=)[^&#\s\"'`]+")
 ENV_DEFAULT_RE = re.compile(
     r"((?:getenv|environ\.get|env\.get)\(\s*[^,()\n]{0,200},\s*[rbufRBUF]{0,2})"
     + _QUOTED.format(q=2)
     + r"|(process\.env\.\w+\s*(?:\|\||\?\?)\s*)" + _QUOTED.format(q=5))
+# A fallback literal after an env-style constant or a secret-named variable: KEY || "...".
+FALLBACK_RE = re.compile(
+    r"(\b(?:[A-Z][A-Z0-9_]{1,}|\w*(?i:key|token|secret|passw\w*|auth\w*))\s*(?:\|\||\?\?|\bor\b)"
+    r"\s*[rbufRBUF]{0,2})" + _QUOTED.format(q=2))
 AUTH_ARGS_RE = re.compile(r"(?i)(\bauth\s*[=:]\s*[(\[])[^)\]\n]*"
                           r"|(\b\w*(?:Basic|Digest|Proxy)Auth\w*\()[^)\n]*")
-CLI_SECRET_RE = re.compile(r"(?<=\s)(-p)[^\s\"'`]+"
-                           r"|(--?(?i:password|passwd|pass|pwd|token|api-?key|secret)[= ])"
-                           r"[^\s\"'`]+")
-STRING_LIT_RE = re.compile(_QUOTED.format(q=1))
+# The first positional argument to an AI client constructor is its key.
+CLIENT_KEY_RE = re.compile(
+    r"(\b(?:Async)?(?:Azure)?(?:OpenAI|Anthropic|AnthropicBedrock|AnthropicVertex|Groq|Mistral"
+    r"|MistralClient|Cohere|CohereClient|ClientV2|Together|Replicate|GoogleGenerativeAI"
+    r"|GoogleGenAI|InferenceClient|HfInference|ChatOpenAI|ChatAnthropic|OpenAILike)\(\s*"
+    r"[rbufRBUF]{0,2})" + _QUOTED.format(q=2))
+CLI_SECRET_RE = re.compile(
+    r"(?<=\s)(-p)[^\s\"'`]+"  # -pSECRET
+    r"|((?<![\w-])-p\s+)(?![/.~])(['\"]?)[^\s'\"`]+\3"  # -p SECRET, -p 'SECRET'
+    r"|((?<![\w-])(?:-u|--user)\s+)['\"]?[^\s:'\"`]+:[^\s'\"`]+"  # curl -u user:pass
+    r"|(--?(?i:password|passwd|pass|pwd|token|api-?key|secret)[= ])[^\s\"'`]+")
 LIT_TOKEN_RE = re.compile(r"[^\s/?&=:,;'\"`(){}\[\]<>|\\]{12,}")
 BEARER_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}")
+HOSTNAME_RE = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}")
 R = "[redacted]"
 
 
-HOSTNAME_RE = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}")
+def _literals(text: str) -> list[tuple[int, int, int]]:
+    """(content start, content end, end) of each quoted literal; an unterminated one (a
+    line cut short) runs to the end of the text."""
+    out = []
+    i, size = 0, len(text)
+    while i < size:
+        q = text[i]
+        if q not in "\"'`":
+            i += 1
+            continue
+        j = i + 1
+        while j < size and text[j] != q:
+            j += 2 if text[j] == "\\" else 1
+        out.append((i + 1, min(j, size), min(j + 1, size)))
+        i = j + 1
+    return out
 
 
 def _lit_token(m: re.Match[str]) -> str:
@@ -291,26 +323,96 @@ def _lit_token(m: re.Match[str]) -> str:
     return R if shaped and not keep else tok
 
 
-def scrub(text: str) -> str:
-    """An excerpt without credentials, by construction: the secrets rules' redaction, then
-    URL userinfo and query values, the quoted value of any name that mentions a key, token,
-    secret, password, signature, auth or cookie, env-lookup defaults, auth tuples and Basic
-    auth arguments, password flags on a command line, and any key-shaped token inside a
-    string literal (a positional key to a client) unless it is a model id. A key beside a call
-    is the secrets scanner's finding, not ours."""
-    text = redact_text(text)
+def _redact_named(text: str) -> str:
+    """The value of each secret-like name. In code (`"x-api-key": KEY || "..."`), every
+    literal up to the end of the value (a comma, semicolon or closing bracket outside any
+    literal); inside a string (`"... password=hunter2 ..."`), the value up to a space, `&` or
+    `;` after `=`, or up to the end of the string after `:` (a header)."""
+    lits = _literals(text)
+    starts = [a for a, _, _ in lits]
+    pieces: list[str] = []
+    pos = 0
+    m = NAME_SEP_RE.search(text)
+    while m:
+        nxt = m.end()
+        if SECRET_NAME_RE.search(m.group(1)):
+            k = bisect.bisect_right(starts, m.start()) - 1
+            # Inside a string only when the separator is too: a quoted key (`"pin": ...`)
+            # is code.
+            inside = k >= 0 and lits[k][0] <= m.start() and m.end() <= lits[k][1]
+            if inside:
+                stop = lits[k][1]
+                end = m.end()
+                if m.group(2) != ":":
+                    while end < stop and text[end] not in " \t&;,":
+                        end += 1
+                else:
+                    end = stop
+                if end > m.end():
+                    pieces += [text[pos:m.end()], R]
+                    pos = end
+                nxt = end
+            else:
+                i = m.end()
+                while i < len(text) and text[i] not in ",;)}]\n":
+                    k = bisect.bisect_left(starts, i + 1)
+                    if k < len(lits) and lits[k][0] == i + 1:  # a literal opens here
+                        a, b, e = lits[k]
+                        pieces += [text[pos:a], R]
+                        pos = b
+                        i = e
+                    else:
+                        i += 1
+                nxt = max(i, m.end())
+        m = NAME_SEP_RE.search(text, nxt) if nxt < len(text) else None
+    pieces.append(text[pos:])
+    return "".join(pieces)
+
+
+def _drop_comment(text: str, language: str | None) -> str:
+    """A trailing comment outside any literal, which can hold anything."""
+    markers = (("//",) if language in JS_LANGUAGES else ("#",) if language == "python"
+               else ("#", "//"))
+    spans = _literals(text)
+    for marker in markers:
+        for m in re.finditer(rf"(?:^|(?<=\s)){re.escape(marker)}", text):
+            if not any(a - 1 <= m.start() < e for a, _, e in spans):
+                return text[:m.start()].rstrip() + f" {marker} [comment removed]"
+    return text
+
+
+def scrub(text: str, language: str | None = None) -> str:
+    """An excerpt with credentials redacted, as far as their shape shows. After the secrets
+    rules: URL userinfo and query values; the value of any name that mentions a key, token,
+    secret, password, pass, pin, signature, auth, session or cookie, in code or inside a
+    string (`PGPASSWORD=...`, `"Authorization": "Bearer " + "..."`, `"pin": "..."`);
+    env-lookup defaults and a fallback after an env-style constant (`KEY || "..."`); auth
+    tuples and Basic auth arguments; the first argument to an AI client constructor; `-p`,
+    `-u user:pass` and `--password` on a command line; any token of 12 or more characters
+    with letters and digits in a string literal unless it is a model id or a host name; and a
+    trailing comment. What remains can still show a credential with none of these shapes: a
+    short or letters-only value with no secret-like name, passed positionally or written
+    into shell text. A key beside a call is the secrets scanner's finding, not ours."""
+    text = redact_text(text[:SCRUB_CHARS])
+    text = _drop_comment(text, language)
     text = URL_USERINFO_RE.sub(lambda m: f"{m.group(1)}{R}@", text)
     text = URL_QUERY_RE.sub(lambda m: f"{m.group(1)}{R}", text)
-    text = NAMED_VALUE_RE.sub(
-        lambda m: (f"{m.group(1)}{m.group(2)}{m.group(3)}{R}{m.group(3)}"
-                   if SECRET_NAME_RE.search(m.group(1)) else m.group(0)), text)
     text = ENV_DEFAULT_RE.sub(
         lambda m: (f"{m.group(1)}{m.group(2)}{R}{m.group(2)}" if m.group(1) is not None
                    else f"{m.group(4)}{m.group(5)}{R}{m.group(5)}"), text)
+    for rx in (FALLBACK_RE, CLIENT_KEY_RE):
+        text = rx.sub(lambda m: f"{m.group(1)}{m.group(2)}{R}{m.group(2)}", text)
     text = AUTH_ARGS_RE.sub(lambda m: f"{m.group(1) or m.group(2)}{R}", text)
-    text = CLI_SECRET_RE.sub(lambda m: f"{m.group(1) or m.group(2)}{R}", text)
-    text = STRING_LIT_RE.sub(
-        lambda m: m.group(1) + LIT_TOKEN_RE.sub(_lit_token, m.group(2)) + m.group(1), text)
+    text = CLI_SECRET_RE.sub(
+        lambda m: (f"{m.group(1)}{R}" if m.group(1) else
+                   f"{m.group(2)}{m.group(3)}{R}{m.group(3)}" if m.group(2) else
+                   f"{m.group(4) or m.group(5)}{R}"), text)
+    text = _redact_named(text)
+    pieces, pos = [], 0
+    for a, b, _ in _literals(text):
+        pieces += [text[pos:a], LIT_TOKEN_RE.sub(_lit_token, text[a:b])]
+        pos = b
+    text = "".join(pieces) + text[pos:]
     return BEARER_RE.sub(f"Bearer {R}", text)
 
 
@@ -352,8 +454,64 @@ Taint = dict[str, list[list[int]]]  # name -> [first line tainted, line it ends]
 
 
 def _live(taint: Taint, name: str, n: int, *, strict: bool) -> bool:
-    """Whether `name` holds a tainted value on line `n`: bound before it (`strict`) or on it."""
-    return any((s < n if strict else s <= n) and n < e for s, e in taint.get(name, ()))
+    """Whether `name` holds a tainted value on line `n`: bound before it (`strict`) or on it.
+    A name's spans are disjoint and in line order."""
+    spans = taint.get(name)
+    if not spans:
+        return False
+    find = bisect.bisect_left if strict else bisect.bisect_right
+    i = find(spans, n, key=lambda sp: sp[0]) - 1
+    return i >= 0 and n < spans[i][1]
+
+
+_STRIP_LITERALS_RE = re.compile(
+    r"""[rbufRBUF]{0,2}(?:"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\\n])*`)""")
+NEW_STATEMENT_RE = re.compile(r"(?:async\s+def|def|class|import|from|@|if\s+__name__|function"
+                              r"|export|const|let|var)\b")
+
+
+def _brackets(code: str, language: str | None) -> int:
+    """Opening minus closing brackets in a line's code (string literals and comments out).
+    JavaScript braces open blocks as often as objects, so only its parentheses and square
+    brackets count."""
+    code = _STRIP_LITERALS_RE.sub("", code)
+    js = language in JS_LANGUAGES
+    code = code.split("//" if js else "#", 1)[0]
+    opens, closes = ("([", ")]") if js else ("([{", ")]}")
+    return sum(code.count(c) for c in opens) - sum(code.count(c) for c in closes)
+
+
+def _continuations(lines: list[str], code: list[bool], language: str | None) -> list[bool]:
+    """See `_File.cont`. Approximate: a statement keyword at column 0 starts a new statement
+    even inside unbalanced brackets, so one stray bracket cannot swallow the file."""
+    out = [False] * len(lines)
+    depth, closer, backslash = 0, None, False
+    quotes = ('"""', "'''", "`") if language in JS_LANGUAGES else ('"""', "'''")
+    for i, line in enumerate(lines):
+        if closer is not None:
+            out[i] = True
+            if line.count(closer) % 2 == 1:
+                rest = line[line.rindex(closer) + len(closer):]
+                closer = None
+                depth = max(0, depth + _brackets(rest, language))
+            continue
+        if depth > 0 or backslash:
+            if (depth > 0 and not line[:1].isspace() and line[:1] not in ")]}"
+                    and NEW_STATEMENT_RE.match(line)):
+                depth = 0
+            else:
+                out[i] = True
+        if not code[i] or len(line) > MAX_LINE_CHARS:
+            backslash = False
+            continue
+        head = line
+        for token in quotes:
+            if line.count(token) % 2 == 1:
+                closer, head = token, line[:line.index(token)]
+                break
+        depth = max(0, depth + _brackets(head, language))
+        backslash = closer is None and line.rstrip().endswith("\\")
+    return out
 
 
 def _span_end(text: str, start: int) -> int:
@@ -396,33 +554,66 @@ class _File:
     code: list[bool]  # False for comment lines and minified lines
     signals: list[_Signal] = field(default_factory=list)
     calls: list[_Call] = field(default_factory=list)
+    ai_file: bool = False  # an AI signal other than a loopback URL
+
+    @functools.cached_property
+    def cont(self) -> list[bool]:
+        """Whether each line continues a statement: inside open brackets, after a backslash,
+        or inside a multi-line string. Function scopes, assignments and reassignments are
+        read from statement lines only."""
+        return _continuations(self.lines, self.code, self.language)
+
+    @functools.cached_property
+    def parents(self) -> list[int]:
+        """For each line, the nearest earlier statement line indented less (its block's
+        opener), or 0."""
+        out = [0] * len(self.lines)
+        stack: list[tuple[int, int]] = []  # (indentation, line)
+        for n, line in enumerate(self.lines, start=1):
+            if not line.strip() or not self.code[n - 1] or self.cont[n - 1]:
+                continue
+            ind = _indent(line)
+            while stack and stack[-1][0] >= ind:
+                stack.pop()
+            out[n - 1] = stack[-1][1] if stack else 0
+            stack.append((ind, n))
+        return out
 
     @property
     def text(self) -> str:
         return "\n".join(self.lines)
 
     @functools.cached_property
-    def assigns(self) -> list[tuple[int, list[str], set[str]]]:
-        """(line, names bound, names read) for each assignment on a code line."""
+    def assigns(self) -> list[tuple[int, list[str], set[str], int]]:
+        """(line, names bound, names read, last line) for each assignment statement; what it
+        reads includes its continuation lines."""
         out = []
+        count = len(self.lines)
         for n, line in enumerate(self.lines, start=1):
-            m = ASSIGN_RE.match(line) if self.code[n - 1] else None
-            if m:
-                out.append((n, _targets(m), _tokens(line[m.end():])))
+            m = ASSIGN_RE.match(line) if self.code[n - 1] and not self.cont[n - 1] else None
+            if not m:
+                continue
+            reads = _tokens(line[m.end():])
+            last = n
+            while last < count and last - n < MAX_CALL_LINES and self.cont[last]:
+                last += 1
+                if self.code[last - 1]:
+                    reads |= _tokens(self.lines[last - 1][:MAX_LINE_CHARS])
+            out.append((n, _targets(m), reads, last))
         return out
 
     @functools.cached_property
     def touching(self) -> dict[str, list[int]]:
-        """Each name -> the lines of the assignments that read or bind it."""
+        """Each name -> the lines of the assignments that read or bind it, ascending."""
         out: dict[str, list[int]] = defaultdict(list)
-        for n, targets, names in self.assigns:
+        for n, targets, names, _ in self.assigns:
             for name in names | set(targets):
                 out[name].append(n)
         return out
 
     @functools.cached_property
-    def assign_at(self) -> dict[int, tuple[list[str], set[str]]]:
-        return {n: (targets, names) for n, targets, names in self.assigns}
+    def assign_at(self) -> dict[int, tuple[list[str], set[str], int]]:
+        return {n: (targets, names, last) for n, targets, names, last in self.assigns}
 
     @functools.cached_property
     def scope_ends(self) -> list[int]:
@@ -434,7 +625,7 @@ class _File:
             return out
         stack: list[tuple[int, int]] = []  # (def indentation, def line)
         for n, line in enumerate(self.lines, start=1):
-            if not line.strip() or not self.code[n - 1]:
+            if not line.strip() or not self.code[n - 1] or self.cont[n - 1]:
                 continue
             ind = _indent(line)
             while stack and ind <= stack[-1][0]:
@@ -447,12 +638,13 @@ class _File:
         return out
 
     def kills(self, n: int, since: int) -> bool:
-        """Whether the assignment on line `n` replaces a value bound on line `since`: a whole
-        statement (not a keyword argument inside a call) at the same or a lower indentation
-        (not a branch that may not run)."""
-        line = self.lines[n - 1].split("#")[0].rstrip()
-        return (not line.endswith(",") and line.count(")") <= line.count("(")
-                and _indent(line) <= _indent(self.lines[since - 1]))
+        """Whether the assignment statement on line `n` surely replaces a value bound on line
+        `since`: at the same or a lower indentation, with no line between them indented less
+        (an `else:` or another branch), and not a tuple."""
+        last = self.assign_at[n][2]
+        return (not self.lines[last - 1].split("#")[0].rstrip().endswith(",")
+                and _indent(self.lines[n - 1]) <= _indent(self.lines[since - 1])
+                and self.parents[n - 1] < since)
 
     def span(self, line: int, col: int) -> tuple[str, int]:
         """The text of the call whose parenthesis is at (line, col), and its last line."""
@@ -563,7 +755,7 @@ class AIUsageScanner:
                 continue
             if LOCAL_AI_PATH_RE.search(line):
                 local.append(n)
-            elif LOCAL_BASE_RE.search(line):
+            elif LOCAL_BASE_RE.search(line) or WEAK_AI_PATH_RE.search(line):
                 base.append(n)
             a = ASSIGN_RE.match(line)
             if a:
@@ -573,15 +765,17 @@ class AIUsageScanner:
         # OpenAI-compatible client's base_url is built from it.
         ai_file = bool(f.signals) or any(
             f.code[i] and CLIENT_RE.search(line) for i, line in enumerate(f.lines))
+        f.ai_file = ai_file
         if ai_file:
             local += base
         if loopback_names:
             for i, line in enumerate(f.lines):
-                if not f.code[i] or not (LOCAL_AI_PATH_RE.search(line)
-                                         or ai_file and BASE_KEY_RE.search(line)):
+                if not f.code[i] or not (LOCAL_AI_PATH_RE.search(line) or ai_file and (
+                        BASE_KEY_RE.search(line) or WEAK_AI_PATH_RE.search(line))):
                     continue
+                used = _tokens(line)
                 local += [bound for name, bound in loopback_names.items()
-                          if bound != i + 1 and name in _tokens(line)]
+                          if bound != i + 1 and name in used]
         for n in sorted(set(local)):
             f.signals.append(_Signal(LOCAL_SERVER, n, "endpoint"))
 
@@ -692,7 +886,7 @@ class AIUsageScanner:
             if s.kind == "endpoint":
                 line = f.lines[s.line - 1]
                 m = ASSIGN_RE.match(line)
-                if m and not (s.provider == LOCAL_SERVER and not LOCAL_AI_PATH_RE.search(line)):
+                if m and not (s.provider == LOCAL_SERVER and not self._ai_path(f, line)):
                     for name in _targets(m):
                         url_names[name] = s.provider
                 elif m:
@@ -712,21 +906,28 @@ class AIUsageScanner:
                 m = HTTP_CALL_RE.search(line)
                 if m:
                     text, _ = f.span(n, m.end() - 1)
-                    provider = self._http_target(text, url_names, local_names)
+                    provider = self._http_target(text, url_names, local_names, f.ai_file)
                     if provider:
                         self._add_call(f, n, line, m, provider)
 
     @staticmethod
-    def _http_target(text: str, url_names: dict[str, str],
-                     local_names: set[str] = frozenset()) -> str | None:
+    @staticmethod
+    def _ai_path(f: _File, text: str) -> bool:
+        """A model API path on a loopback server: OpenAI's anywhere, Anthropic's only in a file
+        that uses AI otherwise."""
+        return bool(LOCAL_AI_PATH_RE.search(text) or f.ai_file and WEAK_AI_PATH_RE.search(text))
+
+    @staticmethod
+    def _http_target(text: str, url_names: dict[str, str], local_names: set[str] = frozenset(),
+                     ai_file: bool = False) -> str | None:
         for rx, provider in HOSTS:
             if rx.search(text):
                 return provider
         for name, provider in url_names.items():
             if _word(name).search(text):
                 return provider
-        if LOCAL_AI_PATH_RE.search(text) and (LOOPBACK_RE.search(text)
-                                              or not local_names.isdisjoint(_tokens(text))):
+        path = LOCAL_AI_PATH_RE.search(text) or ai_file and WEAK_AI_PATH_RE.search(text)
+        if path and (LOOPBACK_RE.search(text) or not local_names.isdisjoint(_tokens(text))):
             return LOCAL_SERVER
         return None
 
@@ -765,35 +966,46 @@ class AIUsageScanner:
             seeded[line].add(name)
         heap = list(seeded)
         heapq.heapify(heap)
+        waiting: dict[int, set[str]] = defaultdict(set)  # line -> live names that touch it
         last = 0
+
+        def follow(name: str, n: int) -> None:
+            """Visit the next line after `n` that touches `name`, while it is live."""
+            lines = f.touching.get(name, ())
+            i = bisect.bisect_right(lines, n)
+            if i < len(lines) and lines[i] < taint[name][-1][1]:
+                if lines[i] not in waiting:
+                    heapq.heappush(heap, lines[i])
+                waiting[lines[i]].add(name)
 
         def bind(name: str, n: int) -> None:
             spans = taint.setdefault(name, [])
             if spans and spans[-1][0] <= n < spans[-1][1]:
                 return  # already live
             spans.append([n, f.scope_ends[n - 1] if n <= len(f.lines) else n + 1])
-            for later in f.touching.get(name, ()):
-                if later > n:
-                    heapq.heappush(heap, later)
+            follow(name, n)
 
         while heap:
             n = heapq.heappop(heap)
             if n <= last:
                 continue
             last = n
+            arrived = waiting.pop(n, set())
             for name in seeded.get(n, ()):
                 bind(name, n)
-            if n not in f.assign_at:
-                continue
-            targets, reads = f.assign_at[n]
-            derived = any(_live(taint, r, n, strict=True) for r in reads)
-            for t in targets:
-                if t in seeded.get(n, ()):
-                    continue
-                if derived:
-                    bind(t, n)
-                elif _live(taint, t, n, strict=True) and f.kills(n, taint[t][-1][0]):
-                    taint[t][-1][1] = n
+            if n in f.assign_at:
+                targets, reads, _ = f.assign_at[n]
+                derived = any(_live(taint, r, n, strict=True) for r in reads)
+                for t in targets:
+                    if t in seeded.get(n, ()):
+                        continue
+                    if derived:
+                        bind(t, n)
+                    elif _live(taint, t, n, strict=True) and f.kills(n, taint[t][-1][0]):
+                        taint[t][-1][1] = n
+            for name in arrived:
+                if _live(taint, name, n, strict=False) and taint[name][-1][1] > n:
+                    follow(name, n)
         return taint
 
     def _injections(self, f: _File) -> list[int]:
@@ -914,8 +1126,7 @@ class AIUsageScanner:
     # --- findings --------------------------------------------------------------------------
 
     def _evidence(self, f: _File, n: int, note: str | None = None) -> Evidence:
-        line = f.lines[n - 1].strip()
-        excerpt = scrub(line)[:200] if len(line) <= MAX_LINE_CHARS else None
+        excerpt = scrub(f.lines[n - 1].strip(), f.language)[:200]
         return Evidence(path=f.path, line_start=n, line_end=n, excerpt=excerpt or None,
                         note=note)
 

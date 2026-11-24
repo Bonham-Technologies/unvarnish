@@ -1519,16 +1519,20 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   bare `o1`/`o3` outside a `model` line of an AI file is not a model id. A loopback base URL
   (`http://localhost:8000`) is every web app's, so it names a local model server only beside
   another AI signal in the file (an SDK import or an OpenAI-compatible client), or when an
-  OpenAI-style path (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`,
-  `/v1/messages`) is built from it; Ollama's own paths at another port are not enough
-  (`/api/chat` is a common app route). Data flow is per file, by assignment: a value lives
-  from the line it is bound until an unconditional reassignment from untainted values (a
-  whole statement at the same or a lower indentation, not a keyword argument or a branch)
-  or the end of its Python function. Lines are visited over an index of the file's
-  assignments built once, so the cost follows the names reached rather than the file's
-  length per prompt line (a whole-file pass per line took minutes on a 15,000-line handler
-  file), and a call's argument text stops at 4,000 characters (a minified line after 30
-  calls took 30 seconds). An SDK pointed at a gateway's endpoint (the OpenAI client at
+  OpenAI-style path (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`) is built
+  from it; Anthropic's `/v1/messages` and Ollama's own paths at another port count only
+  beside another AI signal (both are common app routes). Data flow is per file, by
+  assignment statement: lines inside open brackets, after a backslash or inside a
+  multi-line string continue a statement, so a multi-line `def` signature, a keyword
+  argument or column-0 text in a docstring is not a statement, and an assignment reads its
+  continuation lines. A value lives from the line it is bound until an unconditional
+  reassignment from untainted values (a statement at the same or a lower indentation with
+  no line between them indented less, so an `else:` or another branch does not end it) or
+  the end of its Python function. Each live name is followed to the next assignment that
+  reads or binds it, over an index of the file's assignments built once, so the cost
+  follows the names reached rather than the file's length per prompt line (a whole-file
+  pass per line took minutes on a 15,000-line handler file), and a call's argument text
+  stops at 4,000 characters (a minified line after 30 calls took 30 seconds). An SDK pointed at a gateway's endpoint (the OpenAI client at
   `localhost:11434`) is recorded as the gateway, via the SDK. *Cost if wrong:* flows across
   files and through function parameters are missed, and a value reassigned in a branch
   still counts (known issues).
@@ -1540,15 +1544,20 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   or spreads options it may hold, or when its file mentions a timeout anywhere or a token
   limit outside any call (a client default). *Cost if wrong:* a call bounded only in another
   file is reported, and a file-wide timeout hides an unbounded call beside it.
-- **API keys stay with the secrets scanner, and excerpts are safe by construction.** The
-  inventory holds no excerpts and checks each model id against the secrets rules (and drops
-  any with `://`). Finding excerpts are redacted by the secrets rules, then: URL userinfo
-  and query values (Gemini's `?key=`), the quoted value of any name that mentions a key,
-  token, secret, password, signature, auth or cookie (`Ocp-Apim-Subscription-Key`,
-  `X-Custom-Auth`, `password: str = ...`), env-lookup defaults, `auth=(...)` tuples and
-  Basic auth arguments, `-p<password>` and `--password` flags, and any token of 12 or more
-  characters with letters and digits inside a string literal (a positional key to a
-  client, a password in SQL text) unless it is a model id or a host name; a line over 4,000
-  characters has no excerpt. *Cost if wrong:* an excerpt can lose a harmless long
-  identifier; a short letters-only password in a string literal is still shown.
+- **API keys stay with the secrets scanner; excerpts redact every credential shape we can
+  recognise.** The inventory holds no excerpts and checks each model id against the secrets
+  rules (and drops any with `://`). A finding excerpt is cut to 1,000 characters (which
+  bounds the cost of the patterns), then redacted by the secrets rules and these shapes: a
+  trailing comment; URL userinfo and query values (Gemini's `?key=`); the value of any name
+  that mentions a key, token, secret, password, pass, pin, signature, auth, session or
+  cookie, in code (`"x-api-key": KEY || "..."`, `"Authorization": "Bearer " + "..."`) or
+  inside a string (`PGPASSWORD=...`, `"dbname=x password=..."`); env-lookup defaults and a
+  fallback after an env-style constant; `auth=(...)` tuples and Basic auth arguments; the
+  first argument to an AI client constructor (`OpenAI("...")`); `-p`, `-u user:pass` and
+  `--password` on a command line; and any token of 12 or more characters with letters and
+  digits inside a string literal unless it is a model id or a host name. *Cost if wrong:*
+  this is not a guarantee. A credential with none of these shapes still shows: a short or
+  letters-only value with no secret-like name beside it (`{"X-Upstream": "..."}`, a
+  password passed positionally to a function that is not an AI client, a bare word in
+  shell text). An excerpt can also lose a harmless long identifier.
 

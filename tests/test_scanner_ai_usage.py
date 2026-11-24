@@ -135,6 +135,16 @@ PLAIN_FILES = {
     "search_indexes.py": ("from haystack import indexes\n"
                           "class NoteIndex(indexes.SearchIndex):\n    model = \"x\"\n"),
     "web/flags.js": "const model = 'o3';\nconst tier = 'o1';\n",
+    # `/v1/messages` is an ordinary chat app's route too (second QC on UNVAR-91).
+    "chat/send.py": (
+        "import requests, subprocess\n"
+        'BASE = "http://localhost:8000"\n'
+        "def send(t):\n"
+        '    resp = requests.post(BASE + "/v1/messages", json={"t": t})\n'
+        "    job = resp.json()\n"
+        '    subprocess.run(["notify", job["id"]])\n'
+    ),
+    "helpers.py": 'BASE_URL = "http://localhost:8000"\ndef OpenAI(x):\n    return x\n',
 }
 
 
@@ -393,6 +403,23 @@ CALL_LINE_SECRETS = [
     ('password: str = "{k}"; r = client.chat.completions.create(', "hunter2" + _rand("pw", 6)),
     ('cur.execute("INSERT INTO users VALUES (\'admin\', \'{k}\')")', "hunter2hunter2"),
     ('const r = await fetch(URL, {{ headers: {{ "api-key": "{k}" }} }})', _rand("js", 30)),
+    ('os.system("PGPASSWORD={k} psql -c " + answer)', "hunter2"),
+    ('subprocess.run(f"curl -u admin:{k} http://x -d {{answer}}", shell=True)', "hunter2"),
+    ('os.system("sshpass -p {k} ssh host " + answer)', "hunter2"),
+    ('os.system("sshpass -p \'{k}\' ssh host " + answer)', "hunter2"),
+    ('r = requests.post(URL, json={{"password": pw, "pass": "{k}", "pin": "4821"}})', "hunter2"),
+    ('r = requests.post(URL, json={{"user": "bob", "pin": "{k}"}})', "4821"),
+    ('conn = psycopg2.connect("dbname=x user=bob password={k}"); cur.execute(answer)',
+     "hunter2"),
+    ('const r = await fetch(URL, {{headers: {{"x-api-key": KEY || "{k}"}}}})',
+     "correcthorsebattery"),
+    ('const key = API_KEY || "{k}";', "correcthorsebattery"),
+    ('resp = OpenAI("{k}").chat.completions.create(model="gpt-4o")', "correcthorsebatterystaple"),
+    ('r = requests.post(URL, headers={{"Authorization": "Bearer " + "{k}"}}, json=p)',
+     "abcdefghijklmnop"),
+    ('r = requests.post(URL, json=p, cookies={{"session": "{k}"}})', "correcthorsebattery"),
+    ('r = requests.post(URL, json=p, headers=H)  # key is {k}', "hunter2hunter2x"),
+    ('r = requests.post(URL, data="grant_type=password&username=bob&password={k}")', "hunter2"),
 ]
 
 
@@ -403,13 +430,108 @@ def test_credentials_on_a_call_line_never_reach_an_excerpt():
         line = template.format(k=key)
         out = scrub(line)
         assert key not in out, out
-        assert "[redacted]" in out or "…" in out, out
+        assert "[redacted]" in out or "[comment removed]" in out, out
     kept = scrub('resp = client.chat.completions.create(model="gpt-4o-mini", max_tokens=300)')
     assert kept == 'resp = client.chat.completions.create(model="gpt-4o-mini", max_tokens=300)'
     assert "{question}" in scrub('prompt = f"Answer only with Python: {question}"')
     host = scrub('requests.post("https://generativelanguage.googleapis.com/v1beta/x", '
                  'headers={"Ocp-Apim-Subscription-Key": k})')
     assert "generativelanguage.googleapis.com" in host and "Ocp-Apim-Subscription-Key" in host
+
+
+def test_a_long_line_is_cut_before_it_is_scrubbed():
+    from unvarnish.scanners.ai_usage import scrub
+
+    key = "zz" + _rand("long", 30)
+    line = 'r = client.chat.completions.create(model="gpt-4o", x="' + "a " * 700 + key + '")'
+    assert key not in scrub(line) and len(scrub(line)) <= 1000
+    cut = 'c = OpenAI(api_key="' + key  # a value cut short is still a value
+    assert key not in scrub(cut)
+
+
+def test_taint_follows_python_functions_and_statements(tmp_path: Path):
+    files = {
+        # A multi-line signature still opens a function: `result` ends with it.
+        "sig.py": (
+            "from openai import OpenAI\n"
+            "c = OpenAI(timeout=5)\n"
+            "def a(\n"
+            "    x,\n"
+            "):\n"
+            '    result = c.chat.completions.create(model="gpt-4o", messages=[])\n'
+            "    return result\n"
+            "\n"
+            "def b(result):\n"
+            "    eval(result)\n"
+        ),
+        # A multi-line self-reassignment still reads the value; column-0 text in a string
+        # does not end the function; an else branch does not replace the if branch's value.
+        "keep.py": (
+            "import re\n"
+            "from openai import OpenAI\n"
+            "c = OpenAI(timeout=5)\n"
+            "def f(x):\n"
+            '    text = c.chat.completions.create(model="gpt-4o", messages=[])\n'
+            "    text = re.sub(\n"
+            '        r"```", "", text)\n'
+            '    note = """\n'
+            "hello\n"
+            '"""\n'
+            "    eval(text)\n"
+            "    if x:\n"
+            '        cmd = c.chat.completions.create(model="gpt-4o", messages=[])\n'
+            "    else:\n"
+            '        cmd = "ls"\n'
+            "    os.system(cmd)\n"
+        ),
+    }
+    findings, _ = _run(tmp_path, files)
+    sinks = _tagged(findings, "owasp-llm05")
+    assert len(sinks) == 1 and _where(sinks[0]) == {("keep.py", 11), ("keep.py", 16)}
+
+
+def test_javascript_function_bodies_are_statements(tmp_path: Path):
+    files = {"a.ts": (
+        'import OpenAI from "openai";\n'
+        "const c = new OpenAI({ timeout: 5 });\n"
+        "async function a() {\n"
+        '  const result = await c.chat.completions.create({ model: "gpt-4o", messages: [] });\n'
+        "  let code = result.choices[0].message.content;\n"
+        "  code = code.trim();\n"
+        "  eval(code);\n"
+        "}\n"
+    )}
+    findings, _ = _run(tmp_path, files)
+    assert _where(_tagged(findings, "owasp-llm05")[0]) == {("a.ts", 7)}
+
+
+def test_request_input_reassigned_over_several_lines_is_still_request_input(tmp_path: Path):
+    files = {"a.py": (
+        "from flask import request\n"
+        "from openai import OpenAI\n"
+        "c = OpenAI(timeout=5)\n"
+        "def f():\n"
+        '    q = request.json["q"]\n'
+        "    q = sanitize(\n"
+        "        q)\n"
+        '    prompt = f"Answer: {q}"\n'
+        '    return c.chat.completions.create(model="gpt-4o", max_tokens=9,\n'
+        '                                     messages=[{"role": "user", "content": prompt}])\n'
+    )}
+    findings, _ = _run(tmp_path, files)
+    assert _where(_tagged(findings, "owasp-llm01")[0]) == {("a.py", 8)}
+
+
+def test_many_rebinds_of_one_name_stay_linear(tmp_path: Path):
+    import time
+
+    body = "from openai import OpenAI\nc = OpenAI()\n" + "".join(
+        "x = c.chat.completions.create(model='gpt-4o', max_tokens=5)\nx = 1\neval(x)\n"
+        for _ in range(8000))
+    start = time.monotonic()
+    findings, _ = _run(tmp_path, {"kill.py": body})
+    assert time.monotonic() - start < 20
+    assert not _tagged(findings, "owasp-llm05")
 
 
 def test_a_gemini_key_in_the_url_stays_out_of_the_findings(tmp_path: Path):
