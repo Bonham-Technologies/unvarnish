@@ -376,3 +376,15 @@ def test_unreadable_rule_file_does_not_break_the_inputs_hash(tmp_path, monkeypat
     monkeypatch.setattr(Path, "read_bytes", boom)
     bad = rules_digest(str(rules), None)
     assert bad and bad != good
+
+
+@pytest.mark.parametrize("value", ["~nosuchuser_zz_unvar/rules", "rules\x00dir", "x" * 5000])
+def test_an_unusable_rules_path_is_not_checked_and_never_raises(tmp_path, value):
+    # A config typo must not fail the scan phase: resolve_rules runs in the scan's inputs
+    # hash, outside the per-scanner guard, so it degrades to "not checked" (QC on UNVAR-89).
+    from unvarnish.scanners.opengrep import resolve_rules, rules_digest
+
+    rules, note = resolve_rules(value, tmp_path)
+    assert rules is None and note
+    assert rules_digest(value, tmp_path) == ""
+

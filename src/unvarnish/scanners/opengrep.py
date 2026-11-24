@@ -46,14 +46,19 @@ def resolve_rules(value: object, base: Path | None) -> tuple[Path | None, str | 
     if is_registry_value(text):
         return None, (f"scanners.sast.rules is not a local rules directory: {text!r}; "
                       "registry names and URLs are never fetched")
-    path = Path(text).expanduser()
-    if not path.is_absolute():
-        path = (base or Path.cwd()) / path
-    path = path.resolve()
-    if not path.is_dir():
-        return None, f"rules directory not found: {path}"
-    if not rule_files(path):
-        return None, f"no rule files (.yml, .yaml) in {path}"
+    # An unknown ~user, a NUL byte or an over-long name raises here; this runs in the scan's
+    # inputs hash, outside the per-scanner guard, so it must degrade, never raise.
+    try:
+        path = Path(text).expanduser()
+        if not path.is_absolute():
+            path = (base or Path.cwd()) / path
+        path = path.resolve()
+        if not path.is_dir():
+            return None, f"rules directory not found: {path}"
+        if not rule_files(path):
+            return None, f"no rule files (.yml, .yaml) in {path}"
+    except (OSError, RuntimeError, ValueError) as exc:
+        return None, f"rules directory not usable: {text!r} ({type(exc).__name__})"
     return path, None
 
 
