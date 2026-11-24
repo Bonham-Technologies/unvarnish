@@ -1514,12 +1514,24 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   (an import, an endpoint or a client class), or on a `model` line when the id's pattern
   names its provider; call patterns shared with other APIs (`.messages.create(` is also
   Twilio's) count only beside that provider's import; a JavaScript-only package name
-  (`ai`, `llamaindex`) imported in Python is the tool's own package; data flow is per file,
-  by assignment, scope-blind, over an index of the file's assignments built once, so its
-  cost follows the names reached rather than the file's length per prompt line (a
-  whole-file pass per line took minutes on a 15,000-line handler file). An SDK pointed at a gateway's endpoint (the OpenAI client at
+  (`ai`, `llamaindex`) imported in Python is the tool's own package, and so is
+  django-haystack's `haystack.indexes`; a Django `model = "auth.User"`, a class name, or a
+  bare `o1`/`o3` outside a `model` line of an AI file is not a model id. A loopback base URL
+  (`http://localhost:8000`) is every web app's, so it names a local model server only beside
+  another AI signal in the file (an SDK import or an OpenAI-compatible client), or when an
+  OpenAI-style path (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`,
+  `/v1/messages`) is built from it; Ollama's own paths at another port are not enough
+  (`/api/chat` is a common app route). Data flow is per file, by assignment: a value lives
+  from the line it is bound until an unconditional reassignment from untainted values (a
+  whole statement at the same or a lower indentation, not a keyword argument or a branch)
+  or the end of its Python function. Lines are visited over an index of the file's
+  assignments built once, so the cost follows the names reached rather than the file's
+  length per prompt line (a whole-file pass per line took minutes on a 15,000-line handler
+  file), and a call's argument text stops at 4,000 characters (a minified line after 30
+  calls took 30 seconds). An SDK pointed at a gateway's endpoint (the OpenAI client at
   `localhost:11434`) is recorded as the gateway, via the SDK. *Cost if wrong:* flows across
-  files and through function parameters are missed (known issues).
+  files and through function parameters are missed, and a value reassigned in a branch
+  still counts (known issues).
 - **Severities: output to eval/exec, a shell or SQL text is high; request input in a prompt
   is one medium review finding; tools beside powerful actions are medium; unbounded calls
   are low.** The first is code execution with the tool's privileges for whoever controls the
@@ -1528,7 +1540,15 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   or spreads options it may hold, or when its file mentions a timeout anywhere or a token
   limit outside any call (a client default). *Cost if wrong:* a call bounded only in another
   file is reported, and a file-wide timeout hides an unbounded call beside it.
-- **API keys stay with the secrets scanner.** The inventory holds no excerpts and checks each
-  model id against the secrets rules; finding excerpts are redacted by the secrets rules and
-  then by any quoted value after a key-like name. *Cost if wrong:* none known.
+- **API keys stay with the secrets scanner, and excerpts are safe by construction.** The
+  inventory holds no excerpts and checks each model id against the secrets rules (and drops
+  any with `://`). Finding excerpts are redacted by the secrets rules, then: URL userinfo
+  and query values (Gemini's `?key=`), the quoted value of any name that mentions a key,
+  token, secret, password, signature, auth or cookie (`Ocp-Apim-Subscription-Key`,
+  `X-Custom-Auth`, `password: str = ...`), env-lookup defaults, `auth=(...)` tuples and
+  Basic auth arguments, `-p<password>` and `--password` flags, and any token of 12 or more
+  characters with letters and digits inside a string literal (a positional key to a
+  client, a password in SQL text) unless it is a model id or a host name; a line over 4,000
+  characters has no excerpt. *Cost if wrong:* an excerpt can lose a harmless long
+  identifier; a short letters-only password in a string literal is still shown.
 

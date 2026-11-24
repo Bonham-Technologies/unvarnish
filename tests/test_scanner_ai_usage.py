@@ -113,6 +113,28 @@ PLAIN_FILES = {
     ),
     "web/messages.js": "client.messages.create({ body: 'hi', to: '+15550100' });\n",
     "shop/models.py": 'class Meta:\n    model = "auth.User"\n',
+    # A loopback base URL is an ordinary web app's, not a model server's (QC on UNVAR-91).
+    "settings.py": 'API_BASE_URL = "http://localhost:8000"\n',
+    "billing/client.py": (
+        "import subprocess\n"
+        "import requests\n"
+        "from flask import request\n"
+        'BASE_URL = "http://localhost:9000"\n'
+        "\n"
+        "def create_job(cursor):\n"
+        '    name = request.json["name"]\n'
+        '    payload = {"title": f"Job for {name}"}\n'
+        '    resp = requests.post(BASE_URL + "/jobs", json=payload)\n'
+        "    job = resp.json()\n"
+        "    cursor.execute(f\"insert into jobs values ({job['id']})\")\n"
+        '    subprocess.run(["notify", job["id"]])\n'
+    ),
+    "web/api.ts": ('import axios from "axios";\n'
+                   'export const api = axios.create({ baseURL: "http://localhost:3000/api" });\n'),
+    "playwright.config.ts": "export default { use: { baseURL: 'http://localhost:5173' } };\n",
+    "search_indexes.py": ("from haystack import indexes\n"
+                          "class NoteIndex(indexes.SearchIndex):\n    model = \"x\"\n"),
+    "web/flags.js": "const model = 'o3';\nconst tier = 'o1';\n",
 }
 
 
@@ -311,6 +333,106 @@ def test_a_large_handler_file_scans_in_linear_time(tmp_path: Path):
     findings, usage = _run(tmp_path, {"big.py": body})
     assert time.monotonic() - start < 20  # a whole-file pass per prompt line took minutes
     assert findings == [] and len(usage.calls) == 1
+
+
+def test_a_loopback_base_url_with_a_model_path_is_a_local_server(tmp_path: Path):
+    files = {"local.py": (
+        "import requests\n"
+        'BASE = "http://localhost:8080"\n'
+        'r = requests.post(BASE + "/v1/chat/completions", json={"model": "qwen2.5"}, timeout=9)\n'
+    )}
+    findings, usage = _run(tmp_path, files)
+    assert {(s.provider, s.model) for s in usage.services} == {
+        ("Local OpenAI-compatible server", "qwen2.5")}
+    assert [(c.line, c.provider) for c in usage.calls] == [(3, "Local OpenAI-compatible server")]
+    assert findings == []
+
+
+def test_reassigned_or_out_of_scope_names_are_not_model_output(tmp_path: Path):
+    files = {"a.py": (
+        "import subprocess\n"
+        "from openai import OpenAI\n"
+        "c = OpenAI(timeout=5)\n"
+        "def a():\n"
+        '    result = c.chat.completions.create(model="gpt-4o", messages=[])\n'
+        "    return result\n"
+        "\n"
+        "def b(cmd):\n"
+        "    result = build(cmd)\n"
+        "    subprocess.run(result)\n"
+        "\n"
+        "def d(cmd):\n"
+        "    subprocess.run(result)\n"
+        "\n"
+        "def e():\n"
+        '    out = c.chat.completions.create(model="gpt-4o", messages=[])\n'
+        "    if out.refusal:\n"
+        '        out = "echo refused"\n'
+        "    subprocess.run(out)\n"
+    )}
+    findings, _ = _run(tmp_path, files)
+    sinks = _tagged(findings, "owasp-llm05")
+    # Only the conditional reassignment leaves the output possibly reaching the shell.
+    assert len(sinks) == 1 and _where(sinks[0]) == {("a.py", 19)}
+
+
+CALL_LINE_SECRETS = [
+    ('r = requests.post("https://generativelanguage.googleapis.com/v1beta/models/'
+     'gemini-1.5-pro:generateContent?key={k}", json=p)', "AIzaSy" + _rand("gk", 33)),
+    ('r = requests.post(url + "?key={k}", json=p)', "plainlowentropykey123"),
+    ('r = requests.post(URL, headers={{"Ocp-Apim-Subscription-Key": "{k}"}}, json=p)',
+     _rand("ocp", 32)),
+    ('r = requests.post(URL, headers={{"X-Custom-Auth": "{k}"}}, json=p)', _rand("xca", 24)),
+    ('r = httpx.post(URL, auth=("svc-user", "{k}"), json=p)', "Wq7!xPz93kLm"),
+    ('r = requests.post("https://user:{k}@api.openai.com/v1/chat/completions", json=p)',
+     "Sup3rS3cret"),
+    ('resp = OpenAI("{k}").chat.completions.create(model="gpt-4o")', "zz" + _rand("pos", 24)),
+    ('os.system("mysql -u root -p{k} db -e " + answer)', "S3cretPassw0rd"),
+    ('os.environ["OPENAI_API_KEY"] = "{k}"', "abc123" + _rand("env", 20)),
+    ("client = OpenAI(api_key = os.getenv('K', '{k}'))", "fallback" + _rand("fb", 14)),
+    ('password: str = "{k}"; r = client.chat.completions.create(', "hunter2" + _rand("pw", 6)),
+    ('cur.execute("INSERT INTO users VALUES (\'admin\', \'{k}\')")', "hunter2hunter2"),
+    ('const r = await fetch(URL, {{ headers: {{ "api-key": "{k}" }} }})', _rand("js", 30)),
+]
+
+
+def test_credentials_on_a_call_line_never_reach_an_excerpt():
+    from unvarnish.scanners.ai_usage import scrub
+
+    for template, key in CALL_LINE_SECRETS:
+        line = template.format(k=key)
+        out = scrub(line)
+        assert key not in out, out
+        assert "[redacted]" in out or "…" in out, out
+    kept = scrub('resp = client.chat.completions.create(model="gpt-4o-mini", max_tokens=300)')
+    assert kept == 'resp = client.chat.completions.create(model="gpt-4o-mini", max_tokens=300)'
+    assert "{question}" in scrub('prompt = f"Answer only with Python: {question}"')
+    host = scrub('requests.post("https://generativelanguage.googleapis.com/v1beta/x", '
+                 'headers={"Ocp-Apim-Subscription-Key": k})')
+    assert "generativelanguage.googleapis.com" in host and "Ocp-Apim-Subscription-Key" in host
+
+
+def test_a_gemini_key_in_the_url_stays_out_of_the_findings(tmp_path: Path):
+    key = "AIzaSy" + _rand("gemini-url", 33)
+    files = {"g.py": (
+        "import requests\n"
+        'r = requests.post("https://generativelanguage.googleapis.com/v1beta/models/'
+        f'gemini-1.5-pro:generateContent?key={key}", json={{}})\n'
+    )}
+    findings, usage = _run(tmp_path, files)
+    assert findings and key not in json.dumps([f.model_dump(mode="json") for f in findings])
+    assert key not in usage.model_dump_json()
+
+
+def test_calls_before_a_minified_line_stay_fast(tmp_path: Path):
+    import time
+
+    body = ("import OpenAI from 'openai'\n"
+            + "".join(f"const r{i} = await fetch(u{i}, {{\n" for i in range(30))
+            + "var a=" + "x(y[z])," * 400_000 + "\n")
+    start = time.monotonic()
+    _run(tmp_path, {"big.js": body})
+    assert time.monotonic() - start < 10  # each call's span scanned the 3 MB line: 30 s
 
 
 # --- acceptance 5: tests and vendored code -----------------------------------------------------

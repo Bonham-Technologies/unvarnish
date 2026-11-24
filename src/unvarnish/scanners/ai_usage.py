@@ -110,6 +110,11 @@ IMPORTS: dict[str, tuple[str, str | None]] = {
 }
 # JavaScript package names that are ordinary Python package names (a local `ai/` package).
 JS_ONLY_IMPORTS = {"ai", "llamaindex"}
+# django-haystack (search indexes) shares the `haystack` name with deepset's framework.
+DJANGO_HAYSTACK_RE = re.compile(
+    r"^\s*(?:from\s+haystack(?:\s+import\s+|\.)|import\s+haystack\.)(?:indexes|query|forms"
+    r"|views|generic_views|inputs|signals|backends|management|models|exceptions|constants"
+    r"|fields|routers|admin|panels|apps)\b")
 # Declared dependencies (lower case; PyPI names compared with "_" as "-").
 PACKAGES: dict[str, str] = {
     **{name.replace("_", "-"): provider for name, (provider, _) in IMPORTS.items()
@@ -153,6 +158,15 @@ LOCAL_BASE_RE = re.compile(
     r"(?i)base_?url[\"']?\s*[:=]\s*[\"']https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0|"
     r"host\.docker\.internal)\b")
 LOCAL_SERVER = "Local OpenAI-compatible server"
+# Every web app has a loopback base URL; one counts as a model server only beside another AI
+# signal in the file (an SDK import or an OpenAI-compatible client), or with a model API path.
+LOOPBACK_RE = re.compile(r"https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]"
+                         r"|host\.docker\.internal)\b")
+LOCAL_AI_PATH_RE = re.compile(r"/v1/(?:chat/)?completions|/chat/completions|/v1/embeddings"
+                              r"|/v1/messages")
+CLIENT_RE = re.compile(r"(?<![\w.])(?:Async)?(?:Azure)?(?:OpenAI|ChatOpenAI|OpenAILike"
+                       r"|OpenAIEmbeddings)\(")
+BASE_KEY_RE = re.compile(r"(?i)base_?url[\"']?\s*[:=]")
 # Model ids, matched whole against string literals; the first match names the provider.
 _MODELS: list[tuple[str, str]] = [
     (r"(?:[a-z]{2}\.)?anthropic\.claude-[\w.:-]+", "AWS Bedrock"),
@@ -172,6 +186,10 @@ STRING_RE = re.compile(r"""(["'`])([^"'`\s]{1,120})\1""")
 MODEL_KEY_RE = re.compile(
     r"""(?i)\b\w*model(?:_?(?:name|id))?["']?\s*[:=]\s*(["'`]?)([A-Za-z0-9][\w.:/@-]{0,99})""")
 MODEL_VALUE_RE = re.compile(r"[A-Za-z0-9][\w.:/@-]{0,99}")
+# Values on a `model` line that are not model ids: Django's "auth.User", a class name.
+NOT_MODEL_RE = re.compile(r"(?:\w+\.)?[A-Z][A-Za-z]*")
+# A bare o-series id ("o1", "o3") is a model only on a `model` line in a file that uses AI.
+BARE_O_RE = re.compile(r"o\d")
 
 # Calls that send a request to a model: (pattern, providers one of which the file must use;
 # None for any).
@@ -193,8 +211,6 @@ CALLS: list[tuple[re.Pattern[str], tuple[str, ...] | None]] = [
 HTTP_CALL_RE = re.compile(
     r"\b(?:requests|httpx|axios|aiohttp|http|session|client|\w+_session)\.(?:post|request)\("
     r"|(?<![\w.])fetch\(")
-AI_PATH_RE = re.compile(r"/v1/messages|/chat/completions|/v1/completions|/api/(?:chat|generate)"
-                        r"|:(?:stream)?generateContent")
 CAP_RE = re.compile(r"(?i)max_?(?:completion_?|output_?|new_?)?tokens|num_predict"
                     r"|max_tokens_to_sample")
 SPREAD_RE = re.compile(r"\*\*[A-Za-z_]|\.\.\.[A-Za-z_]")
@@ -240,18 +256,62 @@ TOOL_RES: list[tuple[re.Pattern[str], str, str]] = [
 TOOL_NAME_RE = re.compile(r"[\"']name[\"']\s*:\s*[\"']([\w-]+)[\"']")
 DEF_NAME_RE = re.compile(r"^\s*(?:async\s+)?def\s+(\w+)")
 
-KEY_VALUE_RE = re.compile(
-    r"(?i)((?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|secret|password|passwd"
-    r"|authorization)[\"']?\s*[:=]\s*)([\"'`])([^\"'`]+)\2")
+# Excerpt redaction (`scrub`). Each pattern is linear: no nested or adjacent unbounded repeats.
+_QUOTED = r"([\"'`])((?:\\.|(?!\{q})[^\\\n])*)\{q}"
+NAMED_VALUE_RE = re.compile(
+    r"(?<![\w-])([\w-]+)([\"'\]]*(?:\s*:\s*[A-Za-z_][\w\[\]., |]{0,40}?)?\s*[:=]\s*"
+    r"[rbufRBUF]{0,2})" + _QUOTED.format(q=3))
+SECRET_NAME_RE = re.compile(r"(?i)key|auth|token|secret|passw|pwd|sig|credential|cookie")
+URL_USERINFO_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@\"'`]+@")
+URL_QUERY_RE = re.compile(r"([?&][\w.\-\[\]]+=)[^&#\s\"'`]+")
+ENV_DEFAULT_RE = re.compile(
+    r"((?:getenv|environ\.get|env\.get)\(\s*[^,()\n]{0,200},\s*[rbufRBUF]{0,2})"
+    + _QUOTED.format(q=2)
+    + r"|(process\.env\.\w+\s*(?:\|\||\?\?)\s*)" + _QUOTED.format(q=5))
+AUTH_ARGS_RE = re.compile(r"(?i)(\bauth\s*[=:]\s*[(\[])[^)\]\n]*"
+                          r"|(\b\w*(?:Basic|Digest|Proxy)Auth\w*\()[^)\n]*")
+CLI_SECRET_RE = re.compile(r"(?<=\s)(-p)[^\s\"'`]+"
+                           r"|(--?(?i:password|passwd|pass|pwd|token|api-?key|secret)[= ])"
+                           r"[^\s\"'`]+")
+STRING_LIT_RE = re.compile(_QUOTED.format(q=1))
+LIT_TOKEN_RE = re.compile(r"[^\s/?&=:,;'\"`(){}\[\]<>|\\]{12,}")
 BEARER_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}")
+R = "[redacted]"
+
+
+HOSTNAME_RE = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}")
+
+
+def _lit_token(m: re.Match[str]) -> str:
+    """A key-shaped token inside a string literal: 12 or more characters with letters and
+    digits, not a model id or a host name."""
+    tok = m.group(0)
+    shaped = re.search(r"[A-Za-z]", tok) and re.search(r"\d", tok)
+    keep = model_provider(tok) is not None or HOSTNAME_RE.fullmatch(tok)
+    return R if shaped and not keep else tok
 
 
 def scrub(text: str) -> str:
-    """An excerpt without credentials: the secrets rules' redaction, then any quoted value
-    after a key-like name. A key beside a call is the secrets scanner's finding, not ours."""
+    """An excerpt without credentials, by construction: the secrets rules' redaction, then
+    URL userinfo and query values, the quoted value of any name that mentions a key, token,
+    secret, password, signature, auth or cookie, env-lookup defaults, auth tuples and Basic
+    auth arguments, password flags on a command line, and any key-shaped token inside a
+    string literal (a positional key to a client) unless it is a model id. A key beside a call
+    is the secrets scanner's finding, not ours."""
     text = redact_text(text)
-    text = KEY_VALUE_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]{m.group(2)}", text)
-    return BEARER_RE.sub("Bearer [redacted]", text)
+    text = URL_USERINFO_RE.sub(lambda m: f"{m.group(1)}{R}@", text)
+    text = URL_QUERY_RE.sub(lambda m: f"{m.group(1)}{R}", text)
+    text = NAMED_VALUE_RE.sub(
+        lambda m: (f"{m.group(1)}{m.group(2)}{m.group(3)}{R}{m.group(3)}"
+                   if SECRET_NAME_RE.search(m.group(1)) else m.group(0)), text)
+    text = ENV_DEFAULT_RE.sub(
+        lambda m: (f"{m.group(1)}{m.group(2)}{R}{m.group(2)}" if m.group(1) is not None
+                   else f"{m.group(4)}{m.group(5)}{R}{m.group(5)}"), text)
+    text = AUTH_ARGS_RE.sub(lambda m: f"{m.group(1) or m.group(2)}{R}", text)
+    text = CLI_SECRET_RE.sub(lambda m: f"{m.group(1) or m.group(2)}{R}", text)
+    text = STRING_LIT_RE.sub(
+        lambda m: m.group(1) + LIT_TOKEN_RE.sub(_lit_token, m.group(2)) + m.group(1), text)
+    return BEARER_RE.sub(f"Bearer {R}", text)
 
 
 def model_provider(value: str) -> str | None:
@@ -282,6 +342,18 @@ TOKEN_RE = re.compile(r"(?<![\w.])\w+")
 def _tokens(text: str) -> set[str]:
     """The names `_word(name)` would find in `text`: each whole word not after a dot."""
     return set(TOKEN_RE.findall(text))
+
+
+def _indent(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+Taint = dict[str, list[list[int]]]  # name -> [first line tainted, line it ends] intervals
+
+
+def _live(taint: Taint, name: str, n: int, *, strict: bool) -> bool:
+    """Whether `name` holds a tainted value on line `n`: bound before it (`strict`) or on it."""
+    return any((s < n if strict else s <= n) and n < e for s, e in taint.get(name, ()))
 
 
 def _span_end(text: str, start: int) -> int:
@@ -340,17 +412,58 @@ class _File:
         return out
 
     @functools.cached_property
-    def readers(self) -> dict[str, list[int]]:
-        """Each name -> the indices in `assigns` whose right-hand side reads it."""
+    def touching(self) -> dict[str, list[int]]:
+        """Each name -> the lines of the assignments that read or bind it."""
         out: dict[str, list[int]] = defaultdict(list)
-        for i, (_, _, names) in enumerate(self.assigns):
-            for name in names:
-                out[name].append(i)
+        for n, targets, names in self.assigns:
+            for name in names | set(targets):
+                out[name].append(n)
         return out
+
+    @functools.cached_property
+    def assign_at(self) -> dict[int, tuple[list[str], set[str]]]:
+        return {n: (targets, names) for n, targets, names in self.assigns}
+
+    @functools.cached_property
+    def scope_ends(self) -> list[int]:
+        """For each line (index n - 1), the line that ends the Python function holding it, or
+        past the file's end: a value bound in a function is not seen by the next one."""
+        end = len(self.lines) + 1
+        out = [end] * len(self.lines)
+        if self.language != "python":
+            return out
+        stack: list[tuple[int, int]] = []  # (def indentation, def line)
+        for n, line in enumerate(self.lines, start=1):
+            if not line.strip() or not self.code[n - 1]:
+                continue
+            ind = _indent(line)
+            while stack and ind <= stack[-1][0]:
+                _, opened = stack.pop()
+                for k in range(opened, n):
+                    if out[k - 1] == end:  # an inner function already set its own lines
+                        out[k - 1] = n
+            if DEF_NAME_RE.match(line):
+                stack.append((ind, n))
+        return out
+
+    def kills(self, n: int, since: int) -> bool:
+        """Whether the assignment on line `n` replaces a value bound on line `since`: a whole
+        statement (not a keyword argument inside a call) at the same or a lower indentation
+        (not a branch that may not run)."""
+        line = self.lines[n - 1].split("#")[0].rstrip()
+        return (not line.endswith(",") and line.count(")") <= line.count("(")
+                and _indent(line) <= _indent(self.lines[since - 1]))
 
     def span(self, line: int, col: int) -> tuple[str, int]:
         """The text of the call whose parenthesis is at (line, col), and its last line."""
-        chunk = "\n".join(self.lines[line - 1:line - 1 + MAX_CALL_LINES])
+        parts: list[str] = []
+        size = 0
+        for text in self.lines[line - 1:line - 1 + MAX_CALL_LINES]:
+            parts.append(text[:col + MAX_LINE_CHARS - size] if parts else text)
+            size += len(parts[-1]) + 1
+            if size > col + MAX_LINE_CHARS:
+                break
+        chunk = "\n".join(parts)  # capped: a minified line after a call is not its argument
         start = col
         end = _span_end(chunk, start)
         return chunk[start:end], line + chunk[start:end].count("\n")
@@ -427,10 +540,14 @@ class AIUsageScanner:
         return _File(path=path, language=language, lines=lines, code=code)
 
     def _signals(self, f: _File) -> None:
+        local: list[int] = []  # lines with a loopback model server
+        base: list[int] = []  # loopback base_url lines, counted only beside another signal
+        loopback_names: dict[str, int] = {}  # names bound to a loopback URL -> their line
         for n, line in enumerate(f.lines, start=1):
             if not f.code[n - 1]:
                 continue
-            for module in self._imports(f.language, line):
+            skip = f.language == "python" and DJANGO_HAYSTACK_RE.match(line)
+            for module in [] if skip else self._imports(f.language, line):
                 hit = _lookup_import(module, f.language)
                 if hit:
                     f.signals.append(_Signal(hit[0], n, "import", hit[1]))
@@ -442,8 +559,31 @@ class AIUsageScanner:
                 if rx.search(line):
                     f.signals.append(_Signal(provider, n, "endpoint"))
                     hosted = True
-            if not hosted and LOCAL_BASE_RE.search(line):
-                f.signals.append(_Signal(LOCAL_SERVER, n, "endpoint"))
+            if hosted or not LOOPBACK_RE.search(line):
+                continue
+            if LOCAL_AI_PATH_RE.search(line):
+                local.append(n)
+            elif LOCAL_BASE_RE.search(line):
+                base.append(n)
+            a = ASSIGN_RE.match(line)
+            if a:
+                for name in _targets(a):
+                    loopback_names.setdefault(name, n)
+        # A loopback base URL counts beside another AI signal, or when a model API path or an
+        # OpenAI-compatible client's base_url is built from it.
+        ai_file = bool(f.signals) or any(
+            f.code[i] and CLIENT_RE.search(line) for i, line in enumerate(f.lines))
+        if ai_file:
+            local += base
+        if loopback_names:
+            for i, line in enumerate(f.lines):
+                if not f.code[i] or not (LOCAL_AI_PATH_RE.search(line)
+                                         or ai_file and BASE_KEY_RE.search(line)):
+                    continue
+                local += [bound for name, bound in loopback_names.items()
+                          if bound != i + 1 and name in _tokens(line)]
+        for n in sorted(set(local)):
+            f.signals.append(_Signal(LOCAL_SERVER, n, "endpoint"))
 
     @staticmethod
     def _imports(language: str | None, line: str) -> list[str]:
@@ -519,21 +659,23 @@ class AIUsageScanner:
         for n, line in enumerate(f.lines, start=1):
             if not f.code[n - 1]:
                 continue
-            found: list[tuple[str, str | None]] = []
+            found: list[tuple[str, str | None, bool]] = []
             for m in MODEL_KEY_RE.finditer(line):
                 value, patterned = m.group(2), model_provider(m.group(2))
                 if (m.group(1) or patterned) and not value.lower().startswith("http"):
-                    found.append((value, patterned))
+                    found.append((value, patterned, True))
             if signalled:
                 for m in STRING_RE.finditer(line):
                     patterned = model_provider(m.group(2))
                     if patterned:
-                        found.append((m.group(2), patterned))
-            for value, patterned in found:
-                if (value in seen or not MODEL_VALUE_RE.fullmatch(value)
+                        found.append((m.group(2), patterned, False))
+            for value, patterned, keyed in found:
+                if (value in seen or not MODEL_VALUE_RE.fullmatch(value) or "://" in value
                         or redact_text(value) != value):
                     continue
-                if not signalled and patterned is None:
+                if patterned is None and (not signalled or NOT_MODEL_RE.fullmatch(value)):
+                    continue
+                if BARE_O_RE.fullmatch(value) and not (keyed and signalled):
                     continue
                 seen.add(value)
                 out.append((n, value, patterned))
@@ -545,12 +687,16 @@ class AIUsageScanner:
         present = {s.provider for s in f.signals} | {s.via for s in f.signals if s.via}
         concrete = sorted({s.provider for s in f.signals if not PROVIDERS[s.provider].framework})
         url_names: dict[str, str] = {}  # names bound to an AI endpoint -> its provider
+        local_names: set[str] = set()  # names bound to a local server's base URL
         for s in f.signals:
             if s.kind == "endpoint":
-                m = ASSIGN_RE.match(f.lines[s.line - 1])
-                if m:
+                line = f.lines[s.line - 1]
+                m = ASSIGN_RE.match(line)
+                if m and not (s.provider == LOCAL_SERVER and not LOCAL_AI_PATH_RE.search(line)):
                     for name in _targets(m):
                         url_names[name] = s.provider
+                elif m:
+                    local_names.update(_targets(m))
         for n, line in enumerate(f.lines, start=1):
             if not f.code[n - 1]:
                 continue
@@ -566,19 +712,21 @@ class AIUsageScanner:
                 m = HTTP_CALL_RE.search(line)
                 if m:
                     text, _ = f.span(n, m.end() - 1)
-                    provider = self._http_target(text, url_names)
+                    provider = self._http_target(text, url_names, local_names)
                     if provider:
                         self._add_call(f, n, line, m, provider)
 
     @staticmethod
-    def _http_target(text: str, url_names: dict[str, str]) -> str | None:
+    def _http_target(text: str, url_names: dict[str, str],
+                     local_names: set[str] = frozenset()) -> str | None:
         for rx, provider in HOSTS:
             if rx.search(text):
                 return provider
         for name, provider in url_names.items():
             if _word(name).search(text):
                 return provider
-        if AI_PATH_RE.search(text) and LOCAL_BASE_RE.search(text):
+        if LOCAL_AI_PATH_RE.search(text) and (LOOPBACK_RE.search(text)
+                                              or not local_names.isdisjoint(_tokens(text))):
             return LOCAL_SERVER
         return None
 
@@ -604,38 +752,59 @@ class AIUsageScanner:
     # --- data flow -------------------------------------------------------------------------
 
     @staticmethod
-    def _propagate(f: _File, seeds: dict[str, int]) -> dict[str, int]:
-        """Names derived from the seeds by assignment after the line each was bound, one file
-        at a time, scope-blind: each name -> the first line it is tainted on. Earliest line
-        first over the file's assignment index, so the cost follows the names reached, not
-        the file's length (a whole-file pass per prompt line was quadratic)."""
-        tainted = dict(seeds)
-        heap = [(since, name) for name, since in seeds.items()]
+    def _propagate(f: _File, seeds: list[tuple[str, int]]) -> Taint:
+        """Where names hold values derived from the seeds, by assignment, one file at a time:
+        a value lives from the line it is bound until an unconditional reassignment from
+        untainted values, or the end of its Python function. Lines are visited in order, only
+        those whose assignments read or bind a tainted name, so the cost follows the names
+        reached rather than the file's length (a whole-file pass per prompt line was
+        quadratic)."""
+        taint: Taint = {}
+        seeded: dict[int, set[str]] = defaultdict(set)
+        for name, line in seeds:
+            seeded[line].add(name)
+        heap = list(seeded)
         heapq.heapify(heap)
+        last = 0
+
+        def bind(name: str, n: int) -> None:
+            spans = taint.setdefault(name, [])
+            if spans and spans[-1][0] <= n < spans[-1][1]:
+                return  # already live
+            spans.append([n, f.scope_ends[n - 1] if n <= len(f.lines) else n + 1])
+            for later in f.touching.get(name, ()):
+                if later > n:
+                    heapq.heappush(heap, later)
+
         while heap:
-            since, name = heapq.heappop(heap)
-            if tainted.get(name) != since:
-                continue  # a stale entry: the name was reached earlier since
-            for i in f.readers.get(name, ()):
-                n, targets, _ = f.assigns[i]
-                if n <= since:
+            n = heapq.heappop(heap)
+            if n <= last:
+                continue
+            last = n
+            for name in seeded.get(n, ()):
+                bind(name, n)
+            if n not in f.assign_at:
+                continue
+            targets, reads = f.assign_at[n]
+            derived = any(_live(taint, r, n, strict=True) for r in reads)
+            for t in targets:
+                if t in seeded.get(n, ()):
                     continue
-                for t in targets:
-                    if t not in seeds and n < tainted.get(t, n + 1):
-                        tainted[t] = n
-                        heapq.heappush(heap, (n, t))
-        return tainted
+                if derived:
+                    bind(t, n)
+                elif _live(taint, t, n, strict=True) and f.kills(n, taint[t][-1][0]):
+                    taint[t][-1][1] = n
+        return taint
 
     def _injections(self, f: _File) -> list[int]:
         """Lines that build request input into text that reaches a model call (LLM01)."""
         if not f.calls:
             return []
-        seeds: dict[str, int] = {}
+        seeds: list[tuple[str, int]] = []
         for n, line in enumerate(f.lines, start=1):
             m = ASSIGN_RE.match(line)
             if m and f.code[n - 1] and REQUEST_RE.search(line[m.end():]):
-                for t in _targets(m):
-                    seeds.setdefault(t, n)
+                seeds += [(t, n) for t in _targets(m)]
         tainted = self._propagate(f, seeds)
         blocks = _string_blocks(f.lines)
         in_call = {n for c in f.calls for n in range(c.line, c.end_line + 1)}
@@ -645,7 +814,7 @@ class AIUsageScanner:
         for n, line in enumerate(f.lines, start=1):
             if not f.code[n - 1] and n not in blocks:
                 continue
-            names = [name for name in _tokens(line) if tainted.get(name, n + 1) <= n]
+            names = [name for name in _tokens(line) if _live(tainted, name, n, strict=False)]
             if not _interpolates(line, names, n in blocks):
                 continue
             if n in in_call:
@@ -655,9 +824,11 @@ class AIUsageScanner:
             if owner is None:
                 continue
             if owner not in reaches:
-                reach = self._propagate(f, {owner[0]: owner[1] - 1}).keys()
-                reaches[owner] = any(line_ >= owner[1] and not reach.isdisjoint(used)
-                                     for line_, used in call_names)
+                reach = self._propagate(f, [owner])
+                reaches[owner] = any(
+                    line_ >= owner[1] and any(_live(reach, r, line_, strict=False)
+                                              for r in used)
+                    for line_, used in call_names)
             if reaches[owner]:
                 out.append(n)
         return out
@@ -678,11 +849,11 @@ class AIUsageScanner:
 
     def _sinks(self, f: _File) -> list[tuple[int, str]]:
         """Lines where model output reaches code execution, a shell or SQL text (LLM05)."""
-        seeds = {name: c.line for c in f.calls for name in c.outputs}
+        seeds = [(name, c.line) for c in f.calls for name in c.outputs]
         if not seeds:
             return []
         tainted = self._propagate(f, seeds)
-        first = min(tainted.values())
+        first = min(c.line for c in f.calls if c.outputs)
         out: list[tuple[int, str]] = []
         for n, line in enumerate(f.lines, start=1):
             if not f.code[n - 1] or n <= first:
@@ -690,13 +861,13 @@ class AIUsageScanner:
             m = EXEC_RE.search(line)
             if m:
                 args, _ = f.span(n, m.end() - 1)
-                if any(tainted.get(name, n) < n for name in _tokens(args)):
+                if any(_live(tainted, name, n, strict=True) for name in _tokens(args)):
                     out.append((n, "shell or code execution"))
                     continue
             m = SQL_RE.search(line)
             if m:
                 args, _ = f.span(n, m.end() - 1)
-                names = [name for name in _tokens(args) if tainted.get(name, n) < n]
+                names = [name for name in _tokens(args) if _live(tainted, name, n, strict=True)]
                 if any(re.match(rf"\(\s*{re.escape(name)}\s*[,)]", args) for name in names) \
                         or _interpolates(_first_argument(args), names, False):
                     out.append((n, "SQL text"))
@@ -743,8 +914,10 @@ class AIUsageScanner:
     # --- findings --------------------------------------------------------------------------
 
     def _evidence(self, f: _File, n: int, note: str | None = None) -> Evidence:
-        return Evidence(path=f.path, line_start=n, line_end=n,
-                        excerpt=scrub(f.lines[n - 1].strip())[:200] or None, note=note)
+        line = f.lines[n - 1].strip()
+        excerpt = scrub(line)[:200] if len(line) <= MAX_LINE_CHARS else None
+        return Evidence(path=f.path, line_start=n, line_end=n, excerpt=excerpt or None,
+                        note=note)
 
     def _finding(self, rule: str, severity: Severity, category: Category, title: str,
                  summary: str, impact: str, remediation: str, evidence: list[Evidence],
