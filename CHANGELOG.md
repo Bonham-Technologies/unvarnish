@@ -14,6 +14,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   small fixture inside it, with no network, so Dockerfile and base-image bumps no longer merge
   untested; `ci-status` waits for it (UNVAR-80).
 
+### The unvarnish.tech demo shows the current report
+
+- The NodeGoat demo was recorded again with current `main` and the image's WeasyPrint, so the
+  published sample has the plural wording, the HTML main landmark, row headers and author
+  metadata, and a tagged PDF; `tests/test_site.py` checks for each (UNVAR-79).
+
 ### `config check` without a model says what works
 
 - With no model configured, `config check` prints one line saying `run` still runs the
