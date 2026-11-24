@@ -37,7 +37,7 @@ DEFAULT_WARN_MONTHS = 6
 MAX_WARN_MONTHS = 120
 DEFAULT_MAX_DATA_AGE_DAYS = 90
 MAX_DATA_AGE_DAYS = 3650
-# The old-data note starts "<NAME>: end-of-life data dated <date> is <_age_phrase>"; the
+# The old-data note starts "<NAME>: end-of-life data dated <date> is <age_phrase>"; the
 # findings document's summary row reads the phrase back (data_age_warning), so the two agree.
 AGE_NOTE_RE = re.compile(rf"^{NAME}: end-of-life data dated \d{{4}}-\d{{2}}-\d{{2}} is "
                          r"(\d+ days? old, older than the \d+-day limit)")
@@ -143,13 +143,13 @@ def warn_months(value: object) -> int:
     return _whole_number(value, DEFAULT_WARN_MONTHS, MAX_WARN_MONTHS)
 
 
-def max_data_age_days(value: object) -> int:
+def max_data_age_days(value: object, default: int = DEFAULT_MAX_DATA_AGE_DAYS) -> int:
     """The `max_data_age_days` option, or the default when it is not a whole number of days
     from 0 to MAX_DATA_AGE_DAYS."""
-    return _whole_number(value, DEFAULT_MAX_DATA_AGE_DAYS, MAX_DATA_AGE_DAYS)
+    return _whole_number(value, default, MAX_DATA_AGE_DAYS)
 
 
-def _age_phrase(age: int, limit: int) -> str:
+def age_phrase(age: int, limit: int) -> str:
     return f"{age} day{'' if age == 1 else 's'} old, older than the {limit}-day limit"
 
 
@@ -160,7 +160,7 @@ def data_age_note(fetched: date, today: date, limit: int) -> str | None:
     if age <= limit:
         return None
     return (f"{NAME}: end-of-life data dated {fetched.isoformat()} is "
-            f"{_age_phrase(age, limit)} (max_data_age_days); releases and end-of-life dates "
+            f"{age_phrase(age, limit)} (max_data_age_days); releases and end-of-life dates "
             f"published since then are missing, so a newer release is skipped and a release "
             f"whose end-of-life date was set or moved since then can be reported wrongly. The "
             f"findings still use this data (run `unvarnish eol refresh` while online, or "

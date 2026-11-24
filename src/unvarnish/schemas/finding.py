@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import date
 from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -77,6 +78,17 @@ class Evidence(BaseModel):
         return v
 
 
+class AdvisoryExploit(BaseModel):
+    """Exploit data for one dependency advisory, from the offline bundle (UNVAR-90)."""
+
+    advisory: str  # the advisory's id, as the finding lists it
+    cves: list[str] = Field(default_factory=list)  # its CVE aliases, the join key
+    kev: bool = False  # in CISA's Known Exploited Vulnerabilities catalog
+    kev_date_added: date | None = None
+    epss: float | None = None  # FIRST EPSS probability, 0 to 1; None without a score
+    epss_percentile: float | None = None
+
+
 def compute_finding_id(tool: str, category: Category, title: str, evidence: Evidence) -> str:
     key = (f"{tool}|{category}|{title}|{evidence.path}|{evidence.line_start}"
            f"|{evidence.fingerprint or ''}")
@@ -102,6 +114,10 @@ class Finding(BaseModel):
     verification_note: str | None = None  # the verifier's one-line reason
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     tags: list[str] = Field(default_factory=list)
+    # Dependency advisories' exploit data, in the order the finding lists them; None (and
+    # left out of the artifact) without an exploit data bundle (UNVAR-90).
+    exploits: list[AdvisoryExploit] | None = Field(default=None,
+                                                   exclude_if=lambda v: v is None)
 
     @model_validator(mode="after")
     def _finalise(self) -> Finding:

@@ -29,11 +29,14 @@ macOS run it natively; on Windows use the Docker image, since native Windows is 
     uv sync && uv run unvarnish ...  # or run in place
     unvarnish grammars fetch         # once, while online: the tree-sitter grammars
     unvarnish eol refresh            # while online: end-of-life dates from endoflife.date
+    unvarnish vulndata refresh       # while online: CISA KEV and EPSS exploit data
 
 The tree-sitter grammars that measure functions and split code into units download from GitHub
 on first use; `grammars fetch` gets them ahead of time, so a later run needs no network for
 them. A run that can't load one says so in the findings document. `eol refresh` does the same
 for the end-of-life dates the `end_of_life` scanner reads; rerun it before each engagement.
+`vulndata refresh` does the same for the exploit data that marks dependency advisories known
+exploited (CISA KEV, raised to critical) and orders them by EPSS.
 
 ## Use
 
@@ -60,7 +63,7 @@ Deterministic, no model needed; options live under `scanners:` in `engagement.ya
 | `oversized_files` | files and functions over size thresholds, HTML inline script | `file_lines`, `function_lines`, `html_script_lines` |
 | `hygiene` | missing tests, CI, README, license, linter config; TODO density; swallowed errors | |
 | `bus_factor` | single-author concentration | `single_author_share` |
-| `dependencies` | published advisories (osv-scanner, offline by default) and unpinned dependencies without a lockfile | `offline`, `enabled`, `osv_args` |
+| `dependencies` | published advisories (osv-scanner, offline by default) and unpinned dependencies without a lockfile; with an offline exploit data bundle (`unvarnish vulndata refresh`), an advisory in CISA's KEV catalog is critical and every advisory shows its EPSS score, which orders them (an older bundle than `max_data_age_days`, default 30, is noted) | `offline`, `enabled`, `osv_args`, `max_data_age_days` |
 | `hardcoded_infra` | URLs, internal hostnames, IPs, absolute paths, emails (credentials masked) | `max_evidence`, `include_tests` |
 | `vendored_bulk` | dependency or build directories and large binaries in the source | `binary_bytes` |
 | `generated_bulk` | single commits over a line threshold, noting AI co-author trailers | `commit_lines` |

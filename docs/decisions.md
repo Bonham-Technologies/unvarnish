@@ -1453,3 +1453,42 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   "json_sche…" and "tool_call…"; two-word headers wrap onto two lines instead. The config
   keys keep their underscores. *Cost if wrong:* a reader matches the header to the config key
   by eye rather than by exact text.
+
+## Known-exploited and likely-exploited advisories (UNVAR-90)
+
+- **A KEV-listed advisory is raised to critical; EPSS is shown and orders, never re-rates
+  (owner's choice, option A).** CISA's catalog is evidence of exploitation in the wild, which
+  outweighs a CVSS base score; an EPSS probability is a forecast, so it ranks advisories
+  (within a finding, and findings within a severity, known exploited first) but leaves the
+  CVSS-derived severity alone. *Cost if wrong:* a KEV entry for a code path the tool never
+  reaches still reads critical (the consultant can accept the risk in `baseline.accepted`),
+  and a high-EPSS medium stays medium.
+- **One gzip bundle beside the end-of-life bundle, read by the inventory.** The first line is a
+  JSON header with the KEV catalog; each other line is one EPSS score. One file is replaced
+  atomically, so a failed refresh never leaves a header without scores; the default folder is
+  the end-of-life one, so the image's existing mount and environment variable cover both
+  (`UNVARNISH_VULNDATA_DIR` overrides it). A run streams the 300,000-odd scores once and keeps
+  only the CVEs its advisories name, and the whole file is read so a truncated bundle is
+  "unreadable", not partly used: on the real feeds the bundle is 2.9 MB and a lookup takes
+  about 0.1 s. *Cost if wrong:* that read per inventory with advisories; a SQLite index
+  would answer faster at several times the size.
+- **The inventory marks advisories, not the scanner**, because `dependencies.json` is the
+  inventory's artifact and must carry `kev`, `kev_date_added`, `epss` and `epss_percentile`
+  per advisory; the bundle date joins the inventory's inputs hash as the end-of-life date
+  does, and nothing joins it without a bundle, so existing engagements do not rerun. The
+  dependencies scanner turns the marks into text, ordering, `Finding.exploits` (left out of
+  the artifact when there is no data, so findings without a bundle are byte-identical) and
+  the "not checked" or old-data note. *Cost if wrong:* none known.
+- **Exploit data is old after 30 days by default** (`scanners.dependencies.max_data_age_days`),
+  not the end-of-life data's 90: EPSS is republished daily and CISA adds to its catalog most
+  weeks. The default lives in the scanner, not in the configuration defaults, because a new
+  `dependencies` option would change every engagement's inventory hash. *Cost if wrong:* the
+  note appears on a kit image a month after it was built; raise the limit per engagement.
+- **An advisory's EPSS is the highest of its CVE aliases'**, and its KEV date the earliest.
+  Its aliases are osv-scanner's group aliases plus each grouped vulnerability's own, so a
+  report without `groups` still joins a GHSA advisory to the CVE it aliases.
+  Both feed URLs were checked by downloading them on 2026-11-23 (KEV: `catalogVersion`
+  2026.11.20, 1,790 entries; EPSS: a 302 to the dated file, 411,000 lines, the
+  `#model_version`/`score_date` comment then `cve,epss,percentile`), and both can be
+  overridden (`--kev-url`, `--epss-url`) if a feed moves again. *Cost if wrong:* a feed that
+  changes shape fails the refresh by name and leaves the old bundle in place.

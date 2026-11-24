@@ -103,6 +103,8 @@ def _result(f: Finding, rid: str, index: int) -> dict:
                    "category": f.category.value, "verification": _verification(f)}
     if f.confidence is not None:
         props["confidence"] = f.confidence
+    if f.exploits is not None:  # per advisory: CISA KEV and EPSS (UNVAR-90)
+        props["exploits"] = [e.model_dump(mode="json") for e in f.exploits]
     result: dict = {
         "ruleId": rid, "ruleIndex": index, "level": LEVELS[f.severity],
         "message": {"text": message or f.title},
