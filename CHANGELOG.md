@@ -15,6 +15,13 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   "json schema" and "tool calling" and wrap in a narrow terminal rather than being cut to
   "json_sche…" at 80 columns (UNVAR-83).
 
+### Known exploited dependency advisories
+
+- `unvarnish vulndata refresh` downloads CISA's KEV catalog and FIRST's EPSS scores into an
+  offline bundle; with it, an advisory CISA lists as exploited is critical and says "Known
+  exploited (CISA KEV, added <date>)", and every advisory shows its EPSS score, which orders
+  them, in `dependencies.json`, findings.md, CSV and SARIF (UNVAR-90).
+
 ### Optional Opengrep SAST scanner
 
 - New `sast` scanner: with `opengrep` on PATH and `scanners.sast.rules` set to a local rules directory, code-level flaws are scanner findings (one per rule, capped by `max_evidence`, redacted, matched by rule on re-audit); otherwise "Not analysed" says `sast: not checked` with the reason. No rules are bundled or fetched; ignore files and `nosem` comments are reported as suppressions (UNVAR-89).

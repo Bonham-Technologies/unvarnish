@@ -5,7 +5,7 @@ import json
 import shutil
 from pathlib import Path, PurePosixPath
 
-from unvarnish.analysis import eol, treesitter
+from unvarnish.analysis import eol, treesitter, vulndata
 from unvarnish.analysis.advisories import lookup_advisories
 from unvarnish.analysis.dependencies import parse_manifests
 from unvarnish.analysis.languages import (
@@ -90,7 +90,7 @@ class InventoryPhase:
     reads_source = True
 
     def inputs_hash(self, ctx: ToolContext) -> str:
-        return self._hash(ctx, _previous_gaps(ctx), eol.bundle_date())
+        return self._hash(ctx, _previous_gaps(ctx), eol.bundle_date(), vulndata.bundle_date())
 
     def retry_pending(self, ctx: ToolContext) -> bool:
         """A census from before its content digest (UNVAR-34) reruns once: the phases after it
@@ -101,7 +101,8 @@ class InventoryPhase:
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             return False  # missing or unreadable: the hash check decides
 
-    def _hash(self, ctx: ToolContext, gaps: list[str], eol_date: str | None = None) -> str:
+    def _hash(self, ctx: ToolContext, gaps: list[str], eol_date: str | None = None,
+              vuln_date: str | None = None) -> str:
         # The advisory lookup depends on whether osv-scanner is installed and on its options,
         # so installing it or changing them makes the inventory stale. Tracking or untracking a
         # gitignored file changes what is excluded without touching the tree (UNVAR-28).
@@ -121,6 +122,9 @@ class InventoryPhase:
         # bundle nothing is added, so an engagement's hash stays what it was (UNVAR-43).
         if eol_date:
             parts.append("eol:" + eol_date)
+        # Likewise the exploit data bundle, which marks the advisories (UNVAR-90).
+        if vuln_date:
+            parts.append("vulndata:" + vuln_date)
         return hash_inputs(parts)
 
     def outputs(self, ctx: ToolContext) -> list[Path]:
@@ -186,16 +190,19 @@ class InventoryPhase:
                         notes=[grammar_note(g, measured[g]) for g in gaps],
                         content_digest=digest.hexdigest())
         eol_date = eol.bundle_date()
-        h = self._hash(ctx, gaps, eol_date)
+        h = self._hash(ctx, gaps, eol_date, vulndata.bundle_date())
         write_artifact(ctx.paths.census, census, produced_by=self.name, inputs_hash=h)
         write_artifact(ctx.paths.metrics, Metrics(tool=ctx.tool, files=metrics),
                        produced_by=self.name, inputs_hash=h)
         checked, advisories, note = lookup_advisories(
             root, dict(ctx.config.scanners.get("dependencies", {})))
+        advisories, exploit_date, exploit_note = vulndata.annotate(advisories)
         write_artifact(ctx.paths.dependencies,
                        Dependencies(tool=ctx.tool, dependencies=deps, advisories_checked=checked,
                                     advisories=advisories, advisories_note=note,
-                                    eol_data_date=eol_date),
+                                    eol_data_date=eol_date,
+                                    exploit_data_date=exploit_date,
+                                    exploit_data_note=exploit_note),
                        produced_by=self.name, inputs_hash=h)
         message = f"{plural(totals.files, 'file')}, {len(metrics)} measured"
         if gaps:

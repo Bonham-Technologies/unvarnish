@@ -120,6 +120,11 @@ def parse_osv(report: dict, root: Path) -> list[dict]:
                 if not ids:
                     continue
                 ids += [a for a in g.get("aliases") or [] if a not in ids]
+                # Each vulnerability's own aliases too: a report without `groups` lists a
+                # GHSA advisory's CVE only there, and the exploit data joins on CVEs (UNVAR-90).
+                for i in list(ids):
+                    ids += [a for a in (vulns.get(i) or {}).get("aliases") or []
+                            if a and a not in ids]
                 first = vulns.get(ids[0], {})
                 texts = [((vulns.get(i) or {}).get("database_specific") or {}).get("severity", "")
                          for i in ids]

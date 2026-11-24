@@ -141,6 +141,49 @@ The scale rehearsal is repeatable without spending tokens:
   `unvarnish run`.
 - Set `scanners.dependencies.offline: false` to query osv.dev directly where the site allows it.
 
+## Exploit data (CISA KEV and EPSS)
+
+- The inventory marks each dependency advisory from one file, `vulndata.gz`, and never touches
+  the network during a run. It looks in `$UNVARNISH_VULNDATA_DIR` when that is set, else in
+  the end-of-life data folder (`$UNVARNISH_EOL_DIR`, else `$XDG_DATA_HOME/unvarnish/eol`, else
+  `~/.local/share/unvarnish/eol`), so one folder or mount holds both bundles (UNVAR-90).
+- On a connected laptop, run `unvarnish vulndata refresh` before each engagement. It downloads
+  CISA's Known Exploited Vulnerabilities catalog
+  (`https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json`) and
+  FIRST's EPSS scores (`https://epss.empiricalsecurity.com/epss_scores-current.csv.gz`, which
+  redirects to the day's dated file; the older host was `epss.cyentia.com`), four attempts
+  each with backoff (`--attempts`), checks every line, and writes the bundle atomically with
+  today's date; `--dir <path>` writes it elsewhere, and `--kev-url`/`--epss-url` read a
+  mirror or a moved feed. If either feed fails it exits 1 naming it and writes nothing, so the
+  previous bundle stays as it was. It checks the folder is writable before downloading.
+- Then rerun the engagement: the bundle date is in the inventory's inputs hash, so a plain
+  `unvarnish run` reruns the inventory, the scan and render; the per-tool model phases stay
+  fresh, but in an engagement with more than one tool `compare` reruns and calls the model.
+  The hash holds the bundle's date only, so a second refresh on the same day reruns nothing.
+- With a bundle, an advisory whose id or aliases include a CVE in the KEV catalog is critical
+  and its line in the finding says "Known exploited (CISA KEV, added <date>)"; every advisory
+  shows its EPSS score and percentile (its CVEs' highest; "no EPSS score" without a CVE
+  alias). EPSS never changes a severity: it orders advisories within a finding and findings
+  within a severity, known exploited first. `dependencies.json` carries `kev`,
+  `kev_date_added`, `epss` and `epss_percentile` per advisory, SARIF results carry them as an
+  `exploits` property, and the CSV's Description repeats the finding's text. "By the numbers"
+  gains a "Known exploited" row with the count and the data date.
+- Without a bundle nothing else changes: "Not analysed" says "exploit data: not checked" and
+  how to get one. A bundle fetched more than `scanners.dependencies.max_data_age_days` days
+  (default 30: EPSS moves daily) before the scan is still used, with a note and "(N days old,
+  older than the 30-day limit: refresh it)" on the row.
+- A refreshed bundle that newly lists an advisory re-rates its finding: a re-audit
+  (`--baseline`) shows it under "Changed" as "re-rated from high", not as resolved and new,
+  since severity is not part of a finding's id.
+- The bundle is gzip: the first line is a JSON header (`format: 1`, `fetched`, the sources,
+  the KEV catalog version, the EPSS model version and score date, `attribution` and `kev`, CVE
+  to date added); each other line is `CVE-YYYY-NNNN,epss,percentile`. A run streams the
+  scores and keeps only the CVEs its advisories name.
+- The Docker image and the site kit do not bundle this data yet; until they do, write a
+  bundle with `vulndata refresh --dir <folder>` on a connected machine and mount or copy that
+  folder, as for end-of-life data below, then set `UNVARNISH_VULNDATA_DIR` to it (or put the
+  file in the `/opt/eol` mount).
+
 ## End-of-life data
 
 - The `end_of_life` scanner reads end-of-life dates from one file, `endoflife.json`, and never
