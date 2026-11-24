@@ -7,6 +7,7 @@ from unvarnish.render.inputs import RenderInputs
 
 TOP_AUTHORS = 5
 HARDCODED_ROWS = 30
+AI_ROWS = 40
 
 
 def module_mermaid_or_none(tm, diagram=None) -> str | None:
@@ -50,6 +51,7 @@ def build_architecture_context(ctx: ToolContext, inp: RenderInputs) -> dict:
                 break
             hardcoded.append({"kind": kind, "value": (e.note or "").removeprefix("value: "),
                               "location": f"{e.path}:{e.line_start}"})
+    ai_services = _ai_services(inp)
     git = inp.git
     languages = sorted(inp.census.languages.items(), key=lambda kv: -kv[1])[:8]
     indicators = ai_indicators(git)
@@ -92,5 +94,21 @@ def build_architecture_context(ctx: ToolContext, inp: RenderInputs) -> dict:
         "module_diagram_note": mod_diagram.note,
         "diagrams": {"context": ctx_diagram, "modules": mod_diagram},
         "coverage": coverage, "ai_indicators": indicators, "hardcoded": hardcoded,
+        "ai_services": ai_services,
         "analysis_mode": analysis_mode(inp), "prose_facts": prose_facts,
     }
+
+
+def _ai_services(inp: RenderInputs) -> dict | None:
+    """The AI services table (UNVAR-91), from ai-usage.json alone; None when not checked."""
+    usage = inp.ai_usage
+    if usage is None:
+        return None
+    rows = [{"provider": s.provider + (f" (via {s.via})" if s.via else ""),
+             "model": s.model, "location": f"{s.path}:{s.line}", "hosting": s.hosting}
+            for s in sorted(usage.services, key=lambda s: (s.provider, s.path, s.line))]
+    tools = [f"`{t.path}:{t.line}` ({t.kind}{f' `{t.name}`' if t.name else ''})"
+             for t in usage.tool_definitions]
+    more = len(rows) - AI_ROWS
+    return {"rows": rows[:AI_ROWS], "more": more if more > 0 else 0,
+            "tools": tools[:AI_ROWS], "more_tools": max(0, len(tools) - AI_ROWS)}

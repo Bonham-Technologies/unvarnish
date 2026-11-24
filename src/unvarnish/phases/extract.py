@@ -12,6 +12,7 @@ from unvarnish.artifacts import hash_files, hash_inputs, read_artifact, write_ar
 from unvarnish.model.base import Backend, BackendError, BackendUnavailable, ModelRefusal
 from unvarnish.model.budget import BudgetExceeded, BudgetTracker, record_cost
 from unvarnish.model.prompts.extract import (
+    AI_NOTE,
     PROMPT_VERSION,
     ROUTE_NOTE,
     build_extract_request,
@@ -21,6 +22,7 @@ from unvarnish.model.registry import NoModelConfigured, resolve_backend, resolve
 from unvarnish.model.structured import StructuredOutputError, complete_structured
 from unvarnish.phases.base import PhaseResult, PhaseStatus, ToolContext
 from unvarnish.phases.modelrun import has_failures, merge_failures
+from unvarnish.scanners.ai_usage import ai_hints
 from unvarnish.scanners.client_exposure import route_hints
 from unvarnish.scanners.secrets import redact_model_text, redact_text
 from unvarnish.schemas.analysis import (
@@ -67,10 +69,14 @@ def unit_inputs_hash(unit: Unit, source: bytes, backend_name: str, model: str,
                         PROMPT_VERSION, effort or "", *(["\n".join(notes)] if notes else [])])
 
 
-def unit_notes(unit: Unit, hints: dict[str, list[int]]) -> list[str]:
-    """Scanner notes for the lines of this unit: route handlers with no auth nearby."""
-    return [ROUTE_NOTE.format(line=n) for n in hints.get(unit.path, [])
-            if unit.line_start <= n <= unit.line_end]
+def unit_notes(unit: Unit, hints: dict[str, list[int]],
+               ai: dict[str, list[int]] | None = None) -> list[str]:
+    """Scanner notes for the lines of this unit: route handlers with no auth nearby, then
+    model calls and tool definitions (UNVAR-91)."""
+    notes = [ROUTE_NOTE.format(line=n) for n in hints.get(unit.path, [])
+             if unit.line_start <= n <= unit.line_end]
+    return notes + [AI_NOTE.format(line=n) for n in (ai or {}).get(unit.path, [])
+                    if unit.line_start <= n <= unit.line_end]
 
 
 class ExtractPhase:
@@ -95,8 +101,10 @@ class ExtractPhase:
         ref = resolve_model_ref(ctx.config, self.name)
         model_part = f"{ref.backend}|{ref.model}|{ref.effort or ''}" if ref else "no-model"
         hints = route_hints(ctx.paths.scanner_findings)
+        ai = ai_hints(ctx.paths.ai_usage)
         return hash_inputs([hash_files([ctx.paths.units_index]), model_part, PROMPT_VERSION,
-                            *([json.dumps(hints, sort_keys=True)] if hints else [])])
+                            *([json.dumps(hints, sort_keys=True)] if hints else []),
+                            *([json.dumps(ai, sort_keys=True)] if ai else [])])
 
     def outputs(self, ctx: ToolContext) -> list[Path]:
         return [ctx.paths.extract_state]
@@ -116,6 +124,7 @@ class ExtractPhase:
         census = read_artifact(ctx.paths.census, Census).data
         by_id = {u.id: u for u in index.units}
         hints = route_hints(ctx.paths.scanner_findings)
+        ai = ai_hints(ctx.paths.ai_usage)
         system = build_system_prompt()
         budget = ctx.budget or BudgetTracker(ctx.config.budget.max_tokens)
         ctx.paths.unit_dir.mkdir(parents=True, exist_ok=True)
@@ -136,7 +145,7 @@ class ExtractPhase:
                 for uid in unit_ids:
                     unit = by_id[uid]
                     chunk = source_bytes[unit.byte_start:unit.byte_end]
-                    notes = unit_notes(unit, hints)
+                    notes = unit_notes(unit, hints, ai)
                     h = unit_inputs_hash(unit, chunk, backend.name, backend.model, effort, notes)
                     out_path = ctx.paths.unit_dir / f"{uid}.json"
                     if out_path.exists():

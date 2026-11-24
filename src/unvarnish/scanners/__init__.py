@@ -11,6 +11,7 @@ __all__ = ["ENTRY_POINT_GROUP", "ScanContext", "Scanner", "builtin_scanners", "l
 
 def builtin_scanners() -> list[Scanner]:
     # Imported here to avoid import cycles between scanners.base and the scanner modules.
+    from unvarnish.scanners.ai_usage import AIUsageScanner
     from unvarnish.scanners.bus_factor import BusFactorScanner
     from unvarnish.scanners.client_exposure import ClientExposureScanner
     from unvarnish.scanners.dependencies import DependenciesScanner
@@ -24,7 +25,8 @@ def builtin_scanners() -> list[Scanner]:
 
     return [SecretsScanner(), OversizedFilesScanner(), HygieneScanner(), BusFactorScanner(),
             DependenciesScanner(), HardcodedInfraScanner(), VendoredBulkScanner(),
-            GeneratedBulkScanner(), ClientExposureScanner(), EndOfLifeScanner()]
+            GeneratedBulkScanner(), ClientExposureScanner(), EndOfLifeScanner(),
+            AIUsageScanner()]
 
 
 def load_scanners() -> list[Scanner]:

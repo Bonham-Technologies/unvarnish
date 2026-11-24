@@ -28,6 +28,7 @@ DEFAULT_SCANNER_OPTIONS: dict[str, dict[str, Any]] = {
         "auth_window": 15, "cors_window": 10, "max_evidence": 25, "include_tests": False,
     },
     "end_of_life": {"warn_months": 6, "max_data_age_days": 90},
+    "ai_usage": {"max_evidence": 25, "include_tests": False},
 }
 
 

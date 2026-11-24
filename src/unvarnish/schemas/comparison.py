@@ -99,6 +99,9 @@ class RiskRow(BaseModel):
     # Findings per remediation-effort band, "none" for not estimated (UNVAR-42); empty in a
     # comparison written before the bands existed.
     findings_by_effort: dict[str, int] = Field(default_factory=dict)
+    # AI providers the tool's code uses, by hosting ("hosted", "local", "unknown"); None when
+    # the ai_usage scanner did not run for the tool (UNVAR-91).
+    ai_services: dict[str, list[str]] | None = None
 
 
 class AbstractRequirement(BaseModel):

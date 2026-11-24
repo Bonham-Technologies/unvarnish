@@ -80,7 +80,7 @@ class RenderPhase:
         p = ctx.paths
         return [p.census, p.metrics, p.git, p.dependencies, p.scanner_findings, p.units_index,
                 p.extract_state, p.modules_index, p.tool_model, p.capabilities,
-                p.model_findings, p.failures]
+                p.model_findings, p.failures, p.ai_usage]
 
     def inputs_hash(self, ctx: ToolContext) -> str:
         env = self._env(ctx)

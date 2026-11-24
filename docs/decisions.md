@@ -1492,3 +1492,40 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   `#model_version`/`score_date` comment then `cve,epss,percentile`), and both can be
   overridden (`--kev-url`, `--epss-url`) if a feed moves again. *Cost if wrong:* a feed that
   changes shape fails the refresh by name and leaves the old bundle in place.
+
+## AI services a tool uses (UNVAR-91)
+
+- **One deterministic scanner with an inventory and four checks (owner's choice, option A).**
+  The consultant needs to tell leadership which internal tools send data to which model
+  provider, and the inheriting engineer where prompt injection and excessive agency start;
+  both come from the code without a model. The provider, endpoint, model-id and framework
+  tables in `scanners/ai_usage.py` are data, so a new provider is a table row. *Cost if
+  wrong:* a provider missing from the tables is missed until it is added; extraction, told
+  about each model call, can still name it.
+- **The scan phase writes `inventory/ai-usage.json`, not the scanner.** No scanner wrote an
+  artifact of its own before: scanners return findings, and the scan phase writes
+  `scanner-findings.json`. The inventory is not a list of findings (a tool can use a model
+  safely), so `ScanContext.inventory` carries it back and the scan phase writes it with its
+  own inputs hash; it is one of the phase's outputs, so deleting it reruns the scan. A
+  scanner failure leaves no file, which the documents show as "not checked" and which makes
+  the scan rerun next time. *Cost if wrong:* a second scanner with an inventory needs the
+  same two lines in the scan phase.
+- **Low false positives over breadth.** Model ids count only in a file with a provider signal
+  (an import, an endpoint or a client class), or on a `model` line when the id's pattern
+  names its provider; call patterns shared with other APIs (`.messages.create(` is also
+  Twilio's) count only beside that provider's import; data flow is per file, by assignment,
+  scope-blind. An SDK pointed at a gateway's endpoint (the OpenAI client at
+  `localhost:11434`) is recorded as the gateway, via the SDK. *Cost if wrong:* flows across
+  files and through function parameters are missed (known issues).
+- **Severities: output to eval/exec, a shell or SQL text is high; request input in a prompt
+  is one medium review finding; tools beside powerful actions are medium; unbounded calls
+  are low.** The first is code execution with the tool's privileges for whoever controls the
+  model's input; the second is a list to confirm, like the route review finding; the owner
+  asked to keep excessive agency modest. A call counts as bounded when it sets a token limit
+  or spreads options it may hold, or when its file mentions a timeout anywhere or a token
+  limit outside any call (a client default). *Cost if wrong:* a call bounded only in another
+  file is reported, and a file-wide timeout hides an unbounded call beside it.
+- **API keys stay with the secrets scanner.** The inventory holds no excerpts and checks each
+  model id against the secrets rules; finding excerpts are redacted by the secrets rules and
+  then by any quoted value after a key-like name. *Cost if wrong:* none known.
+

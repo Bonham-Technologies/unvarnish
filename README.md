@@ -68,6 +68,7 @@ Deterministic, no model needed; options live under `scanners:` in `engagement.ya
 | `vendored_bulk` | dependency or build directories and large binaries in the source | `binary_bytes` |
 | `generated_bulk` | single commits over a line threshold, noting AI co-author trailers | `commit_lines` |
 | `client_exposure` | what AI-built web apps ship to the browser: Supabase service-role keys and Firebase config in client code, secret-named `NEXT_PUBLIC_`/`VITE_`/`REACT_APP_`/`EXPO_PUBLIC_` variables, tables without row level security and `using (true)` policies in SQL migrations, CORS `*` with credentials, credentials in committed `.env` files and MCP configs, and route handlers with no auth check nearby (one review finding, passed to extraction to confirm). Values redacted | `client_roots`, `client_extensions`, `public_names`, `auth_window`, `cors_window`, `max_evidence`, `include_tests` |
+| `ai_usage` | how the tool's own code uses AI: each provider, model id and `file:line`, hosted or local (from SDK imports, endpoints including raw HTTP, model ids and dependencies), in architecture.md and the comparison; request input built into a prompt (one review finding, OWASP LLM01), model output reaching eval/exec, a shell or SQL (high), model calls with no token limit or timeout, and model-callable tools beside powerful actions. Values redacted | `max_evidence`, `include_tests` |
 | `end_of_life` | runtimes, base images and frameworks past end of life (high) or within the warning window of it (medium), from `.python-version`, `requires-python`, Poetry's `python`, `Pipfile`, `setup.cfg` and `setup.py` `python_requires`, `runtime.txt`, `package.json` engines, `.nvmrc` (a version or `lts/<codename>`), `.tool-versions`, `go.mod`, project-file TargetFramework, Dockerfile `FROM`, `.ruby-version`, the Gemfile's `ruby`, `composer.json` and framework dependencies; dates from an offline endoflife.date bundle (`unvarnish eol refresh`; an older bundle than `max_data_age_days` is noted) | `warn_months`, `max_data_age_days` |
 
 ## Model configuration
@@ -291,7 +292,8 @@ and resumes on the next `run`.
 
     engagement.yaml            client, tools, scanner thresholds, model config
     tools/<name>/source/       the ingested code
-    tools/<name>/inventory/    census, metrics, dependencies, git stats, scanner findings (JSON)
+    tools/<name>/inventory/    census, metrics, dependencies, git stats, scanner findings, AI
+                               services used (JSON)
     tools/<name>/analysis/     units and modules, tool.json, capabilities.json, findings.json,
                                failures, phase state, baseline.json and delta.json (JSON)
     tools/<name>/docs/         architecture.md, findings.md, requirements.md

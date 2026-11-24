@@ -7,6 +7,7 @@ from pathlib import Path
 from unvarnish.artifacts import hash_files, hash_inputs, read_artifact, write_artifact
 from unvarnish.phases.base import PhaseResult, PhaseStatus, ToolContext
 from unvarnish.scanners import load_scanners
+from unvarnish.scanners.ai_usage import NAME as AI_USAGE
 from unvarnish.scanners.base import ScanContext, Scanner
 from unvarnish.scanners.effort import EFFORT_RULES
 from unvarnish.schemas.finding import SEVERITY_ORDER, Finding
@@ -17,8 +18,8 @@ from unvarnish.util.plural import plural
 
 # Bump when scanner summaries, notes or detection rules change, so a scan written by an
 # earlier version reruns once (deterministic, no model calls) instead of rendering the old
-# text or findings (UNVAR-57, UNVAR-67, UNVAR-81, UNVAR-82, UNVAR-90).
-SCANNER_TEXT_VERSION = "2026-11-23.2"
+# text or findings (UNVAR-57, UNVAR-67, UNVAR-81, UNVAR-82, UNVAR-90, UNVAR-91).
+SCANNER_TEXT_VERSION = "2026-11-24.1"
 
 
 def sort_findings(findings: list[Finding]) -> list[Finding]:
@@ -52,7 +53,9 @@ class ScanPhase:
                             SCANNER_TEXT_VERSION])
 
     def outputs(self, ctx: ToolContext) -> list[Path]:
-        return [ctx.paths.scanner_findings]
+        # ai-usage.json is written only by the ai_usage scanner (UNVAR-91).
+        ai = [ctx.paths.ai_usage] if any(s.name == AI_USAGE for s in self.scanners()) else []
+        return [ctx.paths.scanner_findings, *ai]
 
     def run(self, ctx: ToolContext) -> PhaseResult:
         census = read_artifact(ctx.paths.census, Census).data
@@ -64,6 +67,7 @@ class ScanPhase:
         skipped: list[SkippedScanner] = []
         notes: list[str] = []
         run_names: list[str] = []
+        ai_usage = None
         for scanner in self.scanners():
             run_names.append(scanner.name)
             sctx = ScanContext(
@@ -73,10 +77,19 @@ class ScanPhase:
             )
             try:
                 findings.extend(scanner.run(sctx))
+                if scanner.name == AI_USAGE:
+                    ai_usage = sctx.inventory
             except Exception as exc:  # a broken scanner is recorded, never fatal
                 skipped.append(SkippedScanner(name=scanner.name, error=repr(exc)))
             notes.extend(getattr(scanner, "notes", None) or [])
 
+        # The AI services inventory (UNVAR-91): absent when the scanner did not run or failed,
+        # which the documents show as "not checked", never as an empty inventory.
+        if ai_usage is not None:
+            write_artifact(ctx.paths.ai_usage, ai_usage, produced_by=self.name,
+                           inputs_hash=self.inputs_hash(ctx))
+        else:
+            ctx.paths.ai_usage.unlink(missing_ok=True)
         out = ScannerFindings(tool=ctx.tool, findings=sort_findings(findings), skipped=skipped,
                               scanners_run=run_names, notes=notes)
         write_artifact(ctx.paths.scanner_findings, out, produced_by=self.name,

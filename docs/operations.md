@@ -262,6 +262,18 @@ The scale rehearsal is repeatable without spending tokens:
 - The route review finding is a list to confirm, not a verdict. With a model configured,
   extraction is told about each listed handler and reports the ones it confirms.
 
+## AI usage
+
+- `ai_usage` lists the AI services in architecture.md ("AI services used") and
+  `inventory/ai-usage.json`; the comparison's risk table names the providers per tool, hosted
+  or local. A provider it does not know is a row to add to the tables in
+  `src/unvarnish/scanners/ai_usage.py`.
+- The prompt-injection and excessive-agency findings are lists to confirm, like the route
+  finding. With a model configured, extraction is told about each model call and tool
+  definition and reports the ones it confirms.
+- Test code and vendored directories are skipped; set `scanners.ai_usage.include_tests: true`
+  to include tests.
+
 ## Private repositories over SSH
 
 - git never prompts during a run. Unvarnish appends `-o BatchMode=yes` to your

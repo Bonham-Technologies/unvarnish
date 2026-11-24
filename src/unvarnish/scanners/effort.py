@@ -75,6 +75,13 @@ EFFORT_RULES: dict[str, dict[str, tuple[Effort, str]]] = {
                                     "table"),
         "unauthenticated_routes": (L, "confirm and add authentication across the handlers"),
     },
+    "ai_usage": {
+        "prompt_injection": (M, "keep user input out of the instructions and limit what the "
+                                "answer can do"),
+        "output_sink": (M, "parse the output into allowed actions instead of executing it"),
+        "unbounded_calls": (S, "set a token limit and a timeout on each call"),
+        "agent_tools": (M, "narrow each tool's permissions and confirm destructive actions"),
+    },
     "end_of_life": {
         "past": (L, "move to a supported release, retest and update every place it is pinned"),
         "near": (L, "plan the move to a supported release before support ends"),

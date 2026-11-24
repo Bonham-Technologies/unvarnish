@@ -4,6 +4,13 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
 
 ## Open
 
+- [UNVAR-91] The `ai_usage` checks follow data within one file, by assignment: request input
+  passed through a function parameter, or a prompt built in one file and sent from another,
+  is missed (a FastAPI or Gradio handler's parameters are not request input to it), and a
+  name reused for unrelated values in one file can be flagged. Imports are read for Python
+  and JavaScript/TypeScript only; other languages are recorded through endpoints and model
+  ids. A local OpenAI-compatible server is recognised by Ollama's port, LM Studio's
+  `localhost:1234/v1` or a `base_url` on a loopback address, not by other ports or hosts.
 - [UNVAR-34] After a `touch`, `git checkout` or re-clone that leaves content unchanged, `run
   --dry-run` still lists every phase from the inventory on: it cannot know the census will
   come out the same without rebuilding it. The real run reruns only the inventory. The
