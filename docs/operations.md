@@ -157,7 +157,9 @@ The scale rehearsal is repeatable without spending tokens:
   mirror or a moved feed. If either feed fails it exits 1 naming it and writes nothing, so the
   previous bundle stays as it was. It checks the folder is writable before downloading.
 - Then rerun the engagement: the bundle date is in the inventory's inputs hash, so a plain
-  `unvarnish run` reruns the inventory, the scan and render; the model phases stay fresh.
+  `unvarnish run` reruns the inventory, the scan and render; the per-tool model phases stay
+  fresh, but in an engagement with more than one tool `compare` reruns and calls the model.
+  The hash holds the bundle's date only, so a second refresh on the same day reruns nothing.
 - With a bundle, an advisory whose id or aliases include a CVE in the KEV catalog is critical
   and its line in the finding says "Known exploited (CISA KEV, added <date>)"; every advisory
   shows its EPSS score and percentile (its CVEs' highest; "no EPSS score" without a CVE
