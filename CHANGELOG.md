@@ -18,8 +18,8 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   also flags MCP configs that start a server from an unpinned npm or Python package or a
   script piped into a shell, for review. Emoji sequences, right-to-left locale files, Persian
   and Indic joiners and a byte order mark at the start of a file are not findings. Every
-  excerpt, note, model prompt and export shows the characters as `[U+XXXX]` escapes, never
-  raw, and line numbers are unchanged. Scans rerun once (UNVAR-92).
+  excerpt, note, model prompt (prose and ask included), rendered document and export shows the
+  characters as `[U+XXXX]` escapes, never raw, and line numbers are unchanged. Scans rerun once (UNVAR-92).
 
 ### `config check` without a model says what works
 

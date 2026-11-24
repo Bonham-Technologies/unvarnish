@@ -59,6 +59,11 @@ RTL_CODES = {"ar", "he", "iw", "fa", "ur", "ps", "yi", "ckb", "sd", "ug", "dv", 
 LOCALE_EXTS = {".json", ".po", ".pot", ".yaml", ".yml", ".xliff", ".xlf", ".arb", ".strings",
                ".stringsdict", ".resx", ".properties", ".xml", ".ts", ".js", ".toml", ".ini",
                ".ftl", ".csv"}
+# Code files count as locale files only inside a locale folder: "fa-icons.js" or "he/auth.ts"
+# are code, and code is where a bidi override hides logic.
+LOCALE_CODE_EXTS = {".ts", ".js"}
+LOCALE_DIRS = {"locale", "locales", "i18n", "l10n", "lang", "langs", "languages",
+               "translations", "messages", "intl"}
 
 TAG_RULE = f"{NAME}:rule_file"
 TAG_MCP = f"{NAME}:mcp"
@@ -116,7 +121,8 @@ def is_mcp_config(path: str) -> bool:
 
 def is_rtl_locale(path: str) -> bool:
     p = PurePosixPath(path.lower())
-    if p.suffix not in LOCALE_EXTS:
+    if p.suffix not in LOCALE_EXTS or (p.suffix in LOCALE_CODE_EXTS
+                                       and not set(p.parts[:-1]) & LOCALE_DIRS):
         return False
     tokens = {t for part in (*p.parts[:-1], p.stem) for t in re.split(r"[._-]", part)}
     return bool(tokens & RTL_CODES)
@@ -203,8 +209,9 @@ class HiddenTextScanner:
     @staticmethod
     def _lines(path: str, text: str) -> list[tuple[int, str, list[HiddenRun]]]:
         """(line number, line, its hidden runs) for every line with any, a BOM at the very
-        start of the file excepted. Marks next to right-to-left letters, and every bidi
-        character in a right-to-left locale file, are normal text."""
+        start of the file excepted. Marks next to right-to-left letters or in a right-to-left
+        locale file, and bidi controls on a locale file's lines of right-to-left text, are
+        normal text; a Trojan Source line has no right-to-left letter, so it is still found."""
         rtl_locale = is_rtl_locale(path)
         out = []
         for n, line in enumerate(text.split("\n"), start=1):
@@ -213,8 +220,8 @@ class HiddenTextScanner:
             runs = hidden_runs(line, at_start=n == 1)
             rtl_line = any(is_rtl_letter(ord(c)) for c in line)
             runs = [r for r in runs if not (
-                (rtl_locale and r.kind in (BIDI, BIDI_MARK))
-                or (r.kind == BIDI_MARK and rtl_line))]
+                (r.kind == BIDI_MARK and (rtl_line or rtl_locale))
+                or (r.kind == BIDI and rtl_line and rtl_locale))]
             if runs:
                 out.append((n, line, runs))
         return out
@@ -329,6 +336,9 @@ NPM_SUBCOMMANDS = {"pnpm": {"dlx"}, "yarn": {"dlx"}, "bun": {"x"}, "npm": {"exec
 PY_VALUE_FLAGS = {"--from", "--python", "-p", "--with", "--index-url", "--index", "-i",
                   "--extra-index-url", "--spec"}
 SHELLS = {"sh", "bash", "zsh", "dash", "cmd", "powershell", "pwsh"}
+# The flag after which a shell runs the rest as a command: `sh -c`, `bash -lc`, `cmd /c`,
+# `powershell -Command` (Windows MCP configs wrap npx this way).
+SHELL_RUN_RE = re.compile(r"(?i)^(?:-[a-z]*c|/[ck]|-command)$")
 DOWNLOAD_PIPE_RE = re.compile(
     r"(?i)\b(?:curl|wget|iwr|irm|invoke-webrequest|invoke-restmethod)\b[^|]*\|\s*"
     r"(?:sudo\s+)?(?:sh|bash|zsh|dash|iex|invoke-expression|python3?|node)\b")
@@ -361,8 +371,9 @@ def _first_package(args: list[str], value_flags: set[str]) -> str | None:
     return None
 
 
-def unpinned_launch(command: Any, args: Any) -> tuple[str, str] | None:
-    """(reason, what to show) when a server's command fetches unpinned code at launch."""
+def unpinned_launch(command: Any, args: Any, _depth: int = 0) -> tuple[str, str] | None:
+    """(reason, what to show) when a server's command fetches unpinned code at launch; a
+    command a shell wrapper runs (`cmd /c npx -y pkg`, `sh -c "uvx srv"`) is judged too."""
     if not isinstance(command, str) or not command.strip():
         return None
     argv = [a for a in args if isinstance(a, str)] if isinstance(args, list) else []
@@ -376,6 +387,14 @@ def unpinned_launch(command: Any, args: Any) -> tuple[str, str] | None:
     joined = " ".join([command, *argv])
     if DOWNLOAD_PIPE_RE.search(joined) and (cmd in SHELLS or cmd in {"curl", "wget"}):
         return "downloads and runs a script", joined
+    if cmd in SHELLS and _depth < 2:
+        at = next((i for i, a in enumerate(argv) if SHELL_RUN_RE.match(a)), None)
+        inner = argv[at + 1:] if at is not None else []
+        if inner:
+            got = unpinned_launch(inner[0], inner[1:] or None, _depth + 1)
+            if got:
+                return got[0], " ".join([command, *argv[:at + 1], got[1]])
+        return None
     rest: list[str] | None = None
     if cmd in NPM_RUNNERS:
         rest = argv

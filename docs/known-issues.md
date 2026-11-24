@@ -206,15 +206,20 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   payload is shown as escapes, not decoded to the text it spells.
 - [UNVAR-92] Right-to-left locale files are recognised by a language code (`ar`, `he`, `fa`,
   `ur` and others) in the path of a translation-shaped file (`.json`, `.po`, `.xliff`,
-  `.properties`, ...); one elsewhere reports its isolates. A bidi mark on a line with a
-  right-to-left letter is not reported in any file, so an attacker who adds such a letter to
-  the line hides a mark, though never an override, embedding or isolate.
+  `.properties`, ...; `.js` and `.ts` only inside a locale folder); one elsewhere reports its
+  isolates, and so does a locale line with no right-to-left letter. A bidi mark on a line
+  with a right-to-left letter is not reported in any file, and an override on such a line of
+  a locale file is not either, so an attacker who adds such a letter hides a mark anywhere,
+  or an override only in a translation file. Other invisible characters (U+00AD soft hyphen,
+  U+034F, U+115F/U+1160/U+3164 Hangul fillers, U+180E) are neither reported nor escaped, and
+  a path or file name with a hidden character is escaped in documents and exports but kept
+  raw in the JSON artifacts, which need it to open the file.
 - [UNVAR-92] The MCP check reads JSON configs (`.mcp.json`, `claude_desktop_config.json`,
   `.cursor/mcp.json`, `.vscode/mcp.json` with comments, and the Windsurf, Roo, Gemini, Kiro
   and Amazon Q names): `npx`, `bunx`, `pnpm dlx`, `yarn dlx`, `npm exec`, `uvx`, `uv tool run`,
-  `pipx run` and `curl | sh`. A Docker image tag, a TOML or YAML agent config, a remote server
-  given by `url`, and prose model output passed straight to `backend.complete` (render's prose
-  blocks, built from already escaped findings) are not checked or escaped there.
+  `pipx run` and `curl | sh`, also behind `cmd /c`, `sh -c` or `powershell -Command`. A
+  Docker image tag, a TOML or YAML agent config and a remote server given by `url` are not
+  checked.
 
 ## Fixed
 

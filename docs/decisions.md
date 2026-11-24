@@ -1515,9 +1515,13 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   copy-pasted text often carries a stray ZWSP. Any hidden character in an AI rule file is
   high, one finding per file, because the file steers every later generation; source findings
   are grouped per rule across files, capped at `max_evidence`. Bidi marks beside
-  right-to-left letters, and every bidi character in a right-to-left locale file, are normal
-  text. *Cost if wrong:* a stray ZWSP in `CLAUDE.md` reads high; a payload of 31 selectors in
-  source is escaped but not reported.
+  right-to-left letters or in a right-to-left locale file, and isolates, embeddings and
+  overrides on a locale file's lines of right-to-left text, are normal text. A `.js` or `.ts`
+  file is a locale file only inside a locale folder (`locales/`, `i18n/`, ...), so
+  `fa-icons.js` or `he/auth.ts` is code and its Trojan Source lines, which carry no
+  right-to-left letter, are still reported (review fix). *Cost if wrong:* a stray ZWSP in
+  `CLAUDE.md` reads high; a payload of 31 selectors in source is escaped but not reported; an
+  isolate around a placeholder on a locale line with no right-to-left letter is reported.
 - **Rule files are found by name and directory, whatever the census calls them:**
   `.cursorrules`, `.windsurfrules`, `.clinerules`, `.roorules`, `.goosehints`, `CLAUDE.md`,
   `CLAUDE.local.md`, `AGENTS.md`, `AGENT.md`, `GEMINI.md`, `.github/copilot-instructions.md`,
@@ -1540,13 +1544,18 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   `redact_model_text` escapes every string it redacts, which covers extractions, rollups and
   every finding the SARIF and CSV exports load. Verification compares a model's quote with the
   escaped source, as the model saw it. `PROMPT_VERSION` did not change; a unit's cache key
-  gains a marker only when its text has hidden characters. *Cost if wrong:* render's prose
-  calls (`backend.complete` directly, from findings already escaped) are not escaped at the
-  call; an engagement extracted earlier keeps those extractions until extract reruns.
+  gains a marker only when its text has hidden characters. Render's prose
+  calls (`backend.complete` directly) escape their request with the same `escape_request`, and
+  their text; the ask answer and its tool previews are escaped; and `render_document` escapes
+  the whole rendered Markdown, so a path or name with a hidden character in any table reaches
+  no document or export raw (review fix). *Cost if wrong:* an engagement extracted earlier
+  keeps those extractions until extract reruns.
 - **MCP configs that fetch code at launch are a medium review finding**, one per file with a
   line per server: `npx`/`bunx`/`pnpm dlx`/`yarn dlx`/`npm exec` with a package that has no
   exact version (`@latest` counts as none), `uvx`/`uv tool run`/`pipx run` without `==` or
-  `@version`, and a shell command that pipes `curl` or `wget` into a shell. Local paths and
+  `@version`, and a shell command that pipes `curl` or `wget` into a shell. A command run
+  through a shell wrapper (`cmd /c npx -y pkg`, `sh -c "uvx srv"`, `powershell -Command`) is
+  judged as the command it runs (review fix). Local paths and
   servers given by `url` are not reported; only the command up to the package is shown, so
   arguments that carry tokens stay out of the report. *Cost if wrong:* a team that vets
   `@latest` on purpose gets a review line per server; a Docker image tag is not checked.
