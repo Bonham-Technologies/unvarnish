@@ -1473,6 +1473,8 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   `dependencies` option would change every engagement's inventory hash. *Cost if wrong:* the
   note appears on a kit image a month after it was built; raise the limit per engagement.
 - **An advisory's EPSS is the highest of its CVE aliases'**, and its KEV date the earliest.
+  Its aliases are osv-scanner's group aliases plus each grouped vulnerability's own, so a
+  report without `groups` still joins a GHSA advisory to the CVE it aliases.
   Both feed URLs were checked by downloading them on 2026-11-23 (KEV: `catalogVersion`
   2026.11.20, 1,790 entries; EPSS: a 302 to the dated file, 411,000 lines, the
   `#model_version`/`score_date` comment then `cve,epss,percentile`), and both can be

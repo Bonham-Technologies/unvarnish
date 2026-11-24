@@ -558,3 +558,19 @@ def test_run_makes_no_network_access(monkeypatch, tmp_path: Path):
     assert attempts == []
     doc = (eng / "tools" / "tool" / "docs" / "findings.md").read_text(encoding="utf-8")
     assert "Known exploited (CISA KEV, added 2021-12-10)" in doc
+
+
+def test_kev_join_reads_aliases_of_a_report_without_groups(tmp_path: Path):
+    """osv-scanner output without `groups` still carries each vulnerability's aliases; a
+    GHSA advisory whose only CVE is an alias must still match KEV and EPSS."""
+    from unvarnish.analysis.advisories import parse_osv
+
+    report = {"results": [{"source": {"path": str(tmp_path / "pom.xml")}, "packages": [{
+        "package": {"name": "log4j-core", "version": "2.14.1", "ecosystem": "Maven"},
+        "vulnerabilities": [{"id": "GHSA-jfh8-c2jp-5v3q", "aliases": ["CVE-2021-44228"],
+                             "summary": "Remote code injection in Log4j"}]}]}]}
+    advisories = parse_osv(report, tmp_path)
+    assert advisories[0]["ids"] == ["GHSA-jfh8-c2jp-5v3q", "CVE-2021-44228"]
+    out, _, _ = vulndata.annotate(advisories, _bundle(tmp_path / "data"))
+    assert out[0]["kev"] is True and out[0]["severity"] == "critical"
+    assert out[0]["epss"] == 0.94358
