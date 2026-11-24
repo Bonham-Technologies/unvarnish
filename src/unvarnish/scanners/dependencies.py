@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from datetime import UTC, date, datetime
 from pathlib import PurePosixPath
 
+from unvarnish.analysis import vulndata
 from unvarnish.scanners.base import ScanContext
 from unvarnish.scanners.effort import rule_effort
+from unvarnish.scanners.end_of_life import age_phrase, max_data_age_days
 from unvarnish.scanners.hardcoded_infra import scrub_text
 from unvarnish.schemas.finding import (
     SEVERITY_ORDER,
+    AdvisoryExploit,
     Category,
     Evidence,
     Finding,
@@ -30,6 +34,14 @@ GIT_PREFIXES = ("git:", "git+", "git://", "github:", "gitlab:", "bitbucket:")
 GIT_PINNED_RE = re.compile(r"#(?:rev=)?[0-9a-fA-F]{7,40}$")
 MAX_LISTED = 10
 MAX_UNPINNED = 20
+NAME = "dependencies"
+# EPSS moves daily and the KEV catalog grows weekly, so exploit data ages faster than
+# end-of-life dates (UNVAR-90); `max_data_age_days` overrides it.
+DEFAULT_EXPLOIT_DATA_AGE_DAYS = 30
+# The old-data note starts "<NAME>: exploit data dated <date> is <age_phrase>"; the findings
+# document's "Known exploited" row reads the phrase back (exploit_data_age_warning).
+EXPLOIT_AGE_NOTE_RE = re.compile(rf"^{NAME}: exploit data dated \d{{4}}-\d{{2}}-\d{{2}} is "
+                                 r"(\d+ days? old, older than the \d+-day limit)")
 
 
 def is_pinned(rec: DependencyRecord) -> bool:
@@ -66,12 +78,90 @@ def _severity(value: str | None) -> Severity:
         return Severity.medium
 
 
+def _percent(value: float) -> str:
+    """0.94358 -> "94.36", 0.5 -> "50"; never "100" for a value below 1."""
+    shown = round(value * 100, 2)
+    if shown >= 100 and value < 1:
+        shown = 99.99
+    return f"{shown:g}"
+
+
+def exploit_text(a: dict) -> str:
+    """" [Known exploited (CISA KEV, added 2021-12-10); EPSS 94.36%, percentile 99.97]" for
+    an advisory the exploit data bundle marked; "" for one it did not (no bundle)."""
+    if "kev" not in a:
+        return ""
+    parts = []
+    if a.get("kev"):
+        parts.append(f"Known exploited (CISA KEV, added {a.get('kev_date_added') or '?'})")
+    if a.get("epss") is not None:
+        parts.append(f"EPSS {_percent(a['epss'])}%, percentile "
+                     f"{_percent(a.get('epss_percentile') or 0.0)}")
+    else:
+        parts.append("no EPSS score")
+    return " [" + "; ".join(parts) + "]"
+
+
+def exploit_rank(a: dict) -> tuple[int, float]:
+    """Known exploited first, then the likeliest to be exploited (EPSS)."""
+    return (0 if a.get("kev") else 1, -(a.get("epss") or 0.0))
+
+
+def _exploits(advs: list[dict]) -> list[AdvisoryExploit] | None:
+    if not any("kev" in a for a in advs):
+        return None
+    return [AdvisoryExploit(advisory=a.get("id", "?"), cves=vulndata.advisory_cves(a),
+                            kev=bool(a.get("kev")), kev_date_added=a.get("kev_date_added"),
+                            epss=a.get("epss"), epss_percentile=a.get("epss_percentile"))
+            for a in advs]
+
+
+def exploit_data_age_warning(notes: list[str]) -> str | None:
+    """"45 days old, older than the 30-day limit" from the scan's old-exploit-data note, for
+    the findings document's row; None when the data was within the limit."""
+    for note in notes:
+        if m := EXPLOIT_AGE_NOTE_RE.match(note):
+            return m.group(1)
+    return None
+
+
 class DependenciesScanner:
-    name = "dependencies"
+    name = NAME
     category = Category.dependency
 
+    def __init__(self, today: date | None = None) -> None:
+        self._today = today
+        self.notes: list[str] = []
+
     def run(self, ctx: ScanContext) -> list[Finding]:
+        self.notes = self._exploit_notes(ctx)
         return self._advisories(ctx) + self._unpinned(ctx)
+
+    def _exploit_notes(self, ctx: ScanContext) -> list[str]:
+        """One note without exploit data, or with data older than `max_data_age_days`; the
+        findings are made from old data all the same (UNVAR-90)."""
+        deps = ctx.dependencies
+        if not deps.exploit_data_date:
+            why = deps.exploit_data_note or vulndata.NO_BUNDLE
+            return [f"{NAME}: exploit data: not checked ({why}); advisories are not marked as "
+                    f"known exploited (CISA KEV) or ordered by exploit likelihood (EPSS) (run "
+                    f"`unvarnish vulndata refresh` while online, or set {vulndata.DIR_ENV} to "
+                    f"a folder holding {vulndata.BUNDLE_NAME}, then rerun)"]
+        try:
+            fetched = date.fromisoformat(deps.exploit_data_date)
+        except ValueError:
+            return []
+        today = self._today or datetime.now(UTC).date()
+        limit = max_data_age_days(ctx.options.get("max_data_age_days"),
+                                  DEFAULT_EXPLOIT_DATA_AGE_DAYS)
+        age = (today - fetched).days
+        if age <= limit:
+            return []
+        return [f"{NAME}: exploit data dated {fetched.isoformat()} is {age_phrase(age, limit)} "
+                f"(max_data_age_days); vulnerabilities CISA added to its KEV catalog since "
+                f"then are not marked as known exploited, and EPSS scores are as of that date. "
+                f"The findings still use this data (run `unvarnish vulndata refresh` while "
+                f"online, then rerun)"]
 
     def _advisories(self, ctx: ScanContext) -> list[Finding]:
         deps = ctx.dependencies
@@ -84,26 +174,33 @@ class DependenciesScanner:
             groups[key].append(a)
         out: list[Finding] = []
         for (eco, pkg, ver, manifest), advs in sorted(groups.items()):
+            advs = sorted(advs, key=exploit_rank)  # stable: unchanged without exploit data
             sev = min((_severity(a.get("severity")) for a in advs),
                       key=SEVERITY_ORDER.__getitem__)
             ids = [a.get("id", "?") for a in advs]
             listed = "; ".join(f"{a.get('id', '?')}: {a.get('summary') or 'no summary'}"
-                               for a in advs[:MAX_LISTED])
+                               f"{exploit_text(a)}" for a in advs[:MAX_LISTED])
             more = f"; and {len(advs) - MAX_LISTED} more" if len(advs) > MAX_LISTED else ""
             n = len(advs)
             count = "1 published advisory affects" if n == 1 else f"{n} published advisories affect"
+            impact = ("The tool ships a dependency with publicly documented weaknesses; "
+                      "exploit details for published advisories are usually available.")
+            known = [a.get("id", "?") for a in advs if a.get("kev")]
+            if known:
+                impact += (f" CISA's Known Exploited Vulnerabilities catalog lists "
+                           f"{', '.join(known)} as exploited in the wild.")
             out.append(Finding(
                 tool=ctx.tool, category=self.category, severity=sev,
                 title=f"Known vulnerabilities in {pkg} {ver}",
                 summary=f"{count} {pkg} {ver} ({eco}), declared in {manifest}: {listed}{more}.",
-                impact=("The tool ships a dependency with publicly documented weaknesses; "
-                        "exploit details for published advisories are usually available."),
+                impact=impact,
                 remediation=(f"Upgrade {pkg} to a release that fixes these advisories, then "
                              "re-run the scan. Check the advisories for configuration "
                              "workarounds if an upgrade must wait."),
                 evidence=[Evidence(path=manifest, note="advisories: " + ", ".join(ids))],
-                source=Source.scanner, scanner=self.name, tags=["advisory", *ids[:5]],
-                **rule_effort(ctx, self.name, "advisories"),
+                source=Source.scanner, scanner=self.name,
+                tags=["advisory", *(["known-exploited"] if known else []), *ids[:5]],
+                exploits=_exploits(advs), **rule_effort(ctx, self.name, "advisories"),
             ))
         return out
 

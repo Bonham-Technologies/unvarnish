@@ -65,6 +65,14 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   that names an `engine` (JRuby, TruffleRuby) is skipped, as `.ruby-version`'s `jruby-` is;
   `gems.rb`,
   `Pipfile.lock`, `.node-version` and Poetry's `[tool.poetry.group.*]` are not read.
+- [UNVAR-90] The Docker image and the site kit do not carry the exploit data bundle yet, so
+  their runs say "exploit data: not checked" unless a bundle written by `vulndata refresh` is
+  mounted (`docs/operations.md`, Exploit data). Bundling it is a separate change to the
+  Dockerfile and `scripts/site-kit.sh`.
+- [UNVAR-90] An advisory without a CVE alias (some GHSA-only or ecosystem advisories) cannot
+  be matched to KEV or EPSS and shows "no EPSS score". As with end-of-life data, today's date
+  is not in the scan's inputs hash, so a bundle that passes `max_data_age_days` between two
+  runs with nothing else changed is noted only after the scan reruns.
 - [UNVAR-44] The image's end-of-life bundle is as old as the image. A rebuild that changes
   nothing before the bundle's step reuses the cached layer and its older bundle (the
   site-kit check prints the date; `docker build --no-cache` refetches). The offline OSV

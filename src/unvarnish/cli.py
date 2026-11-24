@@ -992,6 +992,56 @@ def eol_refresh(
                   f"in {escape(str(path))}", soft_wrap=True)
 
 
+vulndata_app = typer.Typer(help="Exploit data for dependency advisories: CISA KEV and EPSS.",
+                           no_args_is_help=True)
+app.add_typer(vulndata_app, name="vulndata")
+
+
+@vulndata_app.command("refresh")
+def vulndata_refresh(
+    data_dir: Path | None = typer.Option(
+        None, "--dir",
+        help="Folder for vulndata.gz; set UNVARNISH_VULNDATA_DIR to it when running. Default: "
+             "that variable, else the end-of-life data folder (see `eol refresh`)."),
+    attempts: int = typer.Option(4, "--attempts", min=1, help="Download attempts per feed."),
+    kev_url: str | None = typer.Option(
+        None, "--kev-url", help="CISA KEV catalog JSON feed, for a mirror or a moved feed."),
+    epss_url: str | None = typer.Option(
+        None, "--epss-url", help="FIRST EPSS scores (gzipped CSV), for a mirror or a moved feed."),
+) -> None:
+    """Download CISA's known exploited vulnerabilities and FIRST's EPSS scores, so runs mark
+    dependency advisories offline."""
+    from unvarnish.analysis import vulndata
+
+    def unwritable(exc: OSError) -> typer.Exit:
+        where = data_dir or vulndata.data_dir()
+        err_console.print(f"[red]error:[/red] cannot write to {escape(str(where))}: "
+                          f"{escape(exc.strerror or str(exc))}; choose a writable folder "
+                          "with --dir", soft_wrap=True)
+        return typer.Exit(code=1)
+
+    try:
+        vulndata.ensure_writable(data_dir)
+    except OSError as exc:
+        raise unwritable(exc) from exc
+    try:
+        bundle, scores = vulndata.build_bundle(attempts=attempts,
+                                               kev_url=kev_url or vulndata.KEV_URL,
+                                               epss_url=epss_url or vulndata.EPSS_URL)
+    except vulndata.VulnDataFetchError as exc:
+        err_console.print(f"[red]error:[/red] exploit data download failed, "
+                          f"{escape(str(exc))}; the previous bundle, if any, is unchanged",
+                          soft_wrap=True)
+        raise typer.Exit(code=1) from exc
+    try:
+        path = vulndata.write_bundle(bundle, scores, data_dir)
+    except OSError as exc:
+        raise unwritable(exc) from exc
+    console.print(f"{len(bundle.kev)} known exploited CVEs and {bundle.epss_scores} EPSS "
+                  f"scores, data dated {bundle.fetched.isoformat()}, in {escape(str(path))}",
+                  soft_wrap=True)
+
+
 config_app = typer.Typer(help="Configuration commands.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 cache_app = typer.Typer(help="Model response cache.", no_args_is_help=True)

@@ -8,6 +8,13 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Known exploited dependency advisories
+
+- `unvarnish vulndata refresh` downloads CISA's KEV catalog and FIRST's EPSS scores into an
+  offline bundle; with it, an advisory CISA lists as exploited is critical and says "Known
+  exploited (CISA KEV, added <date>)", and every advisory shows its EPSS score, which orders
+  them, in `dependencies.json`, findings.md, CSV and SARIF (UNVAR-90).
+
 ### The site lives at unvarnish.tech
 
 - The public site's canonical address, Open Graph and structured-data URLs, sitemap, robots
