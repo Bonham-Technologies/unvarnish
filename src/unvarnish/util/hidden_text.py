@@ -33,9 +33,9 @@ VS16 = 0xFE0F
 BLACK_FLAG, CANCEL_TAG = 0x1F3F4, 0xE007F
 
 CANDIDATE_RE = re.compile(
-    "[؜​-‏‪-‮⁠-⁤⁦-⁩︀-️﻿"
-    "-\U000e0000-\U000e007f\U000e0100-\U000e01ef"
-    "\U000f0000-\U000ffffd\U00100000-\U0010fffd]")
+    "[\\u061c\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2064\\u2066-\\u2069\\ufe00-\\ufe0f\\ufeff"
+    "\\ue000-\\uf8ff\\U000e0000-\\U000e007f\\U000e0100-\\U000e01ef"
+    "\\U000f0000-\\U000ffffd\\U00100000-\\U0010fffd]")
 
 ESCAPE_MAX_RUN = 8  # escapes written per run before "[+N more]"
 
@@ -142,28 +142,22 @@ def hidden_runs(text: str, *, at_start: bool = True) -> list[HiddenRun]:
         while end < n and kind_of(ord(text[end])) == kind:
             end += 1
         if kind == ZERO_WIDTH:  # judged one by one: a BOM or joiner is legitimate alone
+            span = -1  # start of the current stretch of illegitimate characters
             for k in range(start, end):
-                run = HiddenRun(k, k + 1, kind, text[k])
-                if not _legitimate(text, run, at_start):
-                    runs.append(run)
+                if _legitimate(text, HiddenRun(k, k + 1, kind, text[k]), at_start):
+                    if span >= 0:
+                        runs.append(HiddenRun(span, k, kind, text[span:k]))
+                        span = -1
+                elif span < 0:
+                    span = k
+            if span >= 0:
+                runs.append(HiddenRun(span, end, kind, text[span:end]))
         else:
             run = HiddenRun(start, end, kind, text[start:end])
             if not _legitimate(text, run, at_start):
                 runs.append(run)
         i = end
-    return _merge(runs)
-
-
-def _merge(runs: list[HiddenRun]) -> list[HiddenRun]:
-    """Adjacent zero-width characters back into one run, for one escape group."""
-    out: list[HiddenRun] = []
-    for r in runs:
-        if out and out[-1].end == r.start and out[-1].kind == r.kind:
-            last = out[-1]
-            out[-1] = HiddenRun(last.start, r.end, r.kind, last.chars + r.chars)
-        else:
-            out.append(r)
-    return out
+    return runs
 
 
 def has_hidden(text: str, *, at_start: bool = True) -> bool:

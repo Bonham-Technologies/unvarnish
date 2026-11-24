@@ -499,3 +499,30 @@ def test_rendered_documents_escape_hidden_characters_from_any_field(tmp_path: Pa
     doc = render_document(make_env([tmp_path]), "t.md.j2", {
         "title": "Findings", "path": f"src/a{ZWSP}b{RLO}.py", "emoji": f"❤{VS16}"})
     assert doc == f"# Findings\n\n`src/a[U+200B]b[U+202E].py` ❤{VS16}\n"
+
+
+def test_a_long_zero_width_run_escapes_in_linear_time():
+    # QC: merging zero-width runs one character at a time was quadratic; a 6 MB run of
+    # U+200B took minutes, so one planted file could stall an unattended scan.
+    import time
+
+    from unvarnish.util.hidden_text import escape_hidden, hidden_runs
+
+    text = "a" + "​" * 1_000_000 + "b"
+    started = time.monotonic()
+    runs = hidden_runs(text, at_start=False)
+    escaped = escape_hidden(text, at_start=False)
+    assert time.monotonic() - started < 10
+    assert len(runs) == 1 and runs[0].length == 1_000_000
+    assert escaped.startswith("a[U+200B]") and escaped.endswith("[+999992 more]b")
+
+
+def test_the_detector_pattern_is_written_with_escapes_only():
+    # QC: the pattern held raw invisible characters, unreadable in review and flagged by
+    # Unvarnish's own scanner.
+    from pathlib import Path
+
+    from unvarnish.util.hidden_text import has_hidden
+
+    source = Path(__file__).parents[1] / "src/unvarnish/util/hidden_text.py"
+    assert not has_hidden(source.read_text(encoding="utf-8"))

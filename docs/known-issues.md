@@ -202,8 +202,10 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
 - [UNVAR-92] Hidden characters are reported in source, config and rule files only, not in
   Markdown or other documentation outside the rule-file list, generated or minified files, or
   (by default) tests. Runs of variation selectors or private-use characters shorter than
-  `long_run` (32) are escaped in excerpts and prompts but not reported. A tag-character
-  payload is shown as escapes, not decoded to the text it spells.
+  `long_run` (32) are escaped in excerpts and prompts but not reported. A single variation
+  selector after a visible character is treated as legitimate, so a payload spread one
+  selector per character is neither reported nor escaped. A tag-character payload is shown
+  as escapes, not decoded to the text it spells.
 - [UNVAR-92] Right-to-left locale files are recognised by a language code (`ar`, `he`, `fa`,
   `ur` and others) in the path of a translation-shaped file (`.json`, `.po`, `.xliff`,
   `.properties`, ...; `.js` and `.ts` only inside a locale folder); one elsewhere reports its
