@@ -446,9 +446,10 @@ def test_credentials_on_a_call_line_never_reach_an_excerpt():
     kept = scrub('resp = client.chat.completions.create(model="gpt-4o-mini", max_tokens=300)')
     assert kept == 'resp = client.chat.completions.create(model="gpt-4o-mini", max_tokens=300)'
     assert "{question}" in scrub('prompt = f"Answer only with Python: {question}"')
-    host = scrub('requests.post("https://generativelanguage.googleapis.com/v1beta/x", '
-                 'headers={"Ocp-Apim-Subscription-Key": k})')
-    assert "generativelanguage.googleapis.com" in host and "Ocp-Apim-Subscription-Key" in host
+    # a host name and a header name are kept: the line has no value to redact
+    call = ('requests.post("https://generativelanguage.googleapis.com/v1beta/x", '
+            'headers={"Ocp-Apim-Subscription-Key": k})')
+    assert scrub(call) == call
 
 
 def test_a_long_line_is_cut_before_it_is_scrubbed():
