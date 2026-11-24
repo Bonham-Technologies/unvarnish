@@ -105,7 +105,10 @@ def _deps(path: Path | None) -> Dependencies:
 
 def _scan(deps: Dependencies, today: date = FETCHED, **options):
     scanner = DependenciesScanner(today=today)
-    return {f.title: f for f in scanner.run(_ctx(deps, **options))}, scanner
+    found = {f.title: f for f in scanner.run(_ctx(deps, **options))}
+    # the licence note (UNVAR-93) is tested in test_sbom_licences.py; these count exploit notes
+    scanner.notes = [n for n in scanner.notes if not n.startswith("dependencies: licences:")]
+    return found, scanner
 
 
 # --- acceptance 1: `vulndata refresh` writes a dated bundle, or nothing ---------------------
@@ -410,8 +413,8 @@ def _engagement_run(engagement, monkeypatch, tmp_path: Path, today: date = FETCH
     from unvarnish.phases.scan import ScanPhase
     from unvarnish.scanners import builtin_scanners
 
-    monkeypatch.setattr("unvarnish.phases.inventory.lookup_advisories",
-                        lambda root, options: (True, _advisories(), None))
+    monkeypatch.setattr("unvarnish.phases.inventory.lookup_dependencies",
+                        lambda root, options: (True, _advisories(), None, None))
     src = tmp_path / "client-src"
     src.mkdir()
     (src / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")
@@ -531,8 +534,8 @@ def test_inventory_hash_includes_the_bundle_date(engagement, monkeypatch, tmp_pa
 def test_run_makes_no_network_access(monkeypatch, tmp_path: Path):
     _bundle(tmp_path / "vulndata", today=date.today())
     monkeypatch.setenv(vulndata.DIR_ENV, str(tmp_path / "vulndata"))
-    monkeypatch.setattr("unvarnish.phases.inventory.lookup_advisories",
-                        lambda root, options: (True, _advisories(), None))
+    monkeypatch.setattr("unvarnish.phases.inventory.lookup_dependencies",
+                        lambda root, options: (True, _advisories(), None, None))
     attempts: list[str] = []
 
     def refuse(*args, **kwargs):

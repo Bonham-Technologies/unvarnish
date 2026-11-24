@@ -17,8 +17,8 @@ from unvarnish.util.plural import plural
 
 # Bump when scanner summaries, notes or detection rules change, so a scan written by an
 # earlier version reruns once (deterministic, no model calls) instead of rendering the old
-# text or findings (UNVAR-57, UNVAR-67, UNVAR-81, UNVAR-82, UNVAR-90, UNVAR-92).
-SCANNER_TEXT_VERSION = "2026-11-24.2"
+# text or findings (UNVAR-57, UNVAR-67, UNVAR-81, UNVAR-82, UNVAR-90, UNVAR-92, UNVAR-93).
+SCANNER_TEXT_VERSION = "2026-11-24.4"
 
 
 def sort_findings(findings: list[Finding]) -> list[Finding]:

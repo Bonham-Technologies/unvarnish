@@ -157,7 +157,7 @@ def test_every_page_links_the_public_repository():
 
 def test_demo_numbers_match_the_published_report():
     report = (SITE / "demo/nodegoat-findings.md").read_text(encoding="utf-8")
-    total, critical = re.search(r"(\d+) finding\(s\): (\d+) critical", report).groups()
+    total, critical = re.search(r"(\d+) findings?: (\d+) critical", report).groups()
     history = re.search(r"\| Secrets \(current / history only\) \| \d+ / (\d+) \|", report)[1]
     commits = re.search(r"\| Commits · authors · active days \| (\d+) ·", report)[1]
     index = (SITE / "index.html").read_text(encoding="utf-8")
@@ -168,6 +168,34 @@ def test_demo_numbers_match_the_published_report():
     assert re.search(rf"all\s+{total}\s+findings", demo)
     for name in ("nodegoat-findings.html", "nodegoat-findings.pdf"):
         assert (SITE / "demo" / name).stat().st_size > 10_000
+
+
+def _pdf_objects(pdf: bytes) -> list[bytes]:
+    """The file and every stream that inflates: weasyprint compresses the catalog."""
+    import zlib
+
+    objects = [pdf]
+    for m in re.finditer(rb"stream\r?\n(.*?)endstream", pdf, re.DOTALL):
+        try:
+            objects.append(zlib.decompress(m.group(1)))
+        except zlib.error:
+            continue
+    return objects
+
+
+def test_demo_report_shows_the_shipped_fixes():
+    # UNVAR-79: the published demo predated the "(s)" wording fix (UNVAR-57), the HTML main
+    # landmark and row headers (UNVAR-64), the author metadata (UNVAR-60) and the tagged PDF
+    # (UNVAR-22). A demo recorded with current main and the image's weasyprint has them all.
+    demo = SITE / "demo"
+    for name in ("nodegoat-findings.md", "nodegoat-findings.html"):
+        assert "(s)" not in (demo / name).read_text(encoding="utf-8"), name
+    html = (demo / "nodegoat-findings.html").read_text(encoding="utf-8")
+    assert "<main>" in html and 'scope="row"' in html
+    assert re.search(r'<meta name="author" content="[^"]+"', html)
+    objects = _pdf_objects((demo / "nodegoat-findings.pdf").read_bytes())
+    for marker in (rb"/MarkInfo\s*<<\s*/Marked\s+true", rb"/StructTreeRoot"):
+        assert any(re.search(marker, o) for o in objects), marker
 
 
 def test_scanner_table_lists_every_registered_scanner():

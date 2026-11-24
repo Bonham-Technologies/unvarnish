@@ -12,8 +12,9 @@ It runs deterministic scanners (secrets, dependency advisories, end-of-life runt
 infrastructure, hygiene, bus factor, hidden text) and model-assisted analysis against Anthropic or any
 OpenAI-compatible endpoint, online or air-gapped, and writes three documents per tool
 (architecture, findings, requirements) plus a cross-tool comparison. It answers questions over
-the analysis and exports to DOCX, HTML, and PDF (findings also to SARIF and CSV), and ships as
-a Docker image too; [CHANGELOG.md](CHANGELOG.md) lists what each release added.
+the analysis and exports to DOCX, HTML, and PDF (findings also to SARIF and CSV, dependencies
+to a CycloneDX SBOM), and ships as a Docker image too; [CHANGELOG.md](CHANGELOG.md) lists what
+each release added.
 
 The pipeline runs nine phases per tool: `inventory`, `git`, `scan`, `split`, `extract`,
 `rollup_modules`, `rollup_tool`, `verify`, `render`. The first four and `render` need no model.
@@ -21,7 +22,7 @@ The pipeline runs nine phases per tool: `inventory`, `git`, `scan`, `split`, `ex
 ## Install
 
 Requires Python 3.13+ and git; document exports also need pandoc 2.19+, Graphviz, and
-weasyprint (or use the Docker image below). SARIF and CSV exports need nothing more. Linux and
+weasyprint (or use the Docker image below). SARIF, CSV and CycloneDX exports need nothing more. Linux and
 macOS run it natively; on Windows use the Docker image, since native Windows is unsupported.
 
     uv tool install unvarnish        # once published
@@ -63,7 +64,7 @@ Deterministic, no model needed; options live under `scanners:` in `engagement.ya
 | `oversized_files` | files and functions over size thresholds, HTML inline script | `file_lines`, `function_lines`, `html_script_lines` |
 | `hygiene` | missing tests, CI, README, license, linter config; TODO density; swallowed errors | |
 | `bus_factor` | single-author concentration | `single_author_share` |
-| `dependencies` | published advisories (osv-scanner, offline by default) and unpinned dependencies without a lockfile; with an offline exploit data bundle (`unvarnish vulndata refresh`), an advisory in CISA's KEV catalog is critical and every advisory shows its EPSS score, which orders them (an older bundle than `max_data_age_days`, default 30, is noted) | `offline`, `enabled`, `osv_args`, `max_data_age_days` |
+| `dependencies` | published advisories (osv-scanner, offline by default) and unpinned dependencies without a lockfile; with an offline exploit data bundle (`unvarnish vulndata refresh`), an advisory in CISA's KEV catalog is critical and every advisory shows its EPSS score, which orders them (an older bundle than `max_data_age_days`, default 30, is noted); online (`offline: false`), package licences from deps.dev, and with a `licences` allowlist each licence outside it is a compliance finding (medium for copyleft, low otherwise) | `offline`, `enabled`, `osv_args`, `max_data_age_days`, `licences` |
 | `hardcoded_infra` | URLs, internal hostnames, IPs, absolute paths, emails (credentials masked) | `max_evidence`, `include_tests` |
 | `vendored_bulk` | dependency or build directories and large binaries in the source | `binary_bytes` |
 | `generated_bulk` | single commits over a line threshold, noting AI co-author trailers | `commit_lines` |
@@ -244,6 +245,20 @@ issues from CSV, or System > External System Import > CSV): map `Summary` and `D
 to the fields of the same name, `Severity` to Priority, `Tool`, `Category` and `Source` to
 labels or components, and keep `FindingId` (a custom field or a label) to recognise findings
 already filed. `docs/operations.md` has the details.
+
+### An SBOM per tool
+
+    unvarnish export --format cyclonedx expense-bot  # exports/sbom-expense-bot-<timestamp>.cdx.json
+
+`cyclonedx` writes a CycloneDX 1.6 JSON SBOM per tool from its inventory: each declared
+dependency with its package URL, exact version (or the manifest's constraint) and manifest
+path, and each known advisory under `vulnerabilities`, pointing at the package it affects.
+Unvarnish writes it itself, without running osv-scanner, so it works offline; it is opt-in like
+SARIF and CSV and ignores `--doc`. Licences are listed only when the scan ran online
+(`scanners.dependencies.offline: false`), as deps.dev declares them; offline the SBOM lists none
+and says "licences: not checked" in its metadata, as the findings document does under "Not
+analysed". With `scanners.dependencies.licences` set to the SPDX identifiers the client
+accepts, each licence outside it is a compliance finding naming the packages and manifest.
 
 ## Docker
 

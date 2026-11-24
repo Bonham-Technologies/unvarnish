@@ -21,6 +21,27 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   excerpt, note, model prompt (prose and ask included), rendered document and export shows the
   characters as `[U+XXXX]` escapes, never raw, and line numbers are unchanged. Scans rerun once (UNVAR-92).
 
+### A CycloneDX SBOM per tool, and licence checks online
+
+- `unvarnish export --format cyclonedx` writes `exports/sbom-<tool>-<timestamp>.cdx.json`, a
+  CycloneDX 1.6 SBOM of each tool's dependencies (package URL, version or constraint,
+  manifest) and known advisories, without running osv-scanner. Online, package licences from
+  deps.dev reach the SBOM, and `scanners.dependencies.licences` flags each licence outside
+  that allowlist as a compliance finding; offline the documents say "licences: not checked".
+  Scans rerun once to pick up the new note (UNVAR-93).
+
+### CI builds the Docker image
+
+- A new `docker` CI job builds the image and runs a no-model review and an HTML export on a
+  small fixture inside it, with no network, so Dockerfile and base-image bumps no longer merge
+  untested; `ci-status` waits for it (UNVAR-80).
+
+### The unvarnish.tech demo shows the current report
+
+- The NodeGoat demo was recorded again with current `main` and the image's WeasyPrint, so the
+  published sample has the plural wording, the HTML main landmark, row headers and author
+  metadata, and a tagged PDF; `tests/test_site.py` checks for each (UNVAR-79).
+
 ### `config check` without a model says what works
 
 - With no model configured, `config check` prints one line saying `run` still runs the

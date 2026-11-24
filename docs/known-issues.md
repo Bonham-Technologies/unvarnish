@@ -94,6 +94,17 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   band; it is in `findings.json` and the documents.
 - [UNVAR-42] The executive summary prose does not mention the remediation outlook.
 
+- [UNVAR-93] An offline SBOM lists the declared dependencies and the packages advisories name,
+  not the full set a lockfile resolves: osv-scanner's package list is kept only online, with
+  the licences. A declared range shows as a constraint, without a version, unless online
+  resolution found exactly one version for it.
+- [UNVAR-93] Licence findings cover dev-only packages from a lockfile too, which are not
+  distributed with the tool; the finding lists them by name for the consultant to judge.
+- [UNVAR-93] Licence identifiers match exactly (case aside): an allowlist with `GPL-3.0-only`
+  does not accept a package deps.dev reports as `GPL-3.0`, and `GPL-2.0+` needs listing as is.
+- [UNVAR-93] An online inventory from before this change reruns once (osv-scanner, with the
+  network); with more than one tool, `compare` then reruns and calls the model.
+
 - [UNVAR-16] Ctrl-C in a terminal also sends SIGINT to gitleaks, osv-scanner and git if one is
   running. The scanners turn a killed child into a "failed" note, so the scan phase can write
   its artifact fresh and the next run keeps the note instead of rescanning; run with `--force
