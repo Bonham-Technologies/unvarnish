@@ -25,7 +25,7 @@ def _engagement(tmp_path, fake: FakeLLM | None = None, **extra) -> Engagement:
 def test_config_check_without_model(tmp_path):
     eng = _engagement(tmp_path)
     r = runner.invoke(app, ["config", "check", "-e", str(eng.root)])
-    assert r.exit_code == 0 and "no model configured" in r.output
+    assert r.exit_code == 0 and "no model configured" in r.output.lower()
 
 
 def test_config_check_without_model_says_scanners_work_and_prints_no_table(tmp_path):
