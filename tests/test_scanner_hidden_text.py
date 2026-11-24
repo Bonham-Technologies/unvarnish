@@ -346,9 +346,13 @@ def test_documents_and_exports_hold_no_raw_hidden_characters(engagement, tmp_pat
     assert {p.suffix for p in written} >= {f".{f}" for f in formats}
     for p in written:
         if p.suffix == ".docx":
+            # numbering.xml is pandoc's list scaffolding: pandoc 3.7 writes its Symbol-font
+            # bullet glyphs (U+F0B7, U+F0A7) as private-use characters, which are not content
             with zipfile.ZipFile(p) as z:
                 text = "".join(z.read(n).decode("utf-8", errors="replace")
-                               for n in z.namelist() if n.endswith(".xml"))
+                               for n in z.namelist()
+                               if n.endswith(".xml") and n != "word/numbering.xml")
+            assert "U+202E" in text, p.name
         elif p.suffix == ".pdf":
             if not shutil.which("pdftotext"):
                 continue
