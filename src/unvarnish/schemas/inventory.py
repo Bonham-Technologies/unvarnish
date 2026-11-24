@@ -93,3 +93,7 @@ class Dependencies(BaseModel):
     advisories_note: str | None = None  # why advisories were not checked
     # The fetch date of the end-of-life data bundle the run read, or None without one (UNVAR-43)
     eol_data_date: str | None = None
+    # The fetch date of the exploit data bundle (CISA KEV and EPSS) that marked the advisories,
+    # or None without one, and then why not (UNVAR-90)
+    exploit_data_date: str | None = None
+    exploit_data_note: str | None = None

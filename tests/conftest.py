@@ -18,6 +18,9 @@ os.environ.setdefault("UNVARNISH_DISABLE_GITLEAKS", "1")
 # Nor on an end-of-life bundle in the developer's data directory: tests that need one point
 # UNVARNISH_EOL_DIR at tests/data/eol themselves.
 os.environ.setdefault("UNVARNISH_EOL_DIR", str(Path(__file__).parent / "data" / "no-eol-bundle"))
+# Nor on an exploit data bundle (UNVAR-90): tests that need one write their own.
+os.environ.setdefault("UNVARNISH_VULNDATA_DIR",
+                      str(Path(__file__).parent / "data" / "no-vulndata-bundle"))
 
 GIT_ENV = {
     "GIT_CONFIG_GLOBAL": os.devnull,

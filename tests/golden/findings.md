@@ -360,6 +360,7 @@ Excluded from analysis but counted in totals:
 Scanner notes:
 
 - gitleaks: disabled by UNVARNISH_DISABLE_GITLEAKS
+- dependencies: exploit data: not checked (no exploit data bundle); advisories are not marked as known exploited (CISA KEV) or ordered by exploit likelihood (EPSS) (run `unvarnish vulndata refresh` while online, or set UNVARNISH_VULNDATA_DIR to a folder holding vulndata.gz, then rerun)
 - end_of_life: no end-of-life data bundle; runtime and framework versions were not checked against end-of-life dates (run `unvarnish eol refresh` while online, or set UNVARNISH_EOL_DIR to a folder holding endoflife.json, then rerun)
 
 1 model finding was rejected on verification and is excluded above; it remains in `analysis/findings.json` for inspection.

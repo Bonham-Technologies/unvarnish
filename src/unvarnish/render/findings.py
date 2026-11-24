@@ -15,6 +15,7 @@ from unvarnish.config import EffortDays
 from unvarnish.phases.base import ToolContext
 from unvarnish.render.inputs import RenderInputs
 from unvarnish.scanners.client_exposure import exposure_counts
+from unvarnish.scanners.dependencies import exploit_data_age_warning
 from unvarnish.scanners.end_of_life import data_age_warning, eol_counts
 from unvarnish.schemas.delta import Delta, DeltaEntry, DeltaStatus
 from unvarnish.schemas.finding import SEVERITY_ORDER, Finding, Severity, Source, Verification
@@ -40,11 +41,20 @@ def _compact(detail_from: str) -> list[str]:
     return [s.value for s in Severity if SEVERITY_ORDER[s] > floor]
 
 
+def exploit_rank(f: Finding) -> tuple[int, float]:
+    """Known exploited (CISA KEV) first, then by EPSS; findings without exploit data rank as
+    neither, so without a bundle the order is what it always was (UNVAR-90)."""
+    ex = f.exploits or []
+    return (0 if any(e.kev for e in ex) else 1,
+            -max((e.epss or 0.0 for e in ex), default=0.0))
+
+
 def merged_findings(scan: list[Finding], model: list[Finding]) -> list[Finding]:
-    """Scanner and live model findings, by severity; scanner first at equal severity."""
+    """Scanner and live model findings, by severity, then known exploited and EPSS; scanner
+    first at equal severity."""
     live = [f for f in model if f.verification != Verification.rejected]
     return sorted([*scan, *live], key=lambda f: (
-        SEVERITY_ORDER[f.severity], 0 if f.source == Source.scanner else 1,
+        SEVERITY_ORDER[f.severity], exploit_rank(f), 0 if f.source == Source.scanner else 1,
         f.evidence[0].path, f.evidence[0].line_start or 0))
 
 
@@ -281,6 +291,11 @@ def build_findings_context(ctx: ToolContext, inp: RenderInputs) -> dict:
         "end_of_life": ({**eol_counts(scan.findings), "date": deps.eol_data_date,
                          "stale": data_age_warning(scan.notes)}
                         if "end_of_life" in scan.scanners_run else None),
+        "known_exploited": ({
+            "count": sum(1 for a in deps.advisories if a.get("kev")),
+            "advisories": len(deps.advisories), "date": deps.exploit_data_date,
+            "stale": exploit_data_age_warning(scan.notes)}
+            if deps.exploit_data_date else None),
     }
     tm = inp.tool_model
     prose_facts = {"executive_summary": {
