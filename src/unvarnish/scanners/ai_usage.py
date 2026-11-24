@@ -265,7 +265,7 @@ _QUOTED = r"([\"'`])((?:\\.|(?!\{q})[^\\\n])*)\{q}"
 NAME_SEP_RE = re.compile(
     r"(?<![\w-])([\w-]+)[\"'\]]*(?:\s*:\s*[A-Za-z_][\w\[\]., |]{0,40}?)?\s*(=>|[:=])\s*")
 SECRET_NAME_RE = re.compile(
-    r"(?i)key|auth|token|secret|passw|pwd|sig|credential|cookie"
+    r"(?i)key|auth|token|secret|passw|pwd|sig|credential|cookie|pass(?:phrase|$|[-_.])"
     r"|(?:^|[-_.])(?:pass|pin|otp|session|sid|pw)(?:$|[-_.])|^(?:pass|pin|otp|pw)[A-Z0-9]")
 URL_USERINFO_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@\"'`]+@")
 URL_QUERY_RE = re.compile(r"([?&][\w.\-\[\]]+=)[^&#\s\"'`]+")
@@ -285,11 +285,17 @@ CLIENT_KEY_RE = re.compile(
     r"|MistralClient|Cohere|CohereClient|ClientV2|Together|Replicate|GoogleGenerativeAI"
     r"|GoogleGenAI|InferenceClient|HfInference|ChatOpenAI|ChatAnthropic|OpenAILike)\(\s*"
     r"[rbufRBUF]{0,2})" + _QUOTED.format(q=2))
+_SECRET_FLAG = r"--?(?i:password|passwd|passphrase|pass|pwd|token|api-?key|secret)"
 CLI_SECRET_RE = re.compile(
-    r"(?<=\s)(-p)[^\s\"'`]+"  # -pSECRET
+    r"(?<=[\s\"'])(-p)[^\s\"'`]+"  # -pSECRET, "-pSECRET"
     r"|((?<![\w-])-p\s+)(?![/.~])(['\"]?)[^\s'\"`]+\3"  # -p SECRET, -p 'SECRET'
     r"|((?<![\w-])(?:-u|--user)\s+)['\"]?[^\s:'\"`]+:[^\s'\"`]+"  # curl -u user:pass
-    r"|(--?(?i:password|passwd|pass|pwd|token|api-?key|secret)[= ])[^\s\"'`]+")
+    r"|(" + _SECRET_FLAG + r"[= ])[^\s\"'`]+")
+# The same flags as list-form arguments, each its own literal: ["-p", "SECRET"],
+# ["--password", "SECRET"], ["-u", "user:pass"].
+LIST_FLAG_RE = re.compile(
+    r"(([\"'])(?:-p|" + _SECRET_FLAG + r")\2\s*,\s*)([\"'])[^\"'\n]*\3"
+    r"|(([\"'])(?:-u|--user)\5\s*,\s*)([\"'])[^\"':\n]*:[^\"'\n]*\6")
 LIT_TOKEN_RE = re.compile(r"[^\s/?&=:,;'\"`(){}\[\]<>|\\]{12,}")
 BEARER_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}")
 HOSTNAME_RE = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}")
@@ -388,7 +394,8 @@ def scrub(text: str, language: str | None = None) -> str:
     string (`PGPASSWORD=...`, `"Authorization": "Bearer " + "..."`, `"pin": "..."`);
     env-lookup defaults and a fallback after an env-style constant (`KEY || "..."`); auth
     tuples and Basic auth arguments; the first argument to an AI client constructor; `-p`,
-    `-u user:pass` and `--password` on a command line; any token of 12 or more characters
+    `-u user:pass`, `--password` and `--passphrase` on a command line, in shell text or as
+    list-form arguments (`["-p", "..."]`); any token of 12 or more characters
     with letters and digits in a string literal unless it is a model id or a host name; and a
     trailing comment. What remains can still show a credential with none of these shapes: a
     short or letters-only value with no secret-like name, passed positionally or written
@@ -407,6 +414,9 @@ def scrub(text: str, language: str | None = None) -> str:
         lambda m: (f"{m.group(1)}{R}" if m.group(1) else
                    f"{m.group(2)}{m.group(3)}{R}{m.group(3)}" if m.group(2) else
                    f"{m.group(4) or m.group(5)}{R}"), text)
+    text = LIST_FLAG_RE.sub(
+        lambda m: (f"{m.group(1)}{m.group(3)}{R}{m.group(3)}" if m.group(1) else
+                   f"{m.group(4)}{m.group(6)}{R}{m.group(6)}"), text)
     text = _redact_named(text)
     pieces, pos = [], 0
     for a, b, _ in _literals(text):

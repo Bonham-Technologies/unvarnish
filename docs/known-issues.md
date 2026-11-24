@@ -7,9 +7,12 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
 - [UNVAR-91] The `ai_usage` checks follow data within one file, by assignment: request input
   passed through a function parameter, or a prompt built in one file and sent from another,
   is missed (a FastAPI or Gradio handler's parameters are not request input to it). A value
-  ends at an unconditional reassignment or, in Python, at the end of its function. In
-  JavaScript and TypeScript a value is not bounded by its function, so a name reused in
-  another function can give a false high; a value reassigned in a branch still counts.
+  ends at an unconditional reassignment or, in Python, at the end of its function; a value
+  bound at module level reaches functions defined below it, so a later function whose
+  parameter has the same name can give a false high. In JavaScript and TypeScript a value
+  is not bounded by its function, and a `const` redeclared in another function does not end
+  it, so a name reused in another function can give a false high; a value reassigned in a
+  branch still counts.
   Statements are found by counting brackets outside string literals, approximately: a
   bracket in a JavaScript regular expression can join lines until the next top-level
   `function`, `const` or similar. The verify phase re-checks model findings only, so these

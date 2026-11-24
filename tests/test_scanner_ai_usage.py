@@ -420,6 +420,18 @@ CALL_LINE_SECRETS = [
     ('r = requests.post(URL, json=p, cookies={{"session": "{k}"}})', "correcthorsebattery"),
     ('r = requests.post(URL, json=p, headers=H)  # key is {k}', "hunter2hunter2x"),
     ('r = requests.post(URL, data="grant_type=password&username=bob&password={k}")', "hunter2"),
+    # list-form command arguments: each flag and its value is its own element
+    ('subprocess.run(["mysql", "-uroot", "-p{k}", "-e", sql])', "hunter2"),
+    ('subprocess.run(["mysql", "-u", "root", "--password", "{k}", "-e", sql])', "hunter2"),
+    ("subprocess.run(['sshpass', '-p', '{k}', 'ssh', 'db', sql])", "hunter2"),
+    ('subprocess.run(["curl", "-u", "admin:{k}", "https://x.internal/run", "-d", sql])',
+     "hunter2"),
+    ('subprocess.run(["gpg", "--passphrase={k}", "-d", f])', "hunter2"),
+    # names ending in pass, and a passphrase
+    ('subprocess.run("DBPASS={k} ./run.sh " + sql, shell=True)', "hunter2"),
+    ('subprocess.run("gpg --passphrase {k} -d f | " + sql, shell=True)', "hunter2"),
+    ('r = requests.post(URL, json={{"dbpass": "{k}", "q": sql}})', "hunter2"),
+    ('r = requests.post(URL, json={{"SMTPPASS": "{k}", "q": sql}})', "hunter2"),
 ]
 
 

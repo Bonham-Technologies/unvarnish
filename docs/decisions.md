@@ -1549,15 +1549,17 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   rules (and drops any with `://`). A finding excerpt is cut to 1,000 characters (which
   bounds the cost of the patterns), then redacted by the secrets rules and these shapes: a
   trailing comment; URL userinfo and query values (Gemini's `?key=`); the value of any name
-  that mentions a key, token, secret, password, pass, pin, signature, auth, session or
-  cookie, in code (`"x-api-key": KEY || "..."`, `"Authorization": "Bearer " + "..."`) or
+  that mentions a key, token, secret, password, pass (also a name ending in it, `DBPASS`,
+  `smtppass`), passphrase, pin, signature, auth, session or cookie, in code (`"x-api-key": KEY || "..."`, `"Authorization": "Bearer " + "..."`) or
   inside a string (`PGPASSWORD=...`, `"dbname=x password=..."`); env-lookup defaults and a
   fallback after an env-style constant; `auth=(...)` tuples and Basic auth arguments; the
-  first argument to an AI client constructor (`OpenAI("...")`); `-p`, `-u user:pass` and
-  `--password` on a command line; and any token of 12 or more characters with letters and
+  first argument to an AI client constructor (`OpenAI("...")`); `-p`, `-u user:pass`,
+  `--password` and `--passphrase` on a command line, in shell text or as list-form
+  arguments (`["-p", "..."]`); and any token of 12 or more characters with letters and
   digits inside a string literal unless it is a model id or a host name. *Cost if wrong:*
   this is not a guarantee. A credential with none of these shapes still shows: a short or
   letters-only value with no secret-like name beside it (`{"X-Upstream": "..."}`, a
   password passed positionally to a function that is not an AI client, a bare word in
-  shell text). An excerpt can also lose a harmless long identifier.
+  shell text, `redis-cli -a ...`, SQL `IDENTIFIED BY '...'`). An excerpt can also lose a
+  harmless long identifier, or the value beside a name like `bypass`.
 
