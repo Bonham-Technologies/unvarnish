@@ -195,6 +195,27 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   background, bold) until the rule is copied from the bundled `report.css`. PDF and Word are
   unaffected.
 
+- [UNVAR-92] An engagement extracted before the hidden-text escaping keeps those extractions:
+  the extract phase reruns only when its units, model or prompt change, so a unit with hidden
+  characters is asked again with escaped text only on such a rerun or `run --force`. The scan
+  reruns once and reports the characters either way.
+- [UNVAR-92] Hidden characters are reported in source, config and rule files only, not in
+  Markdown or other documentation outside the rule-file list, generated or minified files, or
+  (by default) tests. Runs of variation selectors or private-use characters shorter than
+  `long_run` (32) are escaped in excerpts and prompts but not reported. A tag-character
+  payload is shown as escapes, not decoded to the text it spells.
+- [UNVAR-92] Right-to-left locale files are recognised by a language code (`ar`, `he`, `fa`,
+  `ur` and others) in the path of a translation-shaped file (`.json`, `.po`, `.xliff`,
+  `.properties`, ...); one elsewhere reports its isolates. A bidi mark on a line with a
+  right-to-left letter is not reported in any file, so an attacker who adds such a letter to
+  the line hides a mark, though never an override, embedding or isolate.
+- [UNVAR-92] The MCP check reads JSON configs (`.mcp.json`, `claude_desktop_config.json`,
+  `.cursor/mcp.json`, `.vscode/mcp.json` with comments, and the Windsurf, Roo, Gemini, Kiro
+  and Amazon Q names): `npx`, `bunx`, `pnpm dlx`, `yarn dlx`, `npm exec`, `uvx`, `uv tool run`,
+  `pipx run` and `curl | sh`. A Docker image tag, a TOML or YAML agent config, a remote server
+  given by `url`, and prose model output passed straight to `backend.complete` (render's prose
+  blocks, built from already escaped findings) are not checked or escaped there.
+
 ## Fixed
 
 Fixed in the known-issues burn-down (see the CHANGELOG for details):

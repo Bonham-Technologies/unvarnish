@@ -1492,3 +1492,61 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   `#model_version`/`score_date` comment then `cve,epss,percentile`), and both can be
   overridden (`--kev-url`, `--epss-url`) if a feed moves again. *Cost if wrong:* a feed that
   changes shape fails the refresh by name and leaves the old bundle in place.
+
+## Hidden text (UNVAR-92)
+
+- **Scanner and escaping both (owner's choice, option A).** A scanner alone would report a
+  rule file's hidden instructions while the model phases read and followed them; escaping
+  alone would hide the problem from the report. One detector (`util/hidden_text.py`) decides
+  what is hidden for the scanner, the excerpts and the prompts, so all three agree. *Cost if
+  wrong:* none known beyond the escapes' length in prompts.
+- **What counts as hidden:** bidirectional embeddings, overrides and isolates (U+202A-202E,
+  U+2066-2069) and marks (U+200E, U+200F, U+061C); zero-width characters (U+200B-200D,
+  U+2060-2064, U+FEFF past the start of a file); tag characters (U+E0000-E007F); and two or
+  more variation selectors (U+FE00-FE0F, U+E0100-E01EF) or private-use characters in a row.
+  Not hidden: a BOM at the start of a file, a ZWJ between emoji (skin tones and VS16 skipped),
+  a ZWJ or ZWNJ beside an Arabic-script, Indic, Tibetan, Myanmar or Khmer letter, a single
+  selector or private-use character (an emoji's VS16, an icon-font glyph) and an emoji
+  subdivision flag's tag sequence. *Cost if wrong:* a joiner planted next to such a letter is
+  missed; a legitimate pair of selectors is escaped (never reported below `long_run`).
+- **Severity by what the characters can do.** Bidi controls (Trojan Source), tag characters
+  and runs of 32 or more selectors or private-use characters (`long_run`; GlassWorm's
+  payloads run to thousands) are high; zero-width characters in source are medium, because
+  copy-pasted text often carries a stray ZWSP. Any hidden character in an AI rule file is
+  high, one finding per file, because the file steers every later generation; source findings
+  are grouped per rule across files, capped at `max_evidence`. Bidi marks beside
+  right-to-left letters, and every bidi character in a right-to-left locale file, are normal
+  text. *Cost if wrong:* a stray ZWSP in `CLAUDE.md` reads high; a payload of 31 selectors in
+  source is escaped but not reported.
+- **Rule files are found by name and directory, whatever the census calls them:**
+  `.cursorrules`, `.windsurfrules`, `.clinerules`, `.roorules`, `.goosehints`, `CLAUDE.md`,
+  `CLAUDE.local.md`, `AGENTS.md`, `AGENT.md`, `GEMINI.md`, `.github/copilot-instructions.md`,
+  and any file under `.cursor/rules/`, `.windsurf/rules/`, `.clinerules/`, `.roo/`,
+  `.continue/rules/`, `.kiro/steering/`, `.claude/`, `.github/instructions/`,
+  `.github/prompts/`, `.github/chatmodes/`, `.junie/`, `.amazonq/rules/` and
+  `.augment/rules/`, at any depth. Other Markdown is not read. *Cost if wrong:* a new
+  assistant's rule file is read as ordinary source (or not at all, if Markdown) until it is
+  added to the list.
+- **Escapes are `[U+XXXX]`, eight per run, then `[+N more]`.** Visible in every renderer,
+  inside a code span in findings.md, plain text in SARIF and CSV, and never a newline, so a
+  line number cited from an escaped prompt is the source's. *Cost if wrong:* a reader who
+  needs the exact bytes of a long run opens the file.
+- **Escaping happens at three shared points.** Prompts: `complete_structured`, the one
+  function every model phase calls (extract, rollups, verify, compare, ask, `config check`),
+  escapes the system prompt and every message, and returns the request unchanged when there
+  is nothing to escape, so cache keys of ordinary requests do not move. Evidence:
+  `Evidence.excerpt` and `note` are escaped by the schema, so no scanner or model finding,
+  old artifact included, can carry raw characters into a document or export. Model text:
+  `redact_model_text` escapes every string it redacts, which covers extractions, rollups and
+  every finding the SARIF and CSV exports load. Verification compares a model's quote with the
+  escaped source, as the model saw it. `PROMPT_VERSION` did not change; a unit's cache key
+  gains a marker only when its text has hidden characters. *Cost if wrong:* render's prose
+  calls (`backend.complete` directly, from findings already escaped) are not escaped at the
+  call; an engagement extracted earlier keeps those extractions until extract reruns.
+- **MCP configs that fetch code at launch are a medium review finding**, one per file with a
+  line per server: `npx`/`bunx`/`pnpm dlx`/`yarn dlx`/`npm exec` with a package that has no
+  exact version (`@latest` counts as none), `uvx`/`uv tool run`/`pipx run` without `==` or
+  `@version`, and a shell command that pipes `curl` or `wget` into a shell. Local paths and
+  servers given by `url` are not reported; only the command up to the package is shown, so
+  arguments that carry tokens stay out of the report. *Cost if wrong:* a team that vets
+  `@latest` on purpose gets a review line per server; a Docker image tag is not checked.

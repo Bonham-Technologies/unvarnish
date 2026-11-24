@@ -8,6 +8,19 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Hidden text in rule files and source
+
+- A new `hidden_text` scanner reports characters that display as nothing: bidirectional
+  controls (Trojan Source, high), Unicode tag characters (high), runs of 32 or more variation
+  selectors or private-use characters (an encoded payload, high) and zero-width characters
+  (medium) in source and configuration, and any of them in an AI rule file (`.cursorrules`,
+  `CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `.cursor/rules/`, high). It
+  also flags MCP configs that start a server from an unpinned npm or Python package or a
+  script piped into a shell, for review. Emoji sequences, right-to-left locale files, Persian
+  and Indic joiners and a byte order mark at the start of a file are not findings. Every
+  excerpt, note, model prompt and export shows the characters as `[U+XXXX]` escapes, never
+  raw, and line numbers are unchanged. Scans rerun once (UNVAR-92).
+
 ### `config check` without a model says what works
 
 - With no model configured, `config check` prints one line saying `run` still runs the
