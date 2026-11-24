@@ -14,6 +14,19 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   small fixture inside it, with no network, so Dockerfile and base-image bumps no longer merge
   untested; `ci-status` waits for it (UNVAR-80).
 
+### `config check` without a model says what works
+
+- With no model configured, `config check` prints one line saying `run` still runs the
+  scanners and how to set `models.default`, instead of an empty table. The table's headers read
+  "json schema" and "tool calling" and wrap in a narrow terminal rather than being cut to
+  "json_sche…" at 80 columns (UNVAR-83).
+
+### The site lives at unvarnish.tech
+
+- The public site's canonical address, Open Graph and structured-data URLs, sitemap, robots
+  file, `security.txt` and the package's Homepage now use `https://unvarnish.tech`.
+  `unvarnish.com` and `www.unvarnish.com` redirect there (UNVAR-96).
+
 ### One commit, one file, one unit
 
 - Phase lines, `status` cells, the run log and `ask`'s index line now say "1 commit",

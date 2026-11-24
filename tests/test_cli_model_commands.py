@@ -25,7 +25,19 @@ def _engagement(tmp_path, fake: FakeLLM | None = None, **extra) -> Engagement:
 def test_config_check_without_model(tmp_path):
     eng = _engagement(tmp_path)
     r = runner.invoke(app, ["config", "check", "-e", str(eng.root)])
-    assert r.exit_code == 0 and "no model configured" in r.output
+    assert r.exit_code == 0 and "no model configured" in r.output.lower()
+
+
+def test_config_check_without_model_says_scanners_work_and_prints_no_table(tmp_path):
+    # UNVAR-83: a header-only table made the first command a new user runs look broken.
+    eng = _engagement(tmp_path)
+    r = runner.invoke(app, ["config", "check", "-e", str(eng.root)])
+    assert r.exit_code == 0, r.output
+    assert "┏" not in r.output and "schema" not in r.output
+    lines = [line for line in r.output.splitlines() if line.strip()]
+    assert len(lines) == 1, r.output
+    assert "still runs the scanners" in r.output and "models.default" in r.output
+    assert "extract:" not in r.output and "other phases:" not in r.output
 
 
 GOOD_EXTRACTION = json.dumps({
@@ -44,6 +56,25 @@ def test_config_check_probes_backend(tmp_path, fake_llm: FakeLLM):
     assert fake_llm.requests and fake_llm.requests[0]["path"] == "/v1/messages"
     r2 = runner.invoke(app, ["config", "check", "--no-probe", "-e", str(eng.root)])
     assert r2.exit_code == 0 and len(fake_llm.requests) == 1
+
+
+def test_config_check_headers_are_not_truncated_at_80_columns(tmp_path, fake_llm: FakeLLM,
+                                                              monkeypatch):
+    # UNVAR-83: at 80 columns the headers read "json_sche…" and "tool_call…".
+    from rich.console import Console
+
+    from unvarnish import cli
+
+    monkeypatch.setattr(cli, "console", Console(width=80))
+    eng = _engagement(tmp_path, fake_llm)
+    fake_llm.script(GOOD_EXTRACTION)
+    r = runner.invoke(app, ["config", "check", "-e", str(eng.root)])
+    assert r.exit_code == 0, r.output
+    for word in ("phase", "backend", "model", "json", "schema", "tool", "calling", "context",
+                 "probe"):
+        assert word in r.output, r.output
+    assert "…" not in r.output, r.output
+    assert max(len(line) for line in r.output.splitlines()) <= 80
 
 
 def test_config_check_missing_key_is_exit_2(tmp_path, fake_llm: FakeLLM, monkeypatch):

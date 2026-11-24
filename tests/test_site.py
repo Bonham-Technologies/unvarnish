@@ -1,4 +1,4 @@
-"""The unvarnish.com static site under site/ (UNVAR-38): links resolve, pages carry the
+"""The unvarnish.tech static site under site/ (UNVAR-38): links resolve, pages carry the
 metadata and headers the launch needs, and the demo's numbers match its published report."""
 
 import json
@@ -13,7 +13,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
 PAGES = ["index.html", "demo/index.html"]
-SITE_URL = "https://unvarnish.com"
+SITE_URL = "https://unvarnish.tech"
 
 pytestmark = pytest.mark.skipif(not SITE.exists(), reason="needs the repository checkout")
 

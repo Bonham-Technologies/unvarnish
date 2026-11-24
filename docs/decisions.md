@@ -1447,3 +1447,25 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   a reader who wants the other theme changes a system setting; and the site is plainer than
   its siblings by design, which a later identity pass can revisit by changing one token and
   one drawing.
+
+## The site moves to unvarnish.tech (UNVAR-96)
+
+- **unvarnish.tech is the primary address; unvarnish.com redirects to it (owner's choice,
+  2026-11-22).** The .tech No Excuses Fund asks that an applicant's site live on its .tech
+  domain and that the project's own links point there, and that the domain stay on .tech for
+  24 months if awarded. Vercel serves `unvarnish.tech`; `www.unvarnish.tech`, `unvarnish.com`
+  and `www.unvarnish.com` answer with a 308 to it, so old links and search results keep
+  working. *Cost if wrong:* search engines re-index the site under the new host, and the
+  .com keeps renewing as a redirect.
+
+## `config check` without a model (UNVAR-83)
+
+- **No model anywhere prints one sentence and no table; a partly configured engagement keeps
+  the per-phase "no model configured" lines and the table.** A header-only table read as a
+  failure, while a run with no model is a supported scanners-only run. *Cost if wrong:* a
+  script that parsed the empty table finds a sentence instead.
+- **The table's headers are "json schema" and "tool calling", and each column is at least as
+  wide as its longest word.** At 80 columns Rich cut `json_schema` and `tool_calling` to
+  "json_sche…" and "tool_call…"; two-word headers wrap onto two lines instead. The config
+  keys keep their underscores. *Cost if wrong:* a reader matches the header to the config key
+  by eye rather than by exact text.

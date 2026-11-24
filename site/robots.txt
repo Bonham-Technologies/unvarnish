@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://unvarnish.com/sitemap.xml
+Sitemap: https://unvarnish.tech/sitemap.xml

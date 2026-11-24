@@ -32,7 +32,7 @@ unvarnish = "unvarnish.cli:app"
 unv = "unvarnish.cli:app"
 
 [project.urls]
-Homepage = "https://unvarnish.com"
+Homepage = "https://unvarnish.tech"
 Repository = "https://github.com/Bonham-Technologies/unvarnish"
 
 [build-system]
