@@ -1092,9 +1092,9 @@ def config_check(
     else:
         # No phase has a model: a header-only table reads as broken (UNVAR-83). Say what
         # works without one instead.
-        console.print("Scanners-only runs work: no model configured, so `unvarnish run` runs "
-                      "every scanner and skips the model phases. To add a model, set "
-                      "models.default in engagement.yaml.", highlight=False, soft_wrap=True)
+        console.print("No model configured: `unvarnish run` still runs the scanners and skips "
+                      "the model phases. To add a model, set models.default in "
+                      "engagement.yaml.", highlight=False, soft_wrap=True)
     _print_errors(errors)
     if failed:
         raise typer.Exit(code=2)

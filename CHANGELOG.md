@@ -10,8 +10,8 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ### `config check` without a model says what works
 
-- With no model configured, `config check` prints one line saying scanners-only runs work and
-  how to set `models.default`, instead of an empty table. The table's headers read
+- With no model configured, `config check` prints one line saying `run` still runs the
+  scanners and how to set `models.default`, instead of an empty table. The table's headers read
   "json schema" and "tool calling" and wrap in a narrow terminal rather than being cut to
   "json_sche…" at 80 columns (UNVAR-83).
 

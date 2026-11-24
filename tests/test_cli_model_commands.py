@@ -36,7 +36,7 @@ def test_config_check_without_model_says_scanners_work_and_prints_no_table(tmp_p
     assert "┏" not in r.output and "schema" not in r.output
     lines = [line for line in r.output.splitlines() if line.strip()]
     assert len(lines) == 1, r.output
-    assert "Scanners-only runs work" in r.output and "models.default" in r.output
+    assert "still runs the scanners" in r.output and "models.default" in r.output
     assert "extract:" not in r.output and "other phases:" not in r.output
 
 
