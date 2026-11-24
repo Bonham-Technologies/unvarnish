@@ -24,11 +24,17 @@ Requires Python 3.13+ and git; document exports also need pandoc 2.19+, Graphviz
 weasyprint (or use the Docker image below). SARIF and CSV exports need nothing more. Linux and
 macOS run it natively; on Windows use the Docker image, since native Windows is unsupported.
 
-    uv tool install unvarnish        # once published
+    uv tool install git+https://github.com/Bonham-Technologies/unvarnish  # today, from git
+    uv tool install unvarnish        # once published to PyPI (not yet)
     uv tool install .                # from a checkout
     uv sync && uv run unvarnish ...  # or run in place
     unvarnish grammars fetch         # once, while online: the tree-sitter grammars
     unvarnish eol refresh            # while online: end-of-life dates from endoflife.date
+
+Or build the Docker image from a clone (see [Docker](#docker) for running it):
+
+    git clone https://github.com/Bonham-Technologies/unvarnish && cd unvarnish
+    docker build -t unvarnish .
 
 The tree-sitter grammars that measure functions and split code into units download from GitHub
 on first use; `grammars fetch` gets them ahead of time, so a later run needs no network for
