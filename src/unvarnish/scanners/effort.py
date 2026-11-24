@@ -45,6 +45,7 @@ EFFORT_RULES: dict[str, dict[str, tuple[Effort, str]]] = {
     "dependencies": {
         "advisories": (S, "upgrade the package; more across a major version"),
         "unpinned": (S, "commit a lockfile or pin versions"),
+        "licences": (M, "clear the licence with legal, or replace the package"),
     },
     "hardcoded_infra": {
         "url": (M, "move the values into configuration per environment"),

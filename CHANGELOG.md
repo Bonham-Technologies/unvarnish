@@ -8,6 +8,15 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### A CycloneDX SBOM per tool, and licence checks online
+
+- `unvarnish export --format cyclonedx` writes `exports/sbom-<tool>-<timestamp>.cdx.json`, a
+  CycloneDX 1.6 SBOM of each tool's dependencies (package URL, version or constraint,
+  manifest) and known advisories, without running osv-scanner. Online, package licences from
+  deps.dev reach the SBOM, and `scanners.dependencies.licences` flags each licence outside
+  that allowlist as a compliance finding; offline the documents say "licences: not checked".
+  Scans rerun once to pick up the new note (UNVAR-93).
+
 ### `config check` without a model says what works
 
 - With no model configured, `config check` prints one line saying `run` still runs the

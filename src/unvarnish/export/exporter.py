@@ -17,6 +17,7 @@ from unvarnish.engagement import Engagement
 from unvarnish.export.findings_data import csv_text, load_findings, sarif_documents
 from unvarnish.export.graphviz import render_with_dot
 from unvarnish.export.pandoc import DEFAULT_AUTHOR, export_markdown, run_pandoc
+from unvarnish.export.sbom import cyclonedx_document, licence_status
 from unvarnish.export.tools import (
     check_toolchain,
     installed_weasyprint_version,
@@ -24,11 +25,13 @@ from unvarnish.export.tools import (
 )
 from unvarnish.render.diagram import Diagram
 from unvarnish.schemas.diagrams import DiagramSet
+from unvarnish.schemas.inventory import Dependencies
 
 log = logging.getLogger("unvarnish.export")
 DOC_NAMES = ("architecture", "findings", "requirements", "comparison")
 FORMATS = ("docx", "html", "pdf")  # the documents; `--format all` and the default
 DATA_FORMATS = ("sarif", "csv")  # each tool's findings as data; opt-in, no pandoc
+SBOM_FORMATS = ("cyclonedx",)  # each tool's dependencies as an SBOM; opt-in, no pandoc
 ENGAGEMENT = "engagement"
 
 
@@ -154,9 +157,11 @@ def export_engagement(eng: Engagement, *, formats: Sequence[str], docs: Sequence
     as SARIF or CSV when asked. Raises ToolsMissing and ValueError before touching exports/;
     per-file conversion failures are recorded."""
     data_formats = [f for f in formats if f in DATA_FORMATS]
-    formats = [f for f in formats if f not in DATA_FORMATS]
+    sbom_formats = [f for f in formats if f in SBOM_FORMATS]
+    formats = [f for f in formats if f not in (*DATA_FORMATS, *SBOM_FORMATS)]
     if template is not None and not formats:
-        raise ValueError("--template applies to docx, html and pdf, not to sarif or csv")
+        raise ValueError("--template applies to docx, html and pdf, not to sarif, csv or "
+                         "cyclonedx")
     check_template(template, formats)  # the user's own mistakes first, whatever is installed
     branding, template = resolve_branding(eng, template, formats)
     if formats:  # sarif and csv are written here, without pandoc
@@ -209,7 +214,39 @@ def export_engagement(eng: Engagement, *, formats: Sequence[str], docs: Sequence
         for tool in tools:
             for fmt in data_formats:
                 report.items += _export_findings_data(eng, tool, fmt, stamp)
+    for tool in tools:  # the SBOM is each tool's dependencies, whichever documents are asked
+        for fmt in sbom_formats:
+            report.items.append(_export_sbom(eng, tool, fmt, stamp))
     return report
+
+
+def _export_sbom(eng: Engagement, tool: str, fmt: str, stamp: str) -> ExportItem:
+    """exports/sbom-<tool>-<stamp>.cdx.json from dependencies.json, without osv-scanner
+    (UNVAR-93). The item's detail says when licences were not checked."""
+    p = eng.tool_paths(tool)
+    if not p.dependencies.exists():
+        return ExportItem(doc="sbom", tool=tool, fmt=fmt, status="skipped",
+                          detail=f"not inventoried: {p.dependencies.relative_to(eng.root)} "
+                                 "does not exist")
+    out: Path | None = None
+    try:
+        deps = read_artifact(p.dependencies, Dependencies).data
+        offline = eng.config.scanners.get("dependencies", {}).get("offline", True) is not False
+        doc = cyclonedx_document(tool, deps, timestamp=datetime.now(UTC), offline=offline)
+        n, out = 2, eng.exports_dir / f"sbom-{tool}-{stamp}.cdx.json"
+        while out.exists():
+            out, n = eng.exports_dir / f"sbom-{tool}-{stamp}-{n}.cdx.json", n + 1
+        out.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
+                       newline="")
+    except Exception as exc:  # one failed export never kills the others
+        log.exception("export sbom/%s/%s failed", tool, fmt)
+        if out is not None:
+            out.unlink(missing_ok=True)
+        return ExportItem(doc="sbom", tool=tool, fmt=fmt, status="failed", detail=str(exc)[:300])
+    status = licence_status(deps, offline)
+    return ExportItem(doc="sbom", tool=tool, fmt=fmt, status="ok",
+                      path=out.relative_to(eng.root).as_posix(),
+                      detail="" if deps.licences_checked else f"licences: {status}")
 
 
 def _export_findings_data(eng: Engagement, tool: str, fmt: str, stamp: str) -> list[ExportItem]:

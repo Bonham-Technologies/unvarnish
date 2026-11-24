@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 from pathlib import PurePosixPath
 
 from unvarnish.analysis import vulndata
+from unvarnish.analysis.licences import copyleft, expression, satisfied
 from unvarnish.scanners.base import ScanContext
 from unvarnish.scanners.effort import rule_effort
 from unvarnish.scanners.end_of_life import age_phrase, max_data_age_days
@@ -135,7 +136,84 @@ class DependenciesScanner:
 
     def run(self, ctx: ScanContext) -> list[Finding]:
         self.notes = self._exploit_notes(ctx)
-        return self._advisories(ctx) + self._unpinned(ctx)
+        return self._advisories(ctx) + self._unpinned(ctx) + self._licences(ctx)
+
+    def _licences(self, ctx: ScanContext) -> list[Finding]:
+        """Packages whose deps.dev licence is outside `scanners.dependencies.licences`, one
+        finding per manifest and licence; online only, and a note when not checked or when no
+        allowlist is set (UNVAR-93)."""
+        deps = ctx.dependencies
+        if not (deps.dependencies or deps.advisories or deps.packages):
+            return []
+        if not deps.licences_checked:
+            offline = ctx.options.get("offline", True) is not False
+            why = deps.licences_note or ("offline mode" if offline else "not looked up")
+            how = ("set scanners.dependencies.offline: false" if offline
+                   else "fix the cause above")
+            self.notes.append(
+                f"{NAME}: licences: not checked ({why}); osv-scanner reads package licences "
+                f"from deps.dev, so no licence is listed in the SBOM export and none is "
+                f"checked against an allowlist ({how}, then rerun)")
+            return []
+        allow = ctx.options.get("licences")
+        if allow is None:
+            self.notes.append(
+                f"{NAME}: licences: checked, but no allowlist is set "
+                f"(scanners.dependencies.licences), so no licence is flagged")
+            return []
+        if not isinstance(allow, list) or not all(isinstance(x, str) for x in allow):
+            self.notes.append(
+                f"{NAME}: licences: scanners.dependencies.licences must be a list of SPDX "
+                f"licence identifiers; no licence was checked against it")
+            return []
+        allowed = {x.strip().lower() for x in allow}
+        groups: dict[tuple[str, str], list[str]] = defaultdict(list)
+        for p in deps.packages:
+            expr = expression(p.licences)
+            if expr is not None and satisfied(expr, lambda lic: lic.lower() in allowed):
+                continue
+            shown = f"{p.name} {p.version}"
+            key = (p.manifest or ".", expr or "")
+            if shown not in groups[key]:
+                groups[key].append(shown)
+        out = []
+        for (manifest, expr), names in sorted(groups.items()):
+            n = len(names)
+            listed = ", ".join(names[:MAX_UNPINNED])
+            extra = f" (+{n - MAX_UNPINNED} more)" if n > MAX_UNPINNED else ""
+            pkgs = plural(n, "package")
+            verb = "is" if n == 1 else "are"
+            if expr:
+                title = f"Dependency licence outside the allowlist: {expr}"
+                what = f"{verb} licensed {expr}, which the licence allowlist does not include"
+            else:
+                title = "Dependency licence not known"
+                what = (f"{'has' if n == 1 else 'have'} no licence deps.dev can name, so it "
+                        f"cannot be checked against the licence allowlist")
+            strong = bool(expr) and copyleft(expr)
+            impact = ("A copyleft licence can require the source of software that includes "
+                      "the package to be released under the same terms when it is "
+                      "distributed; the tool cannot be handed on outside the company until "
+                      "legal has cleared it." if strong else
+                      "The licence's terms have not been approved for this use, so the tool "
+                      "should not be distributed until they are reviewed.")
+            out.append(Finding(
+                tool=ctx.tool, category=Category.compliance,
+                severity=Severity.medium if strong else Severity.low,
+                title=title,
+                summary=(f"{pkgs} resolved from {manifest} {what} "
+                         f"(scanners.dependencies.licences): {listed}{extra}."),
+                impact=impact,
+                remediation=("Have legal clear the licence for how the tool is used and "
+                             "distributed, or replace the package with one under an approved "
+                             "licence; add licences legal accepts to "
+                             "scanners.dependencies.licences."),
+                evidence=[Evidence(path=manifest,
+                                   note=f"licence {expr or 'not known'}: {listed}{extra}")],
+                source=Source.scanner, scanner=self.name, tags=["licence"],
+                **rule_effort(ctx, self.name, "licences"),
+            ))
+        return out
 
     def _exploit_notes(self, ctx: ScanContext) -> list[str]:
         """One note without exploit data, or with data older than `max_data_age_days`; the

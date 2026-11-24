@@ -3,7 +3,7 @@ import re
 from typer.testing import CliRunner
 
 from unvarnish.cli import app, complete_doc, complete_format, complete_phase
-from unvarnish.export.exporter import DATA_FORMATS, DOC_NAMES, FORMATS
+from unvarnish.export.exporter import DATA_FORMATS, DOC_NAMES, FORMATS, SBOM_FORMATS
 from unvarnish.phases import default_phases
 
 runner = CliRunner()
@@ -31,7 +31,7 @@ def test_run_help_lists_phases():
 
 def test_export_help_lists_formats_and_docs():
     text = _help("export")
-    for name in (*FORMATS, *DATA_FORMATS, *DOC_NAMES):
+    for name in (*FORMATS, *DATA_FORMATS, *SBOM_FORMATS, *DOC_NAMES):
         assert name in text
 
 
@@ -44,7 +44,7 @@ def test_phase_completion_filters_by_prefix():
 
 
 def test_format_and_doc_completion_filter_by_prefix():
-    assert complete_format("") == [*FORMATS, *DATA_FORMATS, "all"]
+    assert complete_format("") == [*FORMATS, *DATA_FORMATS, *SBOM_FORMATS, "all"]
     assert complete_format("D") == ["docx"]
     assert complete_format("s") == ["sarif"]
     assert complete_doc("") == list(DOC_NAMES)
@@ -64,5 +64,6 @@ def _complete(words: str) -> list[str]:
 def test_shell_completion_offers_valid_values():
     assert _complete("unvarnish run --phase rollup") == ["rollup_modules", "rollup_tool"]
     assert _complete("unvarnish run --phase ") == [p.name for p in default_phases()]
-    assert _complete("unvarnish export --format ") == [*FORMATS, *DATA_FORMATS, "all"]
+    assert _complete("unvarnish export --format ") == [*FORMATS, *DATA_FORMATS, *SBOM_FORMATS,
+                                                       "all"]
     assert _complete("unvarnish export --doc f") == ["findings"]

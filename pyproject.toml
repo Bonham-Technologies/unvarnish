@@ -44,6 +44,7 @@ packages = ["src/unvarnish"]
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.26.0",
     "pytest>=8.2",
     "pytest-cov>=6",
     "ruff>=0.6",

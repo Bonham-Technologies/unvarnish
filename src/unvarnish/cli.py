@@ -32,7 +32,13 @@ from unvarnish.config import (
     user_config_path,
 )
 from unvarnish.engagement import Engagement, EngagementError, NotAnEngagement
-from unvarnish.export.exporter import DATA_FORMATS, DOC_NAMES, FORMATS, export_engagement
+from unvarnish.export.exporter import (
+    DATA_FORMATS,
+    DOC_NAMES,
+    FORMATS,
+    SBOM_FORMATS,
+    export_engagement,
+)
 from unvarnish.export.tools import ToolsMissing
 from unvarnish.lock import EngagementLock, EngagementLocked
 from unvarnish.model.base import (
@@ -285,7 +291,7 @@ def complete_phase(incomplete: str) -> list[str]:
 
 def complete_format(incomplete: str) -> list[str]:
     """Shell completion for `export --format`."""
-    return _prefixed((*FORMATS, *DATA_FORMATS, "all"), incomplete)
+    return _prefixed((*FORMATS, *DATA_FORMATS, *SBOM_FORMATS, "all"), incomplete)
 
 
 def complete_doc(incomplete: str) -> list[str]:
@@ -581,7 +587,8 @@ def export(
     tools: list[str] | None = typer.Argument(None, help="Tools to export (default: all)."),
     fmt: list[str] = typer.Option(
         ["all"], "--format", autocompletion=complete_format, callback=_lower,
-        help=f"{', '.join((*FORMATS, *DATA_FORMATS))}, or all ({', '.join(FORMATS)}); "
+        help=f"{', '.join((*FORMATS, *DATA_FORMATS, *SBOM_FORMATS))}, or all "
+             f"({', '.join(FORMATS)}); "
              "repeat for several."),
     template: Path | None = typer.Option(None, "--template",
                                          help="A .docx reference (docx) or .css (html/pdf)."),
@@ -590,19 +597,19 @@ def export(
         help=f"{', '.join(DOC_NAMES)} (default: all)."),
     engagement: Path | None = EngagementOption,
 ) -> None:
-    """Convert the rendered documents to DOCX, HTML, or PDF, and findings to SARIF or CSV,
-    under exports/."""
+    """Convert the rendered documents to DOCX, HTML, or PDF, findings to SARIF or CSV, and
+    dependencies to a CycloneDX SBOM, under exports/."""
     eng = _load_engagement(engagement)
     names = _select_tools(eng, tools)
     _refuse_missing_tools(eng, names)
     formats = list(dict.fromkeys(fmt))
-    if "all" in formats:  # the three documents; sarif and csv are only asked for by name
+    if "all" in formats:  # the three documents; the data formats are only asked for by name
         formats = [*FORMATS, *(f for f in formats if f not in (*FORMATS, "all"))]
-    known = (*FORMATS, *DATA_FORMATS)
+    known = (*FORMATS, *DATA_FORMATS, *SBOM_FORMATS)
     if any(f not in known for f in formats):
         bad = ", ".join(f for f in formats if f not in known)
         err_console.print(f"[red]error:[/red] unknown format {escape(repr(bad))}; "
-                          "use docx, html, pdf, sarif, csv, or all")
+                          "use docx, html, pdf, sarif, csv, cyclonedx, or all")
         raise typer.Exit(code=2)
     unknown = [d for d in (doc or []) if d not in DOC_NAMES]
     if unknown:
