@@ -134,7 +134,7 @@
                         <tr><td><code>generated_bulk</code></td><td>Single commits over a line threshold, noting AI co-author trailers.</td></tr>
                         <tr><td><code>client_exposure</code></td><td>What AI-built web apps ship to the browser: service-role keys and secret-named public variables in client code, database tables without row level security, CORS open to any origin with credentials, credentials in committed <code>.env</code> and MCP config files, and route handlers with no authentication check nearby. Values redacted.</td></tr>
                         <tr><td><code>end_of_life</code></td><td>Runtimes, base images and frameworks past their end of life or close to it, checked against a dated offline copy of endoflife.date.</td></tr>
-                        <tr><td><code>ai_usage</code></td><td>How the tool itself uses AI: each model provider and model it calls, where, and whether it is hosted or local; request input built into a prompt, model output reaching code execution, a shell or SQL, calls with no token limit or timeout, and model-callable tools beside destructive actions. Values redacted.</td></tr>
+                        <tr><td><code>ai_usage</code></td><td>How the tool itself uses AI: each model provider and model it calls, where, and whether it is hosted or local; request input built into a prompt, model output reaching code execution, a shell or SQL, calls with no token limit or timeout, and model-callable tools beside commands, code execution or data writes. Values redacted.</td></tr>
                     </tbody>
                 </table>
             </div>
