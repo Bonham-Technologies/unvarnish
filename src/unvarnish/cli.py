@@ -12,7 +12,7 @@ import typer
 import yaml
 from rich.console import Console
 from rich.markup import escape
-from rich.table import Table
+from rich.table import Column, Table
 
 from unvarnish.analysis.delta import BaselineError, load_baseline
 from unvarnish.artifacts import read_artifact, write_artifact
@@ -1084,15 +1084,20 @@ def config_check(
     # "other phases" resolves to models.default: every phase without an override uses it.
     phases = ["extract", *[p for p in eng.config.models.phases if p != "extract"],
               "other phases"]
-    table = Table("phase", "backend", "model", "json_schema", "tool_calling", "context", "probe")
+    # Two-word headers wrap onto two lines in a narrow terminal instead of being cut to
+    # "json_sche…" and "tool_call…" at 80 columns (UNVAR-83).
+    table = Table(*(Column(header, min_width=max(len(word) for word in header.split()))
+                    for header in ("phase", "backend", "model", "json schema",
+                                   "tool calling", "context", "probe")))
     failed = bool(option_problems)
     errors: list[str] = list(option_problems)
     seen: set[tuple[str, str]] = set()
+    unset: list[str] = []
     for phase in phases:
         ref = resolve_model_ref(eng.config, phase)
         if ref is None:
-            console.print(f"{escape(phase)}: no model configured (set models.default in "
-                          "engagement.yaml)")
+            unset.append(f"{escape(phase)}: no model configured (set models.default in "
+                         "engagement.yaml)")
             continue
         if (ref.backend, ref.model) in seen:
             continue
@@ -1130,7 +1135,16 @@ def config_check(
             table.add_row(escape(phase), escape(ref.backend), escape(ref.model), "-", "-", "-",
                           "[red]error[/red]")
             errors.append(f"{phase}: {exc}")
-    console.print(table)
+    if table.row_count:
+        for line in unset:
+            console.print(line)
+        console.print(table)
+    else:
+        # No phase has a model: a header-only table reads as broken (UNVAR-83). Say what
+        # works without one instead.
+        console.print("No model configured: `unvarnish run` still runs the scanners and skips "
+                      "the model phases. To add a model, set models.default in "
+                      "engagement.yaml.", highlight=False, soft_wrap=True)
     _print_errors(errors)
     if failed:
         raise typer.Exit(code=2)

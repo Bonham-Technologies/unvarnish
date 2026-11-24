@@ -1442,6 +1442,18 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   working. *Cost if wrong:* search engines re-index the site under the new host, and the
   .com keeps renewing as a redirect.
 
+## `config check` without a model (UNVAR-83)
+
+- **No model anywhere prints one sentence and no table; a partly configured engagement keeps
+  the per-phase "no model configured" lines and the table.** A header-only table read as a
+  failure, while a run with no model is a supported scanners-only run. *Cost if wrong:* a
+  script that parsed the empty table finds a sentence instead.
+- **The table's headers are "json schema" and "tool calling", and each column is at least as
+  wide as its longest word.** At 80 columns Rich cut `json_schema` and `tool_calling` to
+  "json_sche…" and "tool_call…"; two-word headers wrap onto two lines instead. The config
+  keys keep their underscores. *Cost if wrong:* a reader matches the header to the config key
+  by eye rather than by exact text.
+
 ## Known-exploited and likely-exploited advisories (UNVAR-90)
 
 - **A KEV-listed advisory is raised to critical; EPSS is shown and orders, never re-rates
