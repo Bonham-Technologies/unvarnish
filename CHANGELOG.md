@@ -88,6 +88,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   exploited (CISA KEV, added <date>)", and every advisory shows its EPSS score, which orders
   them, in `dependencies.json`, findings.md, CSV and SARIF (UNVAR-90).
 
+### The README has an install line that works today
+
+- The README's first install line is `uv tool install git+https://github.com/Bonham-Technologies/unvarnish`;
+  the PyPI line is marked "not yet", and a clone-and-`docker build` route sits beside it
+  (UNVAR-84).
+
 ### The site lives at unvarnish.tech
 
 - The public site's canonical address, Open Graph and structured-data URLs, sitemap, robots
