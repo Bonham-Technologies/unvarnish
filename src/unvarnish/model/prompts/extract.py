@@ -19,6 +19,12 @@ ROUTE_NOTE = (
     "(a heuristic). Confirm whether it is protected (middleware, a wrapper, a check in the "
     "body); if it is not and it reads or changes data, report it as a candidate finding."
 )
+AI_NOTE = (
+    "Scanner note: line {line} calls a model or defines a tool for one (a heuristic). Check "
+    "what reaches the prompt (request input mixed into instructions is a prompt-injection "
+    "path) and what the code does with the answer or the tool calls (code execution, a "
+    "shell, SQL, file or data changes); report a candidate finding if either is unsafe."
+)
 GENERATED_INSTRUCTION = (
     "This unit comes from a generated or minified file. Report only purpose and external_calls; "
     "leave the other lists empty and candidate_findings empty unless a credential is visible."

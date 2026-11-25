@@ -38,6 +38,7 @@ from unvarnish.render.markdown import (
     template_source_hash,
 )
 from unvarnish.render.prose import PROSE_PROMPT_VERSION, generate_prose
+from unvarnish.schemas.ai_usage import AIUsage
 from unvarnish.schemas.analysis import FailureRecord, Failures
 from unvarnish.schemas.comparison import (
     CapabilityNormalisation,
@@ -80,6 +81,7 @@ class ToolInputs:
     tool_model: ToolModel | None
     model_findings: ModelFindings | None
     errors: list[str]  # optional artifacts that exist but could not be read
+    ai_usage: AIUsage | None = None  # None when the ai_usage scanner did not run (UNVAR-91)
 
 
 def _optional[T](path: Path, cls: type[T], errors: list[str]) -> T | None:
@@ -109,6 +111,7 @@ def load_tool_inputs(eng: Engagement, tool: str) -> ToolInputs | None:
         tool_model=_optional(p.tool_model, ToolModel, errors),
         model_findings=_optional(p.model_findings, ModelFindings, errors),
         errors=errors,
+        ai_usage=_optional(p.ai_usage, AIUsage, errors),
     )
 
 
@@ -143,7 +146,7 @@ class ComparePhase:
         for tool in eng.tool_names():
             p = eng.tool_paths(tool)
             out += [p.census, p.metrics, p.git, p.dependencies, p.scanner_findings,
-                    p.tool_model, p.model_findings]
+                    p.tool_model, p.model_findings, p.ai_usage]
         return out
 
     def inputs_hash(self, ectx: EngagementContext) -> str:
@@ -230,7 +233,8 @@ class ComparePhase:
         integration = integration_map(models, grouping)
         summaries = [tool_summary(i.tool, i.tool_model, i.census) for i in inputs]
         risk = [risk_row(i.tool, i.census, i.metrics, i.git, i.scan, i.model_findings, i.deps,
-                         model_analysed=i.tool_model is not None) for i in inputs]
+                         model_analysed=i.tool_model is not None, ai_usage=i.ai_usage)
+                for i in inputs]
 
         if len(models) >= 2 and backend is not None and not stopped:
             consolidation = call(

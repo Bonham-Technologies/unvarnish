@@ -1577,6 +1577,76 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   arguments that carry tokens stay out of the report. *Cost if wrong:* a team that vets
   `@latest` on purpose gets a review line per server; a Docker image tag is not checked.
 
+## AI services a tool uses (UNVAR-91)
+
+- **One deterministic scanner with an inventory and four checks (owner's choice, option A).**
+  The consultant needs to tell leadership which internal tools send data to which model
+  provider, and the inheriting engineer where prompt injection and excessive agency start;
+  both come from the code without a model. The provider, endpoint, model-id and framework
+  tables in `scanners/ai_usage.py` are data, so a new provider is a table row. *Cost if
+  wrong:* a provider missing from the tables is missed until it is added; extraction, told
+  about each model call, can still name it.
+- **The scan phase writes `inventory/ai-usage.json`, not the scanner.** No scanner wrote an
+  artifact of its own before: scanners return findings, and the scan phase writes
+  `scanner-findings.json`. The inventory is not a list of findings (a tool can use a model
+  safely), so `ScanContext.inventory` carries it back and the scan phase writes it with its
+  own inputs hash; it is one of the phase's outputs, so deleting it reruns the scan. A
+  scanner failure leaves no file, which the documents show as "not checked" and which makes
+  the scan rerun next time. *Cost if wrong:* a second scanner with an inventory needs the
+  same two lines in the scan phase.
+- **Low false positives over breadth.** Model ids count only in a file with a provider signal
+  (an import, an endpoint or a client class), or on a `model` line when the id's pattern
+  names its provider; call patterns shared with other APIs (`.messages.create(` is also
+  Twilio's) count only beside that provider's import; a JavaScript-only package name
+  (`ai`, `llamaindex`) imported in Python is the tool's own package, and so is
+  django-haystack's `haystack.indexes`; a Django `model = "auth.User"`, a class name, or a
+  bare `o1`/`o3` outside a `model` line of an AI file is not a model id. A loopback base URL
+  (`http://localhost:8000`) is every web app's, so it names a local model server only beside
+  another AI signal in the file (an SDK import or an OpenAI-compatible client), or when an
+  OpenAI-style path (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`) is built
+  from it; Anthropic's `/v1/messages` and Ollama's own paths at another port count only
+  beside another AI signal (both are common app routes). Data flow is per file, by
+  assignment statement: lines inside open brackets, after a backslash or inside a
+  multi-line string continue a statement, so a multi-line `def` signature, a keyword
+  argument or column-0 text in a docstring is not a statement, and an assignment reads its
+  continuation lines. A value lives from the line it is bound until an unconditional
+  reassignment from untainted values (a statement at the same or a lower indentation with
+  no line between them indented less, so an `else:` or another branch does not end it) or
+  the end of its Python function. Each live name is followed to the next assignment that
+  reads or binds it, over an index of the file's assignments built once, so the cost
+  follows the names reached rather than the file's length per prompt line (a whole-file
+  pass per line took minutes on a 15,000-line handler file), and a call's argument text
+  stops at 4,000 characters (a minified line after 30 calls took 30 seconds). An SDK pointed at a gateway's endpoint (the OpenAI client at
+  `localhost:11434`) is recorded as the gateway, via the SDK. *Cost if wrong:* flows across
+  files and through function parameters are missed, and a value reassigned in a branch
+  still counts (known issues).
+- **Severities: output to eval/exec, a shell or SQL text is high; request input in a prompt
+  is one medium review finding; tools beside powerful actions are medium; unbounded calls
+  are low.** The first is code execution with the tool's privileges for whoever controls the
+  model's input; the second is a list to confirm, like the route review finding; the owner
+  asked to keep excessive agency modest. A call counts as bounded when it sets a token limit
+  or spreads options it may hold, or when its file mentions a timeout anywhere or a token
+  limit outside any call (a client default). *Cost if wrong:* a call bounded only in another
+  file is reported, and a file-wide timeout hides an unbounded call beside it.
+- **API keys stay with the secrets scanner; excerpts redact every credential shape we can
+  recognise.** The inventory holds no excerpts and checks each model id against the secrets
+  rules (and drops any with `://`). A finding excerpt is cut to 1,000 characters (which
+  bounds the cost of the patterns), then redacted by the secrets rules and these shapes: a
+  trailing comment; URL userinfo and query values (Gemini's `?key=`); the value of any name
+  that mentions a key, token, secret, password, pass (also a name ending in it, `DBPASS`,
+  `smtppass`), passphrase, pin, signature, auth, session or cookie, in code (`"x-api-key": KEY || "..."`, `"Authorization": "Bearer " + "..."`) or
+  inside a string (`PGPASSWORD=...`, `"dbname=x password=..."`); env-lookup defaults and a
+  fallback after an env-style constant; `auth=(...)` tuples and Basic auth arguments; the
+  first argument to an AI client constructor (`OpenAI("...")`); `-p`, `-u user:pass`,
+  `--password` and `--passphrase` on a command line, in shell text or as list-form
+  arguments (`["-p", "..."]`); and any token of 12 or more characters with letters and
+  digits inside a string literal unless it is a model id or a host name. *Cost if wrong:*
+  this is not a guarantee. A credential with none of these shapes still shows: a short or
+  letters-only value with no secret-like name beside it (`{"X-Upstream": "..."}`, a
+  password passed positionally to a function that is not an AI client, a bare word in
+  shell text, `redis-cli -a ...`, SQL `IDENTIFIED BY '...'`). An excerpt can also lose a
+  harmless long identifier, or the value beside a name like `bypass`.
+
 ## CycloneDX SBOM and dependency licences (UNVAR-93)
 
 - **SBOM export now, licences only online (owner's choice, option A).** `export --format

@@ -64,6 +64,28 @@
 {% endfor %}
 
 {% endif %}
+**AI services used (scanner)**
+
+{% if ai_services is none %}
+Not checked: the ai_usage scanner did not run for this tool.
+{% else %}
+| Provider | Model | Location | Hosting |
+|---|---|---|---|
+{% for a in ai_services.rows %}
+| {{ a.provider | cell }} | {{ a.model | code_span if a.model else "—" }} | `{{ a.location }}` | {{ a.hosting }} |
+{% else %}
+| — | — | None found | — |
+{% endfor %}
+{% if ai_services.more %}
+
+{{ ai_services.more }} more in `inventory/ai-usage.json`.
+{% endif %}
+{% if ai_services.tools %}
+
+Tools and agents handed to a model: {{ ai_services.tools | join(", ") }}{% if ai_services.more_tools %}, and {{ ai_services.more_tools }} more{% endif %}.
+{% endif %}
+{% endif %}
+
 ## 3. Internal stack
 
 | Layer | Value |

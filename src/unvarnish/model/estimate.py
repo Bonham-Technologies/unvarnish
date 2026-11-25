@@ -141,6 +141,7 @@ def extracted_units(ctx: ToolContext, index: UnitsIndex) -> set[str]:
     from unvarnish.model.registry import resolve_model_ref
     from unvarnish.phases.base import _recorded_hash
     from unvarnish.phases.extract import unit_inputs_hash, unit_notes
+    from unvarnish.scanners.ai_usage import ai_hints
     from unvarnish.scanners.client_exposure import route_hints
 
     if not ctx.paths.unit_dir.exists():
@@ -148,6 +149,7 @@ def extracted_units(ctx: ToolContext, index: UnitsIndex) -> set[str]:
     ref = resolve_model_ref(ctx.config, "extract")
     by_id = {u.id: u for u in index.units}
     hints = route_hints(ctx.paths.scanner_findings)
+    ai = ai_hints(ctx.paths.ai_usage)
     done: set[str] = set()
     for path, ids in index.modules.items():
         try:
@@ -163,7 +165,7 @@ def extracted_units(ctx: ToolContext, index: UnitsIndex) -> set[str]:
                 continue
             unit = by_id[uid]
             h = unit_inputs_hash(unit, source[unit.byte_start:unit.byte_end], ref.backend,
-                                 ref.model, ref.effort, unit_notes(unit, hints))
+                                 ref.model, ref.effort, unit_notes(unit, hints, ai))
             if _recorded_hash(art) == h:
                 done.add(uid)
     return done

@@ -36,6 +36,7 @@ class ToolPaths:
         self.dependencies = self.inventory / "dependencies.json"
         self.git = self.inventory / "git.json"
         self.scanner_findings = self.inventory / "scanner-findings.json"
+        self.ai_usage = self.inventory / "ai-usage.json"  # written by scan (UNVAR-91)
         self.failures = self.analysis / "failures.json"
         self.findings_doc = self.docs / "findings.md"
         self.render_state = self.docs / "render-state.json"

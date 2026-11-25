@@ -6,6 +6,7 @@ from unvarnish.analysis.effort import effort_counts
 from unvarnish.analysis.languages import Classification
 from unvarnish.render.findings import ai_indicators, is_history, merged_findings
 from unvarnish.scanners.client_exposure import exposure_counts
+from unvarnish.schemas.ai_usage import AIUsage
 from unvarnish.schemas.comparison import (
     CapabilityNormalisation,
     IntegrationEntry,
@@ -133,7 +134,7 @@ def integration_map(models: dict[str, ToolModel],
 
 def risk_row(tool: str, census: Census, metrics: Metrics, git: GitStats, scan: ScannerFindings,
              model_findings: ModelFindings | None, deps: Dependencies, *,
-             model_analysed: bool | None = None) -> RiskRow:
+             model_analysed: bool | None = None, ai_usage: AIUsage | None = None) -> RiskRow:
     """One tool's "by the numbers" row. `model_analysed` means a tool model exists (the same
     gate the matrix and proposal use); it defaults to whether model findings exist."""
     live = [f for f in census.files if not f.excluded]
@@ -160,6 +161,7 @@ def risk_row(tool: str, census: Census, metrics: Metrics, git: GitStats, scan: S
         dependency_vulnerabilities=len(deps.advisories) if deps.advisories_checked else None,
         client_exposed_credentials=exposure["credentials"], open_tables=exposure["open_tables"],
         findings_by_effort=effort_counts(findings),
+        ai_services=ai_usage.providers_by_hosting() if ai_usage is not None else None,
     )
 
 

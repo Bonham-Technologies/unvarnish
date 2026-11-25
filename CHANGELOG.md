@@ -53,6 +53,19 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   excerpt, note, model prompt (prose and ask included), rendered document and export shows the
   characters as `[U+XXXX]` escapes, never raw, and line numbers are unchanged. Scans rerun once (UNVAR-92).
 
+### Which AI services a tool uses
+
+- A new `ai_usage` scanner records how a tool's own code uses AI: each AI SDK import, provider
+  endpoint (raw HTTP included), model id and declared AI dependency, with the provider, the
+  model, `file:line` and whether it is hosted or local, in `inventory/ai-usage.json`.
+  architecture.md gains an "AI services used" table and the comparison's risk table an "AI
+  services used" row. Four checks follow the OWASP Top 10 for LLM applications: request input
+  built into a prompt (one review finding tagged `owasp-llm01`), model output reaching
+  eval/exec, a shell or SQL (high), model calls with no token limit or timeout (low), and
+  model-callable tools beside commands, file deletion or database writes (medium). Model
+  calls and tool definitions reach extraction as scanner notes. Scans rerun once
+  (UNVAR-91).
+
 ### A CycloneDX SBOM per tool, and licence checks online
 
 - `unvarnish export --format cyclonedx` writes `exports/sbom-<tool>-<timestamp>.cdx.json`, a

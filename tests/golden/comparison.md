@@ -54,6 +54,7 @@ flowchart LR
 | Secrets in working tree | 0 | 0 | 
 | Secrets in history | 2 | 2 | 
 | Client-exposed credentials / open tables | 0 / 0 | 0 / 0 | 
+| AI services used | none found | none found | 
 | Bus factor | 1 | 1 | 
 | Top author share | 100% | 100% | 
 | Critical or high findings | 11 | 11 | 

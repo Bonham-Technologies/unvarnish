@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from unvarnish.artifacts import read_artifact
 from unvarnish.phases.base import ToolContext
+from unvarnish.schemas.ai_usage import AIUsage
 from unvarnish.schemas.analysis import ExtractState, Failures, UnitsIndex
 from unvarnish.schemas.delta import Delta
 from unvarnish.schemas.git import GitStats
@@ -34,6 +35,7 @@ class RenderInputs:
     requirements: RequirementsInventory | None = None
     model_findings: ModelFindings | None = None
     failures: Failures | None = None
+    ai_usage: AIUsage | None = None  # None when the ai_usage scanner did not run (UNVAR-91)
     delta: Delta | None = None  # set by the render phase when there is a baseline (UNVAR-40)
 
 
@@ -62,4 +64,5 @@ def load_render_inputs(ctx: ToolContext) -> RenderInputs:
         requirements=_optional(p.capabilities, RequirementsInventory),
         model_findings=_optional(p.model_findings, ModelFindings),
         failures=_optional(p.failures, Failures),
+        ai_usage=_optional(p.ai_usage, AIUsage),
     )

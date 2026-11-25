@@ -45,6 +45,15 @@ def _cost_measures(cmp: Comparison, days: EffortDays | None) -> list[tuple[str, 
     return out
 
 
+def ai_services_cell(services: dict[str, list[str]] | None) -> str:
+    """Providers by hosting (UNVAR-91), "none found", or "not checked" without the scanner."""
+    if services is None:
+        return "not checked"
+    if not services:
+        return "none found"
+    return "; ".join(f"{hosting}: {', '.join(names)}" for hosting, names in services.items())
+
+
 def _risk_measures(cmp: Comparison, days: EffortDays | None = None) -> list[dict]:
     rows = cmp.risk_table
     severities = ("critical", "high", "medium", "low", "info")
@@ -59,6 +68,7 @@ def _risk_measures(cmp: Comparison, days: EffortDays | None = None) -> list[dict
         ("Client-exposed credentials / open tables",
          ["not checked" if r.client_exposed_credentials is None
           else f"{r.client_exposed_credentials} / {r.open_tables}" for r in rows]),
+        ("AI services used", [ai_services_cell(r.ai_services) for r in rows]),
         ("Bus factor", ["—" if r.bus_factor is None else str(r.bus_factor) for r in rows]),
         ("Top author share", [_pct(r.top_author_share) for r in rows]),
         ("Critical or high findings", [str(r.critical_or_high) for r in rows]),

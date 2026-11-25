@@ -4,6 +4,27 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
 
 ## Open
 
+- [UNVAR-91] The `ai_usage` checks follow data within one file, by assignment: request input
+  passed through a function parameter, or a prompt built in one file and sent from another,
+  is missed (a FastAPI or Gradio handler's parameters are not request input to it). A value
+  ends at an unconditional reassignment or, in Python, at the end of its function; a value
+  bound at module level reaches functions defined below it, so a later function whose
+  parameter has the same name can give a false high. In JavaScript and TypeScript a value
+  is not bounded by its function, and a `const` redeclared in another function does not end
+  it, so a name reused in another function can give a false high; a value reassigned in a
+  branch still counts.
+  Statements are found by counting brackets outside string literals, approximately: a
+  bracket in a JavaScript regular expression can join lines until the next top-level
+  `function`, `const` or similar. The verify phase re-checks model findings only, so these
+  scanner findings are not re-checked against the code: read the cited line. Finding
+  excerpts redact the credential shapes listed in docs/decisions.md, not every credential:
+  a short or letters-only value with no secret-like name beside it can still show. Imports
+  are read for Python and JavaScript/TypeScript only; other languages are recorded through
+  endpoints and model ids, and a provider host in a docstring counts. A local
+  OpenAI-compatible server is recognised by Ollama's port, LM Studio's
+  `localhost:1234/v1`, or a loopback URL beside an SDK import or an OpenAI-compatible
+  client, or with an OpenAI-style path, not by other ports, hosts or by Anthropic's or
+  Ollama's paths alone.
 - [UNVAR-34] After a `touch`, `git checkout` or re-clone that leaves content unchanged, `run
   --dry-run` still lists every phase from the inventory on: it cannot know the census will
   come out the same without rebuilding it. The real run reruns only the inventory. The

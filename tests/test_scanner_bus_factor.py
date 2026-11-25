@@ -59,4 +59,5 @@ def test_builtin_registry_order():
         "hardcoded_infra", "vendored_bulk", "generated_bulk", "client_exposure", "end_of_life",
         "hidden_text",
         "sast",
+        "ai_usage",
     ]
