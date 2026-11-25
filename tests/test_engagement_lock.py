@@ -503,8 +503,8 @@ def test_the_heartbeat_stops_once_the_descriptor_is_gone(tmp_path: Path):
 
 def test_a_release_that_cannot_empty_the_file_still_drops_the_lock(tmp_path: Path,
                                                                    monkeypatch):
-    """The flock goes with the descriptor; the next run finds the contents and takes the
-    lock over because their holder has exited."""
+    """The flock goes with the descriptor; the next run finds the contents, sees the
+    flock free on the same kernel, and takes the lock over."""
     path = tmp_path / "run.lock"
     lock = _lock(path)
     lock.acquire()
