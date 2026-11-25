@@ -87,6 +87,7 @@ skips the model phases. To enable them, add a backend and a default model to `en
       anthropic:
         type: anthropic
         api_key_env: ANTHROPIC_API_KEY
+        # batch: true               # verify and prose via the Message Batches API, half price
       onprem:
         type: openai_compatible
         base_url: http://llm.client.internal:8000/v1

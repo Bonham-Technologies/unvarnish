@@ -112,6 +112,14 @@ def build_prose_request(block: ProseBlock, facts: dict, tone: str,
         cache_system=True))
 
 
+def first_prose_requests(requested: dict[str, dict], *, tone: str,
+                         effort: str | None) -> list[CompletionRequest]:
+    """The first call generate_prose makes for each known block: what a message batch sends
+    ahead of it (UNVAR-94). Retries for a cut-off or miscounted text stay ordinary calls."""
+    return [build_prose_request(BLOCKS[name], facts, tone, effort)
+            for name, facts in requested.items() if name in BLOCKS]
+
+
 def count_mismatches(text: str, facts: dict) -> list[str]:
     """Severity counts stated in the text ("eight medium") that the facts contradict. Smaller
     models miscount; the tables beside the prose come from data and stay right."""

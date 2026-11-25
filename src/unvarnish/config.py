@@ -128,6 +128,16 @@ class BackendConfig(BaseModel):
     # {"provider": {"require_parameters": true}} or vLLM's guided-decoding options.
     extra_body: dict[str, Any] | None = None
     capabilities: BackendCapabilities = Field(default_factory=BackendCapabilities)
+    # Send the verify phase and the render prose calls through Anthropic's Message Batches
+    # API: half the price, results within about an hour (UNVAR-94). Off by default.
+    batch: bool = False
+
+    @model_validator(mode="after")
+    def _batch_is_anthropic(self) -> BackendConfig:
+        if self.batch and self.type != "anthropic":
+            raise ValueError("batch: true needs type: anthropic (the Message Batches API is "
+                             f"Anthropic's; a {self.type} backend has none)")
+        return self
 
     @model_validator(mode="before")
     @classmethod

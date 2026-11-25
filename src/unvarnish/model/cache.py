@@ -40,8 +40,27 @@ class CachingBackend:
     def capabilities(self) -> BackendCapabilities:
         return self.inner.capabilities
 
+    def key(self, req: CompletionRequest) -> str:
+        return cache_key(self.inner.name, self.inner.model, req)
+
     def _path(self, req: CompletionRequest) -> Path:
-        return self.cache_dir / f"{cache_key(self.inner.name, self.inner.model, req)}.json"
+        return self.cache_dir / f"{self.key(req)}.json"
+
+    def has(self, req: CompletionRequest) -> bool:
+        return self._path(req).exists()
+
+    def store(self, key: str, resp: CompletionResponse) -> bool:
+        """Keep `resp` as the reply to the request whose key is `key`, unless it is a refusal,
+        empty, or cut off: those are never cached. True when it was kept."""
+        truncated = resp.stop_reason in ("max_tokens", "length")
+        if resp.refusal_category is not None or not resp.text.strip() or truncated:
+            return False
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(dir=self.cache_dir, suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(resp.model_dump_json())
+        os.replace(tmp_name, self.cache_dir / f"{key}.json")
+        return True
 
     def complete(self, req: CompletionRequest) -> CompletionResponse:
         path = self._path(req)
@@ -49,13 +68,7 @@ class CachingBackend:
             stored = CompletionResponse.model_validate_json(path.read_text(encoding="utf-8"))
             return stored.model_copy(update={"cached": True, "usage": Usage()})
         resp = self.inner.complete(req)
-        truncated = resp.stop_reason in ("max_tokens", "length")
-        if resp.refusal_category is None and resp.text.strip() and not truncated:
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
-            fd, tmp_name = tempfile.mkstemp(dir=self.cache_dir, suffix=".tmp")
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(resp.model_dump_json())
-            os.replace(tmp_name, path)
+        self.store(self.key(req), resp)
         return resp
 
     def forget(self, reqs: Iterable[CompletionRequest]) -> int:
