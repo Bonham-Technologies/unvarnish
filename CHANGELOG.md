@@ -14,6 +14,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   that cannot empty the lock file (`lock.py` from 83% to 99%), and the coverage floor rises
   from 94 to 95 (UNVAR-87).
 
+### Document headers without empty fields
+
+- A document header leaves out the client or the firm when `init` was not given one,
+  instead of printing `**Client:** —` in a client deliverable; `init` says when the
+  documents will carry no client or firm name and how to set one (UNVAR-85).
+
 ### Hidden text in rule files and source
 
 - A new `hidden_text` scanner reports characters that display as nothing: bidirectional
