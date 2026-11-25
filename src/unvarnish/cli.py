@@ -12,7 +12,7 @@ import typer
 import yaml
 from rich.console import Console
 from rich.markup import escape
-from rich.table import Table
+from rich.table import Column, Table
 
 from unvarnish.analysis.delta import BaselineError, load_baseline
 from unvarnish.artifacts import read_artifact, write_artifact
@@ -32,7 +32,13 @@ from unvarnish.config import (
     user_config_path,
 )
 from unvarnish.engagement import Engagement, EngagementError, NotAnEngagement
-from unvarnish.export.exporter import DATA_FORMATS, DOC_NAMES, FORMATS, export_engagement
+from unvarnish.export.exporter import (
+    DATA_FORMATS,
+    DOC_NAMES,
+    FORMATS,
+    SBOM_FORMATS,
+    export_engagement,
+)
 from unvarnish.export.tools import ToolsMissing
 from unvarnish.lock import EngagementLock, EngagementLocked
 from unvarnish.model.base import (
@@ -116,6 +122,14 @@ def init(
         err_console.print(f"[red]error:[/red] {escape(str(exc))}")
         raise typer.Exit(code=2) from exc
     console.print(f"Created engagement at [bold]{escape(str(eng.root))}[/bold]")
+    if not client:
+        console.print("Note: the documents will carry no client name; set one with "
+                      "[cyan]--client[/cyan], or as [cyan]client:[/cyan] in "
+                      "engagement.yaml.")
+    if not consultant:
+        console.print("Note: the documents will carry no firm name; set one with "
+                      "[cyan]--consultant[/cyan], or as [cyan]consultant:[/cyan] in "
+                      "engagement.yaml.")
     console.print("Next: [cyan]unvarnish add <name> --repo <url|path>[/cyan] from inside it.")
 
 
@@ -182,16 +196,34 @@ EngagementOption = typer.Option(
 )
 
 
-@app.command()
+@app.command(context_settings={"allow_extra_args": True})
 def add(
+    ctx: typer.Context,
     name: str = typer.Argument(..., help="Tool name: lowercase, digits, - and _."),
     repo: str | None = typer.Option(None, "--repo", help="Git URL or local repo path."),
     files: Path | None = typer.Option(None, "--files", help="Directory of loose files."),
     branch: str | None = typer.Option(None, "--branch", help="Branch to check out."),
-    link: bool = typer.Option(False, "--link", help="Record the path instead of copying."),
+    link: bool = typer.Option(
+        False, "--link",
+        help="Record the local path instead of copying it; use with --repo or --files.",
+    ),
     engagement: Path | None = EngagementOption,
 ) -> None:
     """Register a tool and ingest its source."""
+    if ctx.args:  # `add z --link PATH`: --link is a flag, so PATH lands here (UNVAR-86)
+        extra = " ".join(ctx.args)
+        if link and repo is None and files is None:
+            err_console.print(
+                f"[red]error:[/red] --link takes no path; name the source with --repo or "
+                f"--files: unvarnish add {escape(name)} --link --repo PATH (or --files DIR)",
+                soft_wrap=True, highlight=False)
+        else:
+            err_console.print(
+                f"[red]error:[/red] unexpected {pluralize(len(ctx.args), 'argument')} "
+                f"{escape(extra)}" + ("" if repo is not None or files is not None else
+                                      "; name the source with --repo URL|PATH or --files DIR"),
+                soft_wrap=True, highlight=False)
+        raise typer.Exit(code=2)
     if (repo is None) == (files is None):
         err_console.print("[red]error:[/red] pass exactly one of --repo or --files")
         raise typer.Exit(code=2)
@@ -285,7 +317,7 @@ def complete_phase(incomplete: str) -> list[str]:
 
 def complete_format(incomplete: str) -> list[str]:
     """Shell completion for `export --format`."""
-    return _prefixed((*FORMATS, *DATA_FORMATS, "all"), incomplete)
+    return _prefixed((*FORMATS, *DATA_FORMATS, *SBOM_FORMATS, "all"), incomplete)
 
 
 def complete_doc(incomplete: str) -> list[str]:
@@ -581,7 +613,8 @@ def export(
     tools: list[str] | None = typer.Argument(None, help="Tools to export (default: all)."),
     fmt: list[str] = typer.Option(
         ["all"], "--format", autocompletion=complete_format, callback=_lower,
-        help=f"{', '.join((*FORMATS, *DATA_FORMATS))}, or all ({', '.join(FORMATS)}); "
+        help=f"{', '.join((*FORMATS, *DATA_FORMATS, *SBOM_FORMATS))}, or all "
+             f"({', '.join(FORMATS)}); "
              "repeat for several."),
     template: Path | None = typer.Option(None, "--template",
                                          help="A .docx reference (docx) or .css (html/pdf)."),
@@ -590,19 +623,19 @@ def export(
         help=f"{', '.join(DOC_NAMES)} (default: all)."),
     engagement: Path | None = EngagementOption,
 ) -> None:
-    """Convert the rendered documents to DOCX, HTML, or PDF, and findings to SARIF or CSV,
-    under exports/."""
+    """Convert the rendered documents to DOCX, HTML, or PDF, findings to SARIF or CSV, and
+    dependencies to a CycloneDX SBOM, under exports/."""
     eng = _load_engagement(engagement)
     names = _select_tools(eng, tools)
     _refuse_missing_tools(eng, names)
     formats = list(dict.fromkeys(fmt))
-    if "all" in formats:  # the three documents; sarif and csv are only asked for by name
+    if "all" in formats:  # the three documents; the data formats are only asked for by name
         formats = [*FORMATS, *(f for f in formats if f not in (*FORMATS, "all"))]
-    known = (*FORMATS, *DATA_FORMATS)
+    known = (*FORMATS, *DATA_FORMATS, *SBOM_FORMATS)
     if any(f not in known for f in formats):
         bad = ", ".join(f for f in formats if f not in known)
         err_console.print(f"[red]error:[/red] unknown format {escape(repr(bad))}; "
-                          "use docx, html, pdf, sarif, csv, or all")
+                          "use docx, html, pdf, sarif, csv, cyclonedx, or all")
         raise typer.Exit(code=2)
     unknown = [d for d in (doc or []) if d not in DOC_NAMES]
     if unknown:
@@ -992,6 +1025,56 @@ def eol_refresh(
                   f"in {escape(str(path))}", soft_wrap=True)
 
 
+vulndata_app = typer.Typer(help="Exploit data for dependency advisories: CISA KEV and EPSS.",
+                           no_args_is_help=True)
+app.add_typer(vulndata_app, name="vulndata")
+
+
+@vulndata_app.command("refresh")
+def vulndata_refresh(
+    data_dir: Path | None = typer.Option(
+        None, "--dir",
+        help="Folder for vulndata.gz; set UNVARNISH_VULNDATA_DIR to it when running. Default: "
+             "that variable, else the end-of-life data folder (see `eol refresh`)."),
+    attempts: int = typer.Option(4, "--attempts", min=1, help="Download attempts per feed."),
+    kev_url: str | None = typer.Option(
+        None, "--kev-url", help="CISA KEV catalog JSON feed, for a mirror or a moved feed."),
+    epss_url: str | None = typer.Option(
+        None, "--epss-url", help="FIRST EPSS scores (gzipped CSV), for a mirror or a moved feed."),
+) -> None:
+    """Download CISA's known exploited vulnerabilities and FIRST's EPSS scores, so runs mark
+    dependency advisories offline."""
+    from unvarnish.analysis import vulndata
+
+    def unwritable(exc: OSError) -> typer.Exit:
+        where = data_dir or vulndata.data_dir()
+        err_console.print(f"[red]error:[/red] cannot write to {escape(str(where))}: "
+                          f"{escape(exc.strerror or str(exc))}; choose a writable folder "
+                          "with --dir", soft_wrap=True)
+        return typer.Exit(code=1)
+
+    try:
+        vulndata.ensure_writable(data_dir)
+    except OSError as exc:
+        raise unwritable(exc) from exc
+    try:
+        bundle, scores = vulndata.build_bundle(attempts=attempts,
+                                               kev_url=kev_url or vulndata.KEV_URL,
+                                               epss_url=epss_url or vulndata.EPSS_URL)
+    except vulndata.VulnDataFetchError as exc:
+        err_console.print(f"[red]error:[/red] exploit data download failed, "
+                          f"{escape(str(exc))}; the previous bundle, if any, is unchanged",
+                          soft_wrap=True)
+        raise typer.Exit(code=1) from exc
+    try:
+        path = vulndata.write_bundle(bundle, scores, data_dir)
+    except OSError as exc:
+        raise unwritable(exc) from exc
+    console.print(f"{len(bundle.kev)} known exploited CVEs and {bundle.epss_scores} EPSS "
+                  f"scores, data dated {bundle.fetched.isoformat()}, in {escape(str(path))}",
+                  soft_wrap=True)
+
+
 config_app = typer.Typer(help="Configuration commands.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 cache_app = typer.Typer(help="Model response cache.", no_args_is_help=True)
@@ -1034,15 +1117,20 @@ def config_check(
     # "other phases" resolves to models.default: every phase without an override uses it.
     phases = ["extract", *[p for p in eng.config.models.phases if p != "extract"],
               "other phases"]
-    table = Table("phase", "backend", "model", "json_schema", "tool_calling", "context", "probe")
+    # Two-word headers wrap onto two lines in a narrow terminal instead of being cut to
+    # "json_sche…" and "tool_call…" at 80 columns (UNVAR-83).
+    table = Table(*(Column(header, min_width=max(len(word) for word in header.split()))
+                    for header in ("phase", "backend", "model", "json schema",
+                                   "tool calling", "context", "probe")))
     failed = bool(option_problems)
     errors: list[str] = list(option_problems)
     seen: set[tuple[str, str]] = set()
+    unset: list[str] = []
     for phase in phases:
         ref = resolve_model_ref(eng.config, phase)
         if ref is None:
-            console.print(f"{escape(phase)}: no model configured (set models.default in "
-                          "engagement.yaml)")
+            unset.append(f"{escape(phase)}: no model configured (set models.default in "
+                         "engagement.yaml)")
             continue
         if (ref.backend, ref.model) in seen:
             continue
@@ -1080,7 +1168,16 @@ def config_check(
             table.add_row(escape(phase), escape(ref.backend), escape(ref.model), "-", "-", "-",
                           "[red]error[/red]")
             errors.append(f"{phase}: {exc}")
-    console.print(table)
+    if table.row_count:
+        for line in unset:
+            console.print(line)
+        console.print(table)
+    else:
+        # No phase has a model: a header-only table reads as broken (UNVAR-83). Say what
+        # works without one instead.
+        console.print("No model configured: `unvarnish run` still runs the scanners and skips "
+                      "the model phases. To add a model, set models.default in "
+                      "engagement.yaml.", highlight=False, soft_wrap=True)
     _print_errors(errors)
     if failed:
         raise typer.Exit(code=2)

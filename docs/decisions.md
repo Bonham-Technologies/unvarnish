@@ -1059,6 +1059,7 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   | bus_factor | `single_author` | L |
   | bus_factor | `low_bus_factor` | M |
   | dependencies | `advisories`, `unpinned` | S |
+  | dependencies | `licences` (UNVAR-93) | M |
   | hardcoded_infra | `url`, `host`, `ip`, `path` | M |
   | hardcoded_infra | `email` | S |
   | vendored_bulk | `vendored_directories` | M |
@@ -1288,6 +1289,22 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   32 minutes a slow apt mirror once took. *Cost if wrong:* a legitimately slow run is
   cancelled and fails `ci-status`, and needs a rerun.
 
+## CI builds and runs the image (UNVAR-80)
+
+- **The `docker` job lives in `ci.yml` and decides for itself whether to build.** `ci-status`
+  can only wait for jobs in its own workflow, so a separate workflow with a `paths:` filter
+  could not gate the merge. On a pull request the job diffs its merge commit against the
+  first parent (renames listed as a delete and an add) and builds only when `Dockerfile`,
+  `.dockerignore`, `docker/`, `pyproject.toml`, `uv.lock`, `README.md`, `LICENSE`, `NOTICE`,
+  `ci.yml` or its fixture changed; otherwise its steps skip and
+  the job passes. Every push to `main` builds. The built image then runs `--version`, `init`,
+  `add --files`, a no-model `run` and `export --format html` on `tests/data/docker-smoke/`
+  with `--network none` and the caller's uid, as the site kit runs it, and checks that the
+  bundled gitleaks and osv-scanner start and that the scan noted no missing tool or
+  end-of-life bundle (a broken scanner is a note, not a failed run). *Cost if wrong:* a
+  change outside those paths that breaks only the image (a source file the image needs at
+  build time, say) is caught on `main` after the merge, not on its pull request.
+
 ## No gitleaks ignore file (UNVAR-72)
 
 - **`.gitleaksignore` is gone.** Its 17 fingerprints named commits of the private archive, so
@@ -1441,3 +1458,175 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   and `www.unvarnish.com` answer with a 308 to it, so old links and search results keep
   working. *Cost if wrong:* search engines re-index the site under the new host, and the
   .com keeps renewing as a redirect.
+
+## `config check` without a model (UNVAR-83)
+
+- **No model anywhere prints one sentence and no table; a partly configured engagement keeps
+  the per-phase "no model configured" lines and the table.** A header-only table read as a
+  failure, while a run with no model is a supported scanners-only run. *Cost if wrong:* a
+  script that parsed the empty table finds a sentence instead.
+- **The table's headers are "json schema" and "tool calling", and each column is at least as
+  wide as its longest word.** At 80 columns Rich cut `json_schema` and `tool_calling` to
+  "json_sche…" and "tool_call…"; two-word headers wrap onto two lines instead. The config
+  keys keep their underscores. *Cost if wrong:* a reader matches the header to the config key
+  by eye rather than by exact text.
+
+## Known-exploited and likely-exploited advisories (UNVAR-90)
+
+- **A KEV-listed advisory is raised to critical; EPSS is shown and orders, never re-rates
+  (owner's choice, option A).** CISA's catalog is evidence of exploitation in the wild, which
+  outweighs a CVSS base score; an EPSS probability is a forecast, so it ranks advisories
+  (within a finding, and findings within a severity, known exploited first) but leaves the
+  CVSS-derived severity alone. *Cost if wrong:* a KEV entry for a code path the tool never
+  reaches still reads critical (the consultant can accept the risk in `baseline.accepted`),
+  and a high-EPSS medium stays medium.
+- **One gzip bundle beside the end-of-life bundle, read by the inventory.** The first line is a
+  JSON header with the KEV catalog; each other line is one EPSS score. One file is replaced
+  atomically, so a failed refresh never leaves a header without scores; the default folder is
+  the end-of-life one, so the image's existing mount and environment variable cover both
+  (`UNVARNISH_VULNDATA_DIR` overrides it). A run streams the 300,000-odd scores once and keeps
+  only the CVEs its advisories name, and the whole file is read so a truncated bundle is
+  "unreadable", not partly used: on the real feeds the bundle is 2.9 MB and a lookup takes
+  about 0.1 s. *Cost if wrong:* that read per inventory with advisories; a SQLite index
+  would answer faster at several times the size.
+- **The inventory marks advisories, not the scanner**, because `dependencies.json` is the
+  inventory's artifact and must carry `kev`, `kev_date_added`, `epss` and `epss_percentile`
+  per advisory; the bundle date joins the inventory's inputs hash as the end-of-life date
+  does, and nothing joins it without a bundle, so existing engagements do not rerun. The
+  dependencies scanner turns the marks into text, ordering, `Finding.exploits` (left out of
+  the artifact when there is no data, so findings without a bundle are byte-identical) and
+  the "not checked" or old-data note. *Cost if wrong:* none known.
+- **Exploit data is old after 30 days by default** (`scanners.dependencies.max_data_age_days`),
+  not the end-of-life data's 90: EPSS is republished daily and CISA adds to its catalog most
+  weeks. The default lives in the scanner, not in the configuration defaults, because a new
+  `dependencies` option would change every engagement's inventory hash. *Cost if wrong:* the
+  note appears on a kit image a month after it was built; raise the limit per engagement.
+- **An advisory's EPSS is the highest of its CVE aliases'**, and its KEV date the earliest.
+  Its aliases are osv-scanner's group aliases plus each grouped vulnerability's own, so a
+  report without `groups` still joins a GHSA advisory to the CVE it aliases.
+  Both feed URLs were checked by downloading them on 2026-11-23 (KEV: `catalogVersion`
+  2026.11.20, 1,790 entries; EPSS: a 302 to the dated file, 411,000 lines, the
+  `#model_version`/`score_date` comment then `cve,epss,percentile`), and both can be
+  overridden (`--kev-url`, `--epss-url`) if a feed moves again. *Cost if wrong:* a feed that
+  changes shape fails the refresh by name and leaves the old bundle in place.
+
+## Hidden text (UNVAR-92)
+
+- **Scanner and escaping both (owner's choice, option A).** A scanner alone would report a
+  rule file's hidden instructions while the model phases read and followed them; escaping
+  alone would hide the problem from the report. One detector (`util/hidden_text.py`) decides
+  what is hidden for the scanner, the excerpts and the prompts, so all three agree. *Cost if
+  wrong:* none known beyond the escapes' length in prompts.
+- **What counts as hidden:** bidirectional embeddings, overrides and isolates (U+202A-202E,
+  U+2066-2069) and marks (U+200E, U+200F, U+061C); zero-width characters (U+200B-200D,
+  U+2060-2064, U+FEFF past the start of a file); tag characters (U+E0000-E007F); and two or
+  more variation selectors (U+FE00-FE0F, U+E0100-E01EF) or private-use characters in a row.
+  Not hidden: a BOM at the start of a file, a ZWJ between emoji (skin tones and VS16 skipped),
+  a ZWJ or ZWNJ beside an Arabic-script, Indic, Tibetan, Myanmar or Khmer letter, a single
+  selector or private-use character (an emoji's VS16, an icon-font glyph) and an emoji
+  subdivision flag's tag sequence. *Cost if wrong:* a joiner planted next to such a letter is
+  missed; a legitimate pair of selectors is escaped (never reported below `long_run`).
+- **Severity by what the characters can do.** Bidi controls (Trojan Source), tag characters
+  and runs of 32 or more selectors or private-use characters (`long_run`; GlassWorm's
+  payloads run to thousands) are high; zero-width characters in source are medium, because
+  copy-pasted text often carries a stray ZWSP. Any hidden character in an AI rule file is
+  high, one finding per file, because the file steers every later generation; source findings
+  are grouped per rule across files, capped at `max_evidence`. Bidi marks beside
+  right-to-left letters or in a right-to-left locale file, and isolates, embeddings and
+  overrides on a locale file's lines of right-to-left text, are normal text. A `.js` or `.ts`
+  file is a locale file only inside a locale folder (`locales/`, `i18n/`, ...), so
+  `fa-icons.js` or `he/auth.ts` is code and its Trojan Source lines, which carry no
+  right-to-left letter, are still reported (review fix). *Cost if wrong:* a stray ZWSP in
+  `CLAUDE.md` reads high; a payload of 31 selectors in source is escaped but not reported; an
+  isolate around a placeholder on a locale line with no right-to-left letter is reported.
+- **Rule files are found by name and directory, whatever the census calls them:**
+  `.cursorrules`, `.windsurfrules`, `.clinerules`, `.roorules`, `.goosehints`, `CLAUDE.md`,
+  `CLAUDE.local.md`, `AGENTS.md`, `AGENT.md`, `GEMINI.md`, `.github/copilot-instructions.md`,
+  and any file under `.cursor/rules/`, `.windsurf/rules/`, `.clinerules/`, `.roo/`,
+  `.continue/rules/`, `.kiro/steering/`, `.claude/`, `.github/instructions/`,
+  `.github/prompts/`, `.github/chatmodes/`, `.junie/`, `.amazonq/rules/` and
+  `.augment/rules/`, at any depth. Other Markdown is not read. *Cost if wrong:* a new
+  assistant's rule file is read as ordinary source (or not at all, if Markdown) until it is
+  added to the list.
+- **Escapes are `[U+XXXX]`, eight per run, then `[+N more]`.** Visible in every renderer,
+  inside a code span in findings.md, plain text in SARIF and CSV, and never a newline, so a
+  line number cited from an escaped prompt is the source's. *Cost if wrong:* a reader who
+  needs the exact bytes of a long run opens the file.
+- **Escaping happens at three shared points.** Prompts: `complete_structured`, the one
+  function every model phase calls (extract, rollups, verify, compare, ask, `config check`),
+  escapes the system prompt and every message, and returns the request unchanged when there
+  is nothing to escape, so cache keys of ordinary requests do not move. Evidence:
+  `Evidence.excerpt` and `note` are escaped by the schema, so no scanner or model finding,
+  old artifact included, can carry raw characters into a document or export. Model text:
+  `redact_model_text` escapes every string it redacts, which covers extractions, rollups and
+  every finding the SARIF and CSV exports load. Verification compares a model's quote with the
+  escaped source, as the model saw it. `PROMPT_VERSION` did not change; a unit's cache key
+  gains a marker only when its text has hidden characters. Render's prose
+  calls (`backend.complete` directly) escape their request with the same `escape_request`, and
+  their text; the ask answer and its tool previews are escaped; and `render_document` escapes
+  the whole rendered Markdown, so a path or name with a hidden character in any table reaches
+  no document or export raw (review fix). *Cost if wrong:* an engagement extracted earlier
+  keeps those extractions until extract reruns.
+- **MCP configs that fetch code at launch are a medium review finding**, one per file with a
+  line per server: `npx`/`bunx`/`pnpm dlx`/`yarn dlx`/`npm exec` with a package that has no
+  exact version (`@latest` counts as none), `uvx`/`uv tool run`/`pipx run` without `==` or
+  `@version`, and a shell command that pipes `curl` or `wget` into a shell. A command run
+  through a shell wrapper (`cmd /c npx -y pkg`, `sh -c "uvx srv"`, `powershell -Command`) is
+  judged as the command it runs (review fix). Local paths and
+  servers given by `url` are not reported; only the command up to the package is shown, so
+  arguments that carry tokens stay out of the report. *Cost if wrong:* a team that vets
+  `@latest` on purpose gets a review line per server; a Docker image tag is not checked.
+
+## CycloneDX SBOM and dependency licences (UNVAR-93)
+
+- **SBOM export now, licences only online (owner's choice, option A).** `export --format
+  cyclonedx` builds the document from `dependencies.json` and its stored advisories, so it runs
+  offline and adds no osv-scanner call at export time. Licences come only from deps.dev, which
+  osv-scanner reaches online (`--licenses` with no allowlist, plus `--all-packages` so packages
+  without advisories are listed); offline nothing is filled in and the findings document and
+  the SBOM's metadata say "licences: not checked". *Cost if wrong:* an air-gapped engagement
+  never gets licences; the consultant runs the inventory online where the site allows it.
+- **CycloneDX 1.6 JSON, written by hand, not by a library.** The document needs a few dozen
+  fields, and a dependency would ship in the image for one export. The suite validates it
+  against the vendored 1.6 schema (with its SPDX and JSF schemas) using `jsonschema`, a new
+  dev-only dependency. Licences are one SPDX expression when every licence is a recognised
+  identifier, else each by name, so an unrecognised string never fails the schema's SPDX
+  enumeration. *Cost if wrong:* a field a consumer expects is missing until added here.
+- **Components are the declared dependencies, then what online resolution and advisories add.**
+  A declared dependency carries its exact version when its constraint pins one (or online
+  resolution found exactly one), else its constraint as a property, and its manifest. Packages
+  osv-scanner resolved online that no manifest declares, and packages an advisory names that
+  none does, are listed at their resolved version so every vulnerability's `affects` points at
+  a component. Packages join records by ecosystem, normalised name and folder, since a
+  lockfile resolves the manifest beside it. *Cost if wrong:* a manifest in one folder resolved
+  by a lockfile in another shows the package twice.
+- **Package URLs for osv-scanner's other ecosystems too.** Packages only osv-scanner reports
+  (RubyGems, Packagist, NuGet, Pub, Hex, from lockfiles or advisories) get their purl type
+  (`gem`, `composer`, `nuget`, `pub`, `hex`); a go.mod requirement, pseudo-versions and
+  `+incompatible` included, is always an exact version. Any other ecosystem's component has
+  no purl rather than a guessed one. *Cost if wrong:* a component a consumer cannot match by
+  purl.
+- **The allowlist is Unvarnish's own, applied by the scanner.** It never reaches osv-scanner,
+  whose verdict (`license_violations`) is ignored, and osv-scanner keeps getting Unvarnish's
+  empty `--config`, so a `PackageOverrides` licence override or ignore in the vetted
+  repository's `osv-scanner.toml` has no effect (as for advisories, UNVAR-66's principle).
+  Changing the allowlist reruns the scan, not the lookup. *Cost if wrong:* none known.
+- **Medium for a licence that cannot be met without a copyleft one, low for any other licence
+  outside the allowlist or none deps.dev can name**, one finding per manifest and licence, in
+  the compliance category, band M. A copyleft licence can reach the tool's own source when it
+  is distributed, which is the client's question; an unlisted permissive licence needs a
+  review, not a rewrite. *Cost if wrong:* a weak-copyleft package used unmodified (LGPL, MPL)
+  reads medium; the consultant accepts it in `baseline.accepted`.
+- **No `licences` default in the configuration, and the online lookup joins the inventory's
+  hash.** A new default would change every engagement's inventory hash; the online marker
+  reruns only online inventories, once, so they pick licences up. The new note is scanner
+  text, so the scan reruns once everywhere (SCANNER_TEXT_VERSION 2026-11-24.3). *Cost if
+  wrong:* one osv-scanner call per online tool on upgrade.
+
+## Empty header fields (UNVAR-85)
+
+- **A missing client or firm is left out of the header, not shown as a dash.** The
+  comparison keeps "Engagement" in its title when there is no client, because a title needs
+  a noun. The template change reruns the render phase once on every engagement. *Cost if
+  wrong:* a reader of a document without a client cannot tell whether the field was
+  forgotten; `init` now says so at the start instead.

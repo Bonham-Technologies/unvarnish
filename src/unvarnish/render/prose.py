@@ -15,9 +15,11 @@ from unvarnish.model.base import (
     Message,
 )
 from unvarnish.model.budget import BudgetExceeded, BudgetTracker
+from unvarnish.model.structured import escape_request
 from unvarnish.scanners.secrets import redact_text
 from unvarnish.schemas.analysis import FailureRecord
 from unvarnish.schemas.cost import Usage
+from unvarnish.util.hidden_text import escape_hidden
 
 log = logging.getLogger("unvarnish.prose")
 PROSE_PROMPT_VERSION = "2026-10-18.1"  # bump whenever prose_system.md, tones, or blocks change
@@ -103,10 +105,11 @@ def build_prose_request(block: ProseBlock, facts: dict, tone: str,
                         ) -> CompletionRequest:
     body = (f"{block.instruction}\nKeep it under {block.max_words} words.\n\nFacts (JSON):\n"
             + json.dumps(facts, ensure_ascii=False, indent=1, default=str))
-    return CompletionRequest(system=build_prose_system(tone),
-                             messages=[Message(role="user", content=body)],
-                             schema_name="prose", output_schema=None, max_tokens=max_tokens,
-                             effort=effort, cache_system=True)
+    # the facts carry paths, names and model text: hidden characters go as escapes (UNVAR-92)
+    return escape_request(CompletionRequest(
+        system=build_prose_system(tone), messages=[Message(role="user", content=body)],
+        schema_name="prose", output_schema=None, max_tokens=max_tokens, effort=effort,
+        cache_system=True))
 
 
 def count_mismatches(text: str, facts: dict) -> list[str]:
@@ -126,7 +129,7 @@ def count_mismatches(text: str, facts: dict) -> list[str]:
 
 
 def clean_prose(text: str) -> str:
-    text = text.strip()
+    text = escape_hidden(text.strip(), at_start=False)
     m = FENCE_RE.match(text)
     return m.group(1).strip() if m else text
 

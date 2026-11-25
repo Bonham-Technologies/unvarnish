@@ -44,6 +44,7 @@ packages = ["src/unvarnish"]
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.26.0",
     "pytest>=8.2",
     "pytest-cov>=6",
     "ruff>=0.6",
@@ -60,9 +61,9 @@ source = ["unvarnish"]
 branch = true
 
 [tool.coverage.report]
-# The measured total rounded down (94.2% on 2026-11-05). Raise it, never lower it:
+# The measured total rounded down (95.7% on 2026-11-25). Raise it, never lower it:
 # docs/operations.md says how.
-fail_under = 94
+fail_under = 95
 show_missing = true
 skip_covered = true
 

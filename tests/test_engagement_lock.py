@@ -384,3 +384,143 @@ def test_a_missing_tool_is_refused_before_the_lock_and_the_others_run_under_it(
     assert r.exit_code == 2 and "could not run" in r.output, r.output
     assert (eng / "tools" / "other" / "inventory" / "census.json").exists()
     assert lock_file.read_text(encoding="utf-8") == ""  # released after the partial run
+
+
+# --- boot time, heartbeat and release edge cases (UNVAR-87) -------------------------------
+
+
+def test_boot_time_reads_btime_from_proc_stat(tmp_path: Path, monkeypatch):
+    stat = tmp_path / "stat"
+    stat.write_text("cpu  1 2 3\nbtime 1700000000\nprocesses 9\n", encoding="utf-8")
+    monkeypatch.setattr(lockmod, "PROC_STAT", stat)
+    assert lockmod._boot_time() == 1700000000.0
+
+
+@pytest.mark.parametrize("contents", [None, "cpu 1 2 3\n", "btime\n", "btime soon\n"])
+def test_boot_time_is_none_when_proc_stat_cannot_say(tmp_path: Path, monkeypatch, contents):
+    """Not Linux, /proc hidden, or a line that does not parse: the reboot rule stands aside."""
+    stat = tmp_path / "stat"
+    if contents is not None:
+        stat.write_text(contents, encoding="utf-8")
+    monkeypatch.setattr(lockmod, "PROC_STAT", stat)
+    assert lockmod._boot_time() is None
+
+
+def test_holder_identity_degrades_when_proc_cannot_be_read(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(lockmod, "BOOT_ID_FILE", tmp_path / "missing")
+    monkeypatch.setattr(lockmod, "PID_NS_LINK", str(tmp_path / "missing-ns"))
+    info = lockmod.current_info("run")
+    assert info.boot_id is None and info.pid_ns is None
+
+
+def test_without_boot_ids_the_hostname_decides_the_kernel():
+    here = LockInfo(pid=1, hostname="a", started_at=datetime.now(UTC), command="run")
+    assert lockmod.same_kernel(here, here.model_copy(update={"pid": 2}))
+    assert not lockmod.same_kernel(here, here.model_copy(update={"hostname": "b"}))
+    # One side with a boot id: the ids decide, so a same-named container is not the host.
+    assert not lockmod.same_kernel(here, here.model_copy(update={"boot_id": "k"}))
+
+
+def test_pid_alive_edge_cases(monkeypatch):
+    assert not lockmod._pid_alive(0) and not lockmod._pid_alive(-1)
+
+    def denied(pid, sig):
+        raise PermissionError
+
+    monkeypatch.setattr(lockmod.os, "kill", denied)
+    assert lockmod._pid_alive(4242)  # exists, owned by another user
+
+
+def test_a_refused_flock_names_the_holder(tmp_path: Path, monkeypatch):
+    """Some filesystems answer EACCES or EAGAIN, not EWOULDBLOCK, for a held lock."""
+    path = tmp_path / "run.lock"
+    info = _foreign(path, age=timedelta(minutes=1))
+
+    def held(fd, op):
+        raise OSError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(lockmod.fcntl, "flock", held)
+    with pytest.raises(EngagementLocked) as exc:
+        _lock(path).acquire()
+    assert exc.value.holder == info
+
+
+def test_acquiring_twice_is_a_programming_error_and_release_is_idempotent(tmp_path: Path):
+    lock = _lock(tmp_path / "run.lock")
+    lock.release()  # not held: nothing to do
+    lock.acquire()
+    try:
+        with pytest.raises(RuntimeError, match="already held"):
+            lock.acquire()
+    finally:
+        lock.release()
+    lock.release()
+    assert (tmp_path / "run.lock").read_text(encoding="utf-8") == ""
+
+
+def test_heartbeat_touches_the_path_where_utime_takes_no_descriptor(tmp_path: Path,
+                                                                    monkeypatch):
+    monkeypatch.setattr(lockmod.os, "supports_fd", set())
+    path = tmp_path / "run.lock"
+    with _lock(path, heartbeat_seconds=0.05):
+        old = time.time() - 1000
+        os.utime(path, (old, old))
+        deadline = time.time() + 5
+        while path.stat().st_mtime < old + 500 and time.time() < deadline:
+            time.sleep(0.05)
+        assert path.stat().st_mtime > old + 500
+
+
+def test_a_failed_heartbeat_keeps_beating_and_the_lock_still_releases(tmp_path: Path,
+                                                                      monkeypatch):
+    """A missed beat only brings staleness closer; it never ends the heartbeat thread."""
+    calls: list[object] = []
+
+    def failing_utime(target, *a, **kw):
+        calls.append(target)
+        raise OSError(errno.EIO, "I/O error")
+
+    path = tmp_path / "run.lock"
+    lock = _lock(path, heartbeat_seconds=0.02)
+    lock.acquire()
+    monkeypatch.setattr(lockmod.os, "utime", failing_utime)
+    try:
+        deadline = time.time() + 5
+        while len(calls) < 2 and time.time() < deadline:
+            time.sleep(0.02)
+        assert len(calls) >= 2
+        assert lock._beat is not None and lock._beat.is_alive()
+    finally:
+        lock.release()
+    assert lock._beat is None and path.read_text(encoding="utf-8") == ""
+
+
+def test_the_heartbeat_stops_once_the_descriptor_is_gone(tmp_path: Path):
+    lock = _lock(tmp_path / "run.lock", heartbeat_seconds=0.01)
+    assert lock._fd is None
+    lock._heartbeat()  # returns after one wait instead of beating a closed file
+
+
+def test_a_release_that_cannot_empty_the_file_still_drops_the_lock(tmp_path: Path,
+                                                                   monkeypatch):
+    """The flock goes with the descriptor; the next run finds the contents, sees the
+    flock free on the same kernel, and takes the lock over."""
+    path = tmp_path / "run.lock"
+    lock = _lock(path)
+    lock.acquire()
+    real_ftruncate = os.ftruncate
+
+    def failing_ftruncate(fd, length):
+        raise OSError(errno.EIO, "I/O error")
+
+    monkeypatch.setattr(lockmod.os, "ftruncate", failing_ftruncate)
+    lock.release()
+    monkeypatch.setattr(lockmod.os, "ftruncate", real_ftruncate)
+    assert lock._fd is None
+    assert LockInfo.model_validate_json(path.read_text(encoding="utf-8")).pid == os.getpid()
+    again = _lock(path)
+    stale = again.acquire()
+    try:
+        assert stale is not None and stale.reason == "its process has exited"
+    finally:
+        again.release()

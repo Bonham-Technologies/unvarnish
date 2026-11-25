@@ -25,6 +25,7 @@ from unvarnish.model.prompts.ask import (
 from unvarnish.model.structured import StructuredOutputError, complete_structured
 from unvarnish.scanners.secrets import redact_text
 from unvarnish.schemas.cost import Usage
+from unvarnish.util.hidden_text import escape_hidden
 
 log = logging.getLogger("unvarnish.ask")
 ToolName = Literal["search_index", "get_unit", "get_module", "get_tool", "get_findings",
@@ -146,7 +147,7 @@ def find_citations(text: str, explicit: Sequence[str], index: AskIndex) -> list[
 
 
 def _preview(result: dict) -> str:
-    text = json.dumps(result, ensure_ascii=False)
+    text = escape_hidden(json.dumps(result, ensure_ascii=False), at_start=False)
     return text if len(text) <= PREVIEW_CHARS else text[:PREVIEW_CHARS - 1] + "…"
 
 
@@ -226,7 +227,7 @@ def run_question(eng: Engagement, backend: Backend, tools: AskTools, index: AskI
             result.steps.append(StepRecord(kind="error", result_preview=NO_ANSWER,
                                            usage=res.usage))
             return result
-        answer = redact_text((step.answer or "").strip())
+        answer = redact_text(escape_hidden((step.answer or "").strip(), at_start=False))
         result.answer = answer or "(empty answer)"
         result.citations = find_citations(answer, step.citations, index)
         result.verified = bool(result.citations)

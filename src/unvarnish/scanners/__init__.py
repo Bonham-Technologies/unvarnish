@@ -17,6 +17,7 @@ def builtin_scanners() -> list[Scanner]:
     from unvarnish.scanners.end_of_life import EndOfLifeScanner
     from unvarnish.scanners.generated_bulk import GeneratedBulkScanner
     from unvarnish.scanners.hardcoded_infra import HardcodedInfraScanner
+    from unvarnish.scanners.hidden_text import HiddenTextScanner
     from unvarnish.scanners.hygiene import HygieneScanner
     from unvarnish.scanners.oversized_files import OversizedFilesScanner
     from unvarnish.scanners.secrets import SecretsScanner
@@ -24,7 +25,8 @@ def builtin_scanners() -> list[Scanner]:
 
     return [SecretsScanner(), OversizedFilesScanner(), HygieneScanner(), BusFactorScanner(),
             DependenciesScanner(), HardcodedInfraScanner(), VendoredBulkScanner(),
-            GeneratedBulkScanner(), ClientExposureScanner(), EndOfLifeScanner()]
+            GeneratedBulkScanner(), ClientExposureScanner(), EndOfLifeScanner(),
+            HiddenTextScanner()]
 
 
 def load_scanners() -> list[Scanner]:

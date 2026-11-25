@@ -1,6 +1,6 @@
 # {{ tool.name }}: Findings
 
-**Client:** {{ client or "—" }} · **Prepared by:** {{ consultant or "—" }} · **Generated:** {{ generated_at }}\
+{% if client %}**Client:** {{ client }} · {% endif %}{% if consultant %}**Prepared by:** {{ consultant }} · {% endif %}**Generated:** {{ generated_at }}\
 **Source:** {{ tool.origin_kind }} `{{ tool.origin }}`{% if tool.commit %} at `{{ tool.commit[:12] }}`{% endif %}
 
 {{ "" }}
@@ -108,6 +108,9 @@ Scanner findings: {{ numbers.scanner_findings }}. Model findings: {{ numbers.mod
 | Client-exposed credentials / open tables | {% if numbers.client_exposure is none %}not checked{% else %}{{ numbers.client_exposure.credentials }} / {{ numbers.client_exposure.open_tables }}{% endif %} |
 | Dependencies declared | {{ deps.dependencies | length }} |
 | Dependency vulnerabilities | {% if deps.advisories_checked %}{{ vulnerabilities }}{% if deps.advisories_note %}; {{ deps.advisories_note }}{% endif %}{% else %}not checked ({{ deps.advisories_note or "advisory database unavailable" }}){% endif %} |
+{% if numbers.known_exploited %}
+| Known exploited | {% if deps.advisories_checked %}{{ numbers.known_exploited.count }} of {{ numbers.known_exploited.advisories | plural("advisory") }} in the CISA KEV catalog{% else %}not checked (dependency advisories not checked){% endif %}; exploit data dated {{ numbers.known_exploited.date }}{% if numbers.known_exploited.stale %} ({{ numbers.known_exploited.stale }}: refresh it){% endif %} |
+{% endif %}
 | End-of-life runtimes and frameworks | {% if numbers.end_of_life is none %}not checked{% elif not numbers.end_of_life.date %}not checked (no end-of-life data bundle){% else %}{{ numbers.end_of_life.past }} past end of life, {{ numbers.end_of_life.near }} near it; endoflife.date data dated {{ numbers.end_of_life.date }}{% if numbers.end_of_life.stale %} ({{ numbers.end_of_life.stale }}: refresh it){% endif %}{% endif %} |
 {% if numbers.hardcoded %}
 | Hardcoded infrastructure | {{ numbers.hardcoded.get("url", 0) | plural("URL") }} · {{ numbers.hardcoded.get("host", 0) | plural("internal host") }} · {{ numbers.hardcoded.get("ip", 0) | plural("IP") }} · {{ numbers.hardcoded.get("path", 0) | plural("path") }} · {{ numbers.hardcoded.get("email", 0) | plural("email") }} |

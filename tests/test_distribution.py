@@ -132,8 +132,8 @@ def test_coverage_floor_is_enforced_by_plain_pytest():
     assert "--cov" in cfg["tool"]["pytest"]["ini_options"]["addopts"].split()
     assert cfg["tool"]["coverage"]["run"] == {"source": ["unvarnish"], "branch": True}
     floor = cfg["tool"]["coverage"]["report"]["fail_under"]
-    # The floor only rises: lowering fail_under below the UNVAR-10 baseline fails here too.
-    assert isinstance(floor, int) and 94 <= floor <= 100
+    # The floor only rises: lowering fail_under below the UNVAR-87 level fails here too.
+    assert isinstance(floor, int) and 95 <= floor <= 100
     assert any(d.startswith("pytest-cov") for d in cfg["dependency-groups"]["dev"])
 
 
@@ -148,6 +148,38 @@ def test_ci_and_verify_install_from_the_lockfile():
     assert verify in (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
     assert verify in (ROOT / "docs/operations.md").read_text(encoding="utf-8")
 
+
+
+@pytest.mark.skipif(not (ROOT / ".github").exists(), reason="needs the repository checkout")
+def test_ci_builds_the_image_and_runs_it_on_a_fixture():
+    # UNVAR-80: CI checked the Dockerfile as text only, so a Dependabot bump of one of its
+    # digest-pinned images could merge with an image that no longer builds or runs.
+    import yaml
+
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    jobs = ci["jobs"]
+    assert "docker" in jobs, "ci.yml has no docker job"
+    script = "\n".join(step.get("run", "") for step in jobs["docker"]["steps"])
+    assert re.search(r"docker build\b.*-t unvarnish:ci", script)
+    for command in ("--version", "init /engagement", "add smoke --files", " run\n",
+                    "export --format html"):
+        assert command in script, command
+    assert "--network none" in script
+    assert "--entrypoint gitleaks" in script and "--entrypoint osv-scanner" in script
+    assert (ROOT / "tests/data/docker-smoke/app.py").is_file()
+    # It builds on every push to main, and on a pull request that touches the image's inputs.
+    triggers = ci.get("on", ci.get(True))  # PyYAML reads a bare `on` key as true
+    assert triggers["push"]["branches"] == ["main"] and "pull_request" in triggers
+    for path in ("Dockerfile", "docker/", "pyproject\\.toml", "uv\\.lock"):
+        assert path in script, path
+    # Only the steps skip when nothing relevant changed: a skipped job would pass the gate.
+    assert "if" not in jobs["docker"]
+    gated = [step for step in jobs["docker"]["steps"] if "docker build" in step.get("run", "")
+             or "docker run" in step.get("run", "")]
+    assert gated and all(step["if"] == "steps.image.outputs.build == 'true'" for step in gated)
+    # The single required check waits for every other job, the image build included.
+    needs = jobs["ci-status"]["needs"]
+    assert set(needs) == set(jobs) - {"ci-status"}, needs
 
 # ---------------------------------------------------------------- end-of-life bundle (UNVAR-44)
 

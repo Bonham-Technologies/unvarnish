@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path, PureWindowsPath
+from typing import NamedTuple
 
 from unvarnish.util.env import env_flag
 
@@ -31,10 +32,15 @@ def osv_command(root: Path, options: dict, osv: str = "osv-scanner", *,
                 config: Path | None = None) -> list[str]:
     """--offline disables every network feature, including deps.dev transitive resolution.
     --config replaces any osv-scanner.toml in the vetted repo, so it cannot hide advisories.
-    --all-packages lists unaffected packages too, so unchecked ecosystems can be named."""
+    --all-packages lists unaffected packages too, so unchecked ecosystems can be named.
+    Online, --licenses (with no allowlist) adds deps.dev's licences to every package; the
+    allowlist is Unvarnish's own (scanners.dependencies.licences) and never reaches
+    osv-scanner, whose verdict a repo's config could change (UNVAR-93)."""
     args = list(options.get("osv_args") or OSV_DEFAULT_ARGS)
     if _offline(options):
         args += ["--offline", "--all-packages"]
+    else:
+        args += ["--licenses", "--all-packages"]
     if config is not None:
         args += ["--config", str(config)]
     return [osv, *args, str(root)]
@@ -120,6 +126,11 @@ def parse_osv(report: dict, root: Path) -> list[dict]:
                 if not ids:
                     continue
                 ids += [a for a in g.get("aliases") or [] if a not in ids]
+                # Each vulnerability's own aliases too: a report without `groups` lists a
+                # GHSA advisory's CVE only there, and the exploit data joins on CVEs (UNVAR-90).
+                for i in list(ids):
+                    ids += [a for a in (vulns.get(i) or {}).get("aliases") or []
+                            if a and a not in ids]
                 first = vulns.get(ids[0], {})
                 texts = [((vulns.get(i) or {}).get("database_specific") or {}).get("severity", "")
                          for i in ids]
@@ -133,17 +144,45 @@ def parse_osv(report: dict, root: Path) -> list[dict]:
     return out
 
 
+def parse_licences(report: dict, root: Path) -> list[dict]:
+    """Every package in an online report with the licences deps.dev gave it (none: [])."""
+    out: list[dict] = []
+    for result in report.get("results") or []:
+        manifest = _relative((result.get("source") or {}).get("path", ""), root)
+        for pkg in result.get("packages") or []:
+            info = pkg.get("package") or {}
+            out.append({"ecosystem": info.get("ecosystem", "?"), "name": info.get("name", "?"),
+                        "version": info.get("version", "?"), "manifest": manifest,
+                        "licences": [str(x) for x in pkg.get("licenses") or [] if x]})
+    return out
+
+
+class Lookup(NamedTuple):
+    checked: bool
+    advisories: list[dict]
+    note: str | None  # why advisories were not checked, or what was not
+    packages: list[dict] | None = None  # parse_licences, online only; None when not checked
+
+
 def lookup_advisories(root: Path, options: dict, *,
                       which: Callable[[str], str | None] = shutil.which,
                       run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
                       ) -> tuple[bool, list[dict], str | None]:
     """(checked, advisories, note). Never raises: a missing or failing tool becomes a note."""
+    return lookup_dependencies(root, options, which=which, run=run)[:3]
+
+
+def lookup_dependencies(root: Path, options: dict, *,
+                        which: Callable[[str], str | None] = shutil.which,
+                        run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+                        ) -> Lookup:
+    """One osv-scanner run: advisories, and online the packages with their licences."""
     if options.get("enabled", True) is False:
-        return False, [], "disabled in engagement.yaml"
+        return Lookup(False, [], "disabled in engagement.yaml")
     if env_flag(DISABLE_ENV):
-        return False, [], f"disabled by {DISABLE_ENV}"
+        return Lookup(False, [], f"disabled by {DISABLE_ENV}")
     if which("osv-scanner") is None:
-        return False, [], "osv-scanner not installed"
+        return Lookup(False, [], "osv-scanner not installed")
     with tempfile.TemporaryDirectory(prefix="unvarnish-osv-") as tmp:
         config = Path(tmp) / "osv-scanner.toml"
         config.write_text("", encoding="utf-8")
@@ -151,19 +190,20 @@ def lookup_advisories(root: Path, options: dict, *,
             proc = run(osv_command(root, options, config=config), capture_output=True,
                        timeout=900)
         except (OSError, subprocess.SubprocessError) as exc:
-            return False, [], f"osv-scanner failed: {exc}"[:300]
+            return Lookup(False, [], f"osv-scanner failed: {exc}"[:300])
     stderr = (proc.stderr or b"").decode("utf-8", "replace")
     if proc.returncode == NO_SOURCES_EXIT:
-        return True, [], None
+        return Lookup(True, [], None, None if _offline(options) else [])
     if proc.returncode not in (0, 1):  # 1 means "vulnerabilities found"
         err = stderr or (proc.stdout or b"").decode("utf-8", "replace")
-        return False, [], f"osv-scanner failed: {_cause(err)}"[:300]
+        return Lookup(False, [], f"osv-scanner failed: {_cause(err)}"[:300])
     try:
         report = json.loads(proc.stdout or b"{}")
         advisories = parse_osv(report, root)
+        packages = None if _offline(options) else parse_licences(report, root)
     except (ValueError, AttributeError) as exc:
-        return False, [], f"osv-scanner output unreadable: {exc}"[:300]
+        return Lookup(False, [], f"osv-scanner output unreadable: {exc}"[:300])
     if not _offline(options):
-        return True, advisories, None
+        return Lookup(True, advisories, None, packages)
     notes = [n for n in (unchecked_note(report, stderr), database_date_note()) if n]
-    return True, advisories, ("; ".join(notes) or None)
+    return Lookup(True, advisories, ("; ".join(notes) or None))
