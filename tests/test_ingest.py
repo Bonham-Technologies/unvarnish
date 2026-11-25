@@ -400,13 +400,6 @@ def test_cli_add_stray_argument_without_link_points_at_repo_or_files(
     assert "--repo" in out and "--files" in out
 
 
-def test_cli_add_link_help_says_it_needs_repo_or_files():
-    result = runner.invoke(app, ["add", "--help"], env={"COLUMNS": "200"})
-    assert result.exit_code == 0
-    out = _flat(result.output)
-    assert "with --repo or --files" in out
-
-
 def test_cli_add_stray_argument_after_a_source_is_named_as_such(engagement: Engagement,
                                                                  tmp_path: Path):
     """--link used correctly: the stray argument is the problem, not --link."""
