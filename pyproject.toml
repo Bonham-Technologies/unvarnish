@@ -61,9 +61,9 @@ source = ["unvarnish"]
 branch = true
 
 [tool.coverage.report]
-# The measured total rounded down (94.2% on 2026-11-05). Raise it, never lower it:
+# The measured total rounded down (95.47% in CI on 2026-11-25). Raise it, never lower it:
 # docs/operations.md says how.
-fail_under = 94
+fail_under = 95
 show_missing = true
 skip_covered = true
 
