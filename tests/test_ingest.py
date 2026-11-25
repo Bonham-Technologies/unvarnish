@@ -371,3 +371,49 @@ def test_cli_add_missing_files_prints_the_whole_path_on_one_line(
     )
     assert result.exit_code == 2
     assert f"error: {missing.resolve()} does not exist" in result.output
+
+
+# --- `add --link PATH` (UNVAR-86) ---------------------------------------------------------
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def test_cli_add_link_with_a_path_names_the_right_form(engagement: Engagement, tmp_path: Path):
+    result = runner.invoke(app, ["add", "z", "--link", str(tmp_path), "-e",
+                                 str(engagement.root)])
+    assert result.exit_code == 2
+    out = _flat(result.output)
+    assert "unexpected extra argument" not in out.lower()
+    assert "add z --link --repo PATH" in out
+    assert "--files" in out
+    assert not engagement.tool_names()
+
+
+def test_cli_add_stray_argument_without_link_points_at_repo_or_files(
+        engagement: Engagement, tmp_path: Path):
+    result = runner.invoke(app, ["add", "z", str(tmp_path), "-e", str(engagement.root)])
+    assert result.exit_code == 2
+    out = _flat(result.output)
+    assert str(tmp_path) in out
+    assert "--repo" in out and "--files" in out
+
+
+def test_cli_add_link_help_says_it_needs_repo_or_files():
+    result = runner.invoke(app, ["add", "--help"], env={"COLUMNS": "200"})
+    assert result.exit_code == 0
+    out = _flat(result.output)
+    assert "with --repo or --files" in out
+
+
+def test_cli_add_stray_argument_after_a_source_is_named_as_such(engagement: Engagement,
+                                                                 tmp_path: Path):
+    """--link used correctly: the stray argument is the problem, not --link."""
+    result = runner.invoke(app, ["add", "z", "--link", "--repo", str(tmp_path), "extra",
+                                 "-e", str(engagement.root)])
+    assert result.exit_code == 2
+    out = _flat(result.output)
+    assert "unexpected argument extra" in out
+    assert "--link takes no path" not in out and "name the source" not in out
+    assert not engagement.tool_names()
