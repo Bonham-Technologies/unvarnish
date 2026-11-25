@@ -136,6 +136,16 @@ def _save_state(path: Path, state: BatchState, phase: str) -> None:
     write_artifact(path, state, produced_by=phase, inputs_hash="")
 
 
+def _done(path: Path, state: BatchState, batch_id: str, phase: str) -> None:
+    """Forget a batch whose results are in the cache (or lost): a later stop must not leave it
+    in the state file, or the next run would collect it again and bill its usage twice."""
+    state.batches = [b for b in state.batches if b.batch_id != batch_id]
+    if state.batches:
+        _save_state(path, state, phase)
+    else:
+        path.unlink(missing_ok=True)
+
+
 def _stopping(budget: BudgetTracker) -> bool:
     from unvarnish.model.limit import new_calls_stopped
 
@@ -200,7 +210,7 @@ def run_batch(backend: Any, requests: list[CompletionRequest], state_path: Path,
     state = _load_state(state_path)
     if state is not None and (state.backend, state.model) == (batcher.name, batcher.model):
         out.resumed = True
-        for sub in state.batches:
+        for sub in list(state.batches):
             log.info("%s: resuming message batch %s", phase, sub.batch_id)
             try:
                 if not _collect(batcher, backend, sub.batch_id, budget, out):
@@ -210,8 +220,10 @@ def run_batch(backend: Any, requests: list[CompletionRequest], state_path: Path,
                     raise
                 log.warning("%s: stored batch %s cannot be read (%s); its requests go again",
                             phase, sub.batch_id, exc)
+                _done(state_path, state, sub.batch_id, phase)
                 continue
             covered.update(sub.keys)
+            _done(state_path, state, sub.batch_id, phase)
     elif state is not None:
         log.info("%s: stored batch was for %s/%s; not resumed", phase, state.backend,
                  state.model)
@@ -240,8 +252,9 @@ def run_batch(backend: Any, requests: list[CompletionRequest], state_path: Path,
             raise
         log.warning("%s: batch submission failed (%s); the rest go as ordinary calls", phase,
                     exc)
-    for sub in state.batches:
+    for sub in list(state.batches):
         if not _collect(batcher, backend, sub.batch_id, budget, out):
             return out
+        _done(state_path, state, sub.batch_id, phase)
     state_path.unlink(missing_ok=True)
     return out

@@ -1645,7 +1645,9 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
 - **The batch id is kept until its results are in the cache.** `analysis/batches/<phase>.json`
   holds the submitted batch ids and their requests' cache keys (no request content, no key).
   A run stopped while a batch is in progress collects the same batch on the next run and
-  never sends its requests in a second batch; the file is deleted once the results are in.
+  never sends its requests in a second batch. Each batch leaves the file as soon as its
+  results are in the cache, so a stop between two batches of one phase never has the next
+  run collect, and bill, the first one again; the file is deleted once all are in.
   A stored batch the API no longer returns (results are kept 29 days) is dropped and its
   requests go in a new batch. *Cost if wrong:* a stop in the instant between the API
   accepting a batch and the file being written pays for that batch twice.

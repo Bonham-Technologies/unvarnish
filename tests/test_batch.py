@@ -478,3 +478,47 @@ def test_dry_run_estimates_batched_phases_at_the_batch_rate(ingested, fake_llm):
         half, batch_note = usd(batched.output, phase)
         assert half == pytest.approx(full * BATCH_RATE, abs=0.011), phase
         assert "batch" not in note and "batch rate" in batch_note
+
+
+# --- review fixes ------------------------------------------------------------------------------
+def test_a_batch_collected_before_a_stop_is_not_collected_or_billed_again(ingested, tmp_path,
+                                                                          monkeypatch):
+    # A phase split over several batches: the first is collected, Ctrl-C lands while the
+    # second is in progress. The rerun must collect only the second, so the ledger counts
+    # every request once.
+    import unvarnish.model.batch as batch_mod
+
+    monkeypatch.setattr(batch_mod, "MAX_BATCH_REQUESTS", 1)
+    eng, tool = ingested
+    _upstream(eng, tool)
+    stub = BatchStubBackend(REPLIES, polls=0)
+    real_submit = stub.submit_batch
+
+    def submit(items):
+        batch_id = real_submit(items)
+        if batch_id != "msgbatch_stub1":
+            stub._pending[batch_id] = 1  # still in progress at the first status check
+        return batch_id
+
+    stub.submit_batch = submit
+    backend = _cached(stub, tmp_path, "b")
+    tracker = BudgetTracker(None)
+    stub.on_sleep = tracker.interrupt
+    ctx = build_context(eng, tool, budget=tracker)
+    assert VerifyPhase(backend=backend).run(ctx).status == PhaseStatus.stopped
+    n = stub.count_batched("Verdict")
+    assert n >= 2 and len(stub.batches) == n
+    stored = [b["batch_id"] for b in _data(ctx.paths.batch_state("verify"))["batches"]]
+    assert "msgbatch_stub1" not in stored  # already in the cache and in the ledger
+
+    stub.on_sleep = None
+    ctx = build_context(eng, tool, budget=BudgetTracker(None))
+    assert VerifyPhase(backend=backend).run(ctx).status == PhaseStatus.ok
+    assert len(stub.batches) == n and stub.requests == []  # no new batch, no call
+    billed = Usage()
+    for e in load_ledger(eng).entries:
+        if e.phase == "verify":
+            assert e.batch
+            billed = billed + e.usage
+    assert billed == Usage(input_tokens=100 * n, output_tokens=20 * n)
+
