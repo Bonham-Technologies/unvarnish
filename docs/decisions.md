@@ -1510,6 +1510,73 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   overridden (`--kev-url`, `--epss-url`) if a feed moves again. *Cost if wrong:* a feed that
   changes shape fails the refresh by name and leaves the old bundle in place.
 
+## Hidden text (UNVAR-92)
+
+- **Scanner and escaping both (owner's choice, option A).** A scanner alone would report a
+  rule file's hidden instructions while the model phases read and followed them; escaping
+  alone would hide the problem from the report. One detector (`util/hidden_text.py`) decides
+  what is hidden for the scanner, the excerpts and the prompts, so all three agree. *Cost if
+  wrong:* none known beyond the escapes' length in prompts.
+- **What counts as hidden:** bidirectional embeddings, overrides and isolates (U+202A-202E,
+  U+2066-2069) and marks (U+200E, U+200F, U+061C); zero-width characters (U+200B-200D,
+  U+2060-2064, U+FEFF past the start of a file); tag characters (U+E0000-E007F); and two or
+  more variation selectors (U+FE00-FE0F, U+E0100-E01EF) or private-use characters in a row.
+  Not hidden: a BOM at the start of a file, a ZWJ between emoji (skin tones and VS16 skipped),
+  a ZWJ or ZWNJ beside an Arabic-script, Indic, Tibetan, Myanmar or Khmer letter, a single
+  selector or private-use character (an emoji's VS16, an icon-font glyph) and an emoji
+  subdivision flag's tag sequence. *Cost if wrong:* a joiner planted next to such a letter is
+  missed; a legitimate pair of selectors is escaped (never reported below `long_run`).
+- **Severity by what the characters can do.** Bidi controls (Trojan Source), tag characters
+  and runs of 32 or more selectors or private-use characters (`long_run`; GlassWorm's
+  payloads run to thousands) are high; zero-width characters in source are medium, because
+  copy-pasted text often carries a stray ZWSP. Any hidden character in an AI rule file is
+  high, one finding per file, because the file steers every later generation; source findings
+  are grouped per rule across files, capped at `max_evidence`. Bidi marks beside
+  right-to-left letters or in a right-to-left locale file, and isolates, embeddings and
+  overrides on a locale file's lines of right-to-left text, are normal text. A `.js` or `.ts`
+  file is a locale file only inside a locale folder (`locales/`, `i18n/`, ...), so
+  `fa-icons.js` or `he/auth.ts` is code and its Trojan Source lines, which carry no
+  right-to-left letter, are still reported (review fix). *Cost if wrong:* a stray ZWSP in
+  `CLAUDE.md` reads high; a payload of 31 selectors in source is escaped but not reported; an
+  isolate around a placeholder on a locale line with no right-to-left letter is reported.
+- **Rule files are found by name and directory, whatever the census calls them:**
+  `.cursorrules`, `.windsurfrules`, `.clinerules`, `.roorules`, `.goosehints`, `CLAUDE.md`,
+  `CLAUDE.local.md`, `AGENTS.md`, `AGENT.md`, `GEMINI.md`, `.github/copilot-instructions.md`,
+  and any file under `.cursor/rules/`, `.windsurf/rules/`, `.clinerules/`, `.roo/`,
+  `.continue/rules/`, `.kiro/steering/`, `.claude/`, `.github/instructions/`,
+  `.github/prompts/`, `.github/chatmodes/`, `.junie/`, `.amazonq/rules/` and
+  `.augment/rules/`, at any depth. Other Markdown is not read. *Cost if wrong:* a new
+  assistant's rule file is read as ordinary source (or not at all, if Markdown) until it is
+  added to the list.
+- **Escapes are `[U+XXXX]`, eight per run, then `[+N more]`.** Visible in every renderer,
+  inside a code span in findings.md, plain text in SARIF and CSV, and never a newline, so a
+  line number cited from an escaped prompt is the source's. *Cost if wrong:* a reader who
+  needs the exact bytes of a long run opens the file.
+- **Escaping happens at three shared points.** Prompts: `complete_structured`, the one
+  function every model phase calls (extract, rollups, verify, compare, ask, `config check`),
+  escapes the system prompt and every message, and returns the request unchanged when there
+  is nothing to escape, so cache keys of ordinary requests do not move. Evidence:
+  `Evidence.excerpt` and `note` are escaped by the schema, so no scanner or model finding,
+  old artifact included, can carry raw characters into a document or export. Model text:
+  `redact_model_text` escapes every string it redacts, which covers extractions, rollups and
+  every finding the SARIF and CSV exports load. Verification compares a model's quote with the
+  escaped source, as the model saw it. `PROMPT_VERSION` did not change; a unit's cache key
+  gains a marker only when its text has hidden characters. Render's prose
+  calls (`backend.complete` directly) escape their request with the same `escape_request`, and
+  their text; the ask answer and its tool previews are escaped; and `render_document` escapes
+  the whole rendered Markdown, so a path or name with a hidden character in any table reaches
+  no document or export raw (review fix). *Cost if wrong:* an engagement extracted earlier
+  keeps those extractions until extract reruns.
+- **MCP configs that fetch code at launch are a medium review finding**, one per file with a
+  line per server: `npx`/`bunx`/`pnpm dlx`/`yarn dlx`/`npm exec` with a package that has no
+  exact version (`@latest` counts as none), `uvx`/`uv tool run`/`pipx run` without `==` or
+  `@version`, and a shell command that pipes `curl` or `wget` into a shell. A command run
+  through a shell wrapper (`cmd /c npx -y pkg`, `sh -c "uvx srv"`, `powershell -Command`) is
+  judged as the command it runs (review fix). Local paths and
+  servers given by `url` are not reported; only the command up to the package is shown, so
+  arguments that carry tokens stay out of the report. *Cost if wrong:* a team that vets
+  `@latest` on purpose gets a review line per server; a Docker image tag is not checked.
+
 ## AI services a tool uses (UNVAR-91)
 
 - **One deterministic scanner with an inventory and four checks (owner's choice, option A).**
@@ -1625,3 +1692,106 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   reruns only online inventories, once, so they pick licences up. The new note is scanner
   text, so the scan reruns once everywhere (SCANNER_TEXT_VERSION 2026-11-24.3). *Cost if
   wrong:* one osv-scanner call per online tool on upgrade.
+
+## Batch mode for verify and prose (UNVAR-94)
+
+- **Only verify and the render prose calls go in batches (owner's choice, option B).**
+  Extract needs each unit's neighbours summarised in order (spec §6.6), and the module and
+  tool rollups wait on each other, so batching them would serialise a run on hour-long
+  batches. Verify's calls are independent of each other, and so are a tool's prose blocks.
+  `rollup_modules` stays synchronous: it is structured output feeding `rollup_tool`, not the
+  prose path. *Cost if wrong:* extract, the bulk of a run's tokens, still costs the
+  synchronous price; option A (every phase) is the follow-up in known-issues.
+- **A batch fills the response cache; the phase then runs as it always does.** Each phase
+  works out the exact first request its ordinary path would send (`first_request` for
+  structured calls, `first_prose_requests` for prose), sends them in one batch with the
+  request's cache key as the custom id, and writes each usable reply into the response cache.
+  The workers then find their first call answered there. Anything the batch could not answer
+  (errored, expired, canceled, refused, empty, cut off, or a reply that fails validation)
+  goes through the ordinary path: retried as a call, and recorded in `failures.json` if that
+  fails too, never dropped. One code path produces the artifacts, so a batched run's are the
+  same as a synchronous run's on the same replies. *Cost if wrong:* a request the batch
+  missed costs the synchronous price; on a mostly failing batch the run pays twice for those.
+- **The batch id is kept until its results are in the cache.** `analysis/batches/<phase>.json`
+  holds the submitted batch ids and their requests' cache keys (no request content, no key).
+  A run stopped while a batch is in progress collects the same batch on the next run and
+  never sends its requests in a second batch. Each batch leaves the file as soon as its
+  results are in the cache, so a stop between two batches of one phase never has the next
+  run collect, and bill, the first one again; the file is deleted once all are in.
+  A stored batch the API no longer returns (results are kept 29 days) is dropped and its
+  requests go in a new batch. *Cost if wrong:* a stop in the instant between the API
+  accepting a batch and the file being written pays for that batch twice.
+- **The budget cap is checked once, before a batch is submitted, and the batch's usage counts
+  after its replies are used.** A batch is one spend that cannot stop half way; counting it
+  before the workers ran would throw away replies already paid for. Each batch's usage
+  reaches the ledger as soon as it is collected, even when a later batch of the same phase
+  fails, and the in-run budget counts it whether the phase ends normally or raises. *Cost if wrong:* a run
+  can pass `budget.max_tokens` by one phase's batch; the next phase stops as usual.
+- **Batch usage is a separate ledger entry, marked `batch`, priced at half.** `cost` shows
+  such an entry as `<phase> (batch)` and prices it at `BATCH_RATE` (0.5); `run --dry-run`
+  prices a batched phase's estimate at the same rate. Cache reads and writes inside a batch
+  get the same discount, as Anthropic bills them. *Cost if wrong:* if the provider's
+  discount changes, estimates and the ledger are off until `BATCH_RATE` follows it.
+- **`batch: true` on an `openai_compatible` backend is a configuration error**, not ignored:
+  a consultant who asked for half-price runs must not get full-price ones silently.
+  `config check` prints one notice line per batch backend: the provider keeps batch results
+  for 29 days and batches are not eligible for zero data retention. *Cost if wrong:* none
+  known; a client with a zero-retention agreement leaves batch mode off.
+- **Polling waits in one-second steps of an injected sleeper, every 30 seconds.** Ctrl-C stops
+  the wait at once and leaves the batch to resume; tests never sleep. There is no local
+  timeout: the API ends every batch within 24 hours, expiring what it did not process. A
+  rate-limited status check (HTTP 429) counts as "still in progress", never as the batch's
+  failure: dropping the batch would send its requests again and pay for them twice. A
+  rate-limited results download is tried again a poll later (up to 10 times, then the run
+  stops and the next run collects the batch). Any other non-fatal error reading a batch, new
+  or stored, drops that batch and sends its uncollected requests as ordinary calls; the phase
+  still ends normally.
+
+## Empty header fields (UNVAR-85)
+
+- **A missing client or firm is left out of the header, not shown as a dash.** The
+  comparison keeps "Engagement" in its title when there is no client, because a title needs
+  a noun. The template change reruns the render phase once on every engagement. *Cost if
+  wrong:* a reader of a document without a client cannot tell whether the field was
+  forgotten; `init` now says so at the start instead.
+
+## Opengrep SAST scanner (UNVAR-89)
+
+- **Bring your own rules; nothing bundled (owner's choice: bundle a rule set only if its
+  licence allows redistribution, otherwise this first).** The opengrep/opengrep-rules
+  repository's LICENSE (read 2026-11-23) is the semgrep-rules licence: LGPL 2.1 with the
+  "Commons Clause" License Condition v1.0, licensor Semgrep, Inc. The clause withholds the
+  right to "Sell", defined as providing to third parties, for a fee, "a product or service
+  whose value derives, entirely or substantially, from the functionality of the Software",
+  expressly including consulting and support fees. Unvarnish is a consultant's paid
+  review tool, so shipping those rules in the image is at best unclear; the Dockerfile, site
+  kit and CI are unchanged and the consultant supplies a rules directory. Latest Opengrep
+  release seen: 2.0.0 (13 November 2026, GitHub releases page). *Cost if wrong:* if the
+  clause does not reach this use, a scan without the consultant's own rules finds no
+  code-level flaws that bundled rules would have; bundling is a later, separate change.
+- **Local rules only.** `scanners.sast.rules` must be a local directory holding `.yml` or
+  `.yaml` files; `auto`, registry names and URLs are refused before Opengrep starts, and its
+  absolute path is what Opengrep sees. *Cost if wrong:* a consultant who wants a registry
+  pack downloads it into a folder first.
+- **Offline flags from Opengrep's source, not its docs.** Opengrep's `scan` command has no
+  `--metrics` flag (passing one fails the run) and accepts `--disable-version-check` as an
+  inert flag kept for Semgrep compatibility; both read from `Scan_CLI.ml` and
+  `CLI_common.ml` on main. Unvarnish passes `--disable-version-check` and no `--metrics`.
+  *Cost if wrong:* a release that rejects the flag turns the scan into a "not checked" note.
+- **The vetted repository's ignore rules never apply.** Opengrep runs with `--no-git-ignore`,
+  `--x-ignore-semgrepignore-files` and `--disable-nosem`, in an empty temp folder (the
+  gitleaks lesson of UNVAR-66), and Unvarnish's census filters the results. Ignore files and
+  `nosem` comments are reported as one low "Opengrep suppressions in the source" finding,
+  low because they are disregarded (gitleaks' `.gitleaksignore` is medium because it still
+  applies). *Cost if wrong:* results in gitignored files the census would also exclude are
+  dropped anyway; a nosem comment that marks a confirmed false positive still costs a review.
+- **One finding per rule.** Rule id goes in a `group:` tag with a `count:`, so the re-audit
+  delta matches it by scanner and rule (UNVAR-49) and reports a changed count. Severity maps
+  `ERROR` to high, `WARNING` to medium, `INFO` to low (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW` too);
+  category follows the rule's `metadata.category`, security by default. Effort band M per
+  rule, S for the suppression finding. *Cost if wrong:* a rule with hundreds of matches is
+  one finding with a long count, which is the intent.
+- **The scan's inputs include the rule files and whether `opengrep` is on PATH**, so editing
+  rules or installing Opengrep rescans; the Opengrep version is not included. No scanner
+  text version bump: the new scanner name already changes every scan's inputs hash.
+  *Cost if wrong:* an Opengrep upgrade keeps an older scan until `--force`.

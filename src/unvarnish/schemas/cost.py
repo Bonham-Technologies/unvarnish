@@ -6,6 +6,9 @@ from pydantic import BaseModel, Field
 
 from unvarnish.config import Prices
 
+# What the Message Batches API charges against the synchronous price (UNVAR-94).
+BATCH_RATE = 0.5
+
 
 def priced(prices: Prices | dict[str, Prices] | None, model: str) -> Prices | None:
     """The price that applies to one model: the single price, or that model's entry."""
@@ -48,6 +51,10 @@ class CostEntry(BaseModel):
     model: str
     usage: Usage
     at: datetime
+    batch: bool = False  # sent through the Message Batches API: billed at BATCH_RATE
+
+    def usd(self, p: Prices) -> float:
+        return self.usage.usd(p) * (BATCH_RATE if self.batch else 1.0)
 
 
 class CostLedger(BaseModel):
@@ -72,4 +79,4 @@ class CostLedger(BaseModel):
         """Total cost, each entry at its own model's price; None if any model is unpriced."""
         if prices is None or self.unpriced(prices):
             return None
-        return sum(e.usage.usd(priced(prices, e.model)) for e in self.entries)  # type: ignore[arg-type]
+        return sum(e.usd(priced(prices, e.model)) for e in self.entries)  # type: ignore[arg-type]

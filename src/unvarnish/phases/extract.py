@@ -37,6 +37,7 @@ from unvarnish.schemas.analysis import (
 from unvarnish.schemas.cost import CostEntry, Usage
 from unvarnish.schemas.finding import Evidence, Finding, Source
 from unvarnish.schemas.inventory import Census
+from unvarnish.util.hidden_text import has_hidden
 from unvarnish.util.plural import plural
 
 log = logging.getLogger("unvarnish.extract")
@@ -64,9 +65,13 @@ def to_findings(
 
 def unit_inputs_hash(unit: Unit, source: bytes, backend_name: str, model: str,
                      effort: str | None, notes: list[str] | None = None) -> str:
-    # Scanner notes join the hash only when present, so units without any keep their cache.
+    # Scanner notes join the hash only when present, so units without any keep their cache;
+    # so does the escaping of hidden characters (UNVAR-92): only a unit that has some, and
+    # was extracted from the raw text before, is asked again.
+    escaped = has_hidden(source.decode("utf-8", errors="replace"), at_start=False)
     return hash_inputs([hashlib.sha256(source).hexdigest(), unit.id, backend_name, model,
-                        PROMPT_VERSION, effort or "", *(["\n".join(notes)] if notes else [])])
+                        PROMPT_VERSION, effort or "", *(["\n".join(notes)] if notes else []),
+                        *(["hidden-text-escaped"] if escaped else [])])
 
 
 def unit_notes(unit: Unit, hints: dict[str, list[int]],

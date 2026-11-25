@@ -18,6 +18,7 @@ class ScanContext:
     git: GitStats
     dependencies: Dependencies
     options: dict[str, Any] = field(default_factory=dict)
+    engagement_root: Path | None = None  # relative option paths resolve against it
     # An inventory artifact the scanner built, which the scan phase writes beside its
     # findings: the ai_usage scanner's AIUsage (UNVAR-91).
     inventory: Any = None

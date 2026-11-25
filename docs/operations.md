@@ -87,6 +87,31 @@ The scale rehearsal is repeatable without spending tokens:
 
     UNVARNISH_SCALE_REPO=/path/to/repo uv run pytest --no-cov tests/test_scale.py -s
 
+### Batch mode (Anthropic)
+
+`batch: true` on an Anthropic backend sends the verify phase and the render prose calls
+through the Message Batches API, at half the synchronous price:
+
+    backends:
+      anthropic:
+        type: anthropic
+        api_key_env: ANTHROPIC_API_KEY
+        batch: true
+
+Extract and the rollups stay synchronous. A batched phase submits one batch per tool and
+phase, checks it every 30 seconds and goes on once it ends, usually within the hour (at most
+24 hours). The replies land in the response cache, so the phase then runs as usual; anything
+the batch could not answer (errored, expired, refused, unparseable) is sent as an ordinary call
+and, if that fails too, recorded in `failures.json`. Ctrl-C while a batch is in progress
+leaves its id in `tools/<tool>/analysis/batches/<phase>.json`; the next `run` collects that
+batch instead of sending a new one. `cost` lists batch spending as `<phase> (batch)` priced
+at the batch rate, and `run --dry-run` prices a batched phase at the same rate.
+
+The provider keeps batch results for 29 days, and batches are not eligible for zero data
+retention; `config check` says so for each batch backend. Leave batch mode off for a client
+with a zero-retention agreement. `batch: true` on an `openai_compatible` backend is a
+configuration error.
+
 ## Docker
 
 - Native Windows is unsupported: the engagement lock needs `fcntl`, so the CLI stops at
@@ -288,6 +313,32 @@ The scale rehearsal is repeatable without spending tokens:
   its fingerprint in this history; `tests/test_repo_hygiene.py` rejects only the old archive's
   commits.
 
+## SAST (Opengrep)
+
+- `sast` is optional and nothing is bundled: install `opengrep` yourself and point
+  `scanners.sast.rules` at a local directory of Opengrep (Semgrep-format) rule files
+  (`.yml`, `.yaml`). A relative path is relative to the engagement folder. Without either,
+  the run still succeeds and "Not analysed" says `sast: not checked (...)` with the reason.
+- Only a local directory is accepted: `auto`, registry names (`p/...`, `r/...`, `s/...`),
+  URLs and `git+` repositories are refused, so the scan never fetches rules. Opengrep runs
+  with `--disable-version-check`, in an empty temp folder of its own, and without any
+  `SEMGREP_*` or `OPENGREP_*` variable (`SEMGREP_RULES` would add rules). Opengrep has no
+  metrics to switch off.
+- The vetted repository cannot hide results: Opengrep runs with `--no-git-ignore`,
+  `--x-ignore-semgrepignore-files` and `--disable-nosem`, and Unvarnish's own census decides
+  which files count (excluded, vendored and binary files are dropped). A `.semgrepignore` or
+  `.opengrepignore` file (a name clients pass with `--semgrepignore-filename`) and every
+  `nosem`, `nosemgrep` or `noopengrep` comment are listed in the "Opengrep suppressions in
+  the source" finding, whether or not Opengrep ran.
+- One finding per rule, with up to `max_evidence` places (default 25); the summary gives the
+  full count. A follow-up review matches it to the baseline by scanner and rule.
+- Changing a rule file, or installing or removing `opengrep`, reruns the scan; a new Opengrep
+  version alone does not (`run --phase scan --force`).
+- Where to get rules, and why none ship with Unvarnish: `docs/decisions.md`, "Opengrep SAST
+  scanner (UNVAR-89)". The flags above were checked against Opengrep's source, not a binary:
+  if a release drops `--x-ignore-semgrepignore-files` (marked internal), the note says
+  `sast: not checked (opengrep failed: ...)`.
+
 ## Client exposure
 
 - `client_exposure` treats `src/`, `public/` and `dist/` as browser-facing. For a monorepo or a
@@ -301,6 +352,24 @@ The scale rehearsal is repeatable without spending tokens:
   pg_class` before calling them open.
 - The route review finding is a list to confirm, not a verdict. With a model configured,
   extraction is told about each listed handler and reports the ones it confirms.
+
+## Hidden text
+
+- `hidden_text` findings show each hidden character as a `[U+XXXX]` escape; a run longer than
+  eight ends in `[+N more]`. To see the raw bytes, open the cited line with
+  `sed -n '<line>p' <file> | od -c` or an editor that shows invisible characters (VS Code's
+  `editor.renderControlCharacters` and `editor.unicodeHighlight.invisibleCharacters`).
+- A rule-file finding is high whatever the characters are, because the file steers every
+  generation the assistant makes: read the file's history (`git log -p -- <file>`) and review
+  code generated after the characters arrived.
+- Model prompts carry the same escapes (at the one structured-call function every model phase
+  uses), so the model sees what a reviewer would and cites the same line numbers. A unit with
+  hidden characters gets a new cache key, so a later extract run asks about it again.
+- Runs of variation selectors or private-use characters shorter than
+  `scanners.hidden_text.long_run` (32) are not reported in source: icon fonts and variation
+  sequences make short runs normal. Lower it to search for smaller payloads.
+- The MCP finding is a review item: pin `npx`/`uvx` servers to an exact version
+  (`pkg@1.2.3`, `pkg==1.2.3`); a server given by `url` is not reported.
 
 ## AI usage
 
@@ -538,7 +607,8 @@ fully covered. A partial run (one test file, `-k`) covers far less than the floo
 To raise the floor after adding tests: run `uv run pytest -q`, read the `TOTAL` line, set
 `fail_under` to that percentage rounded down to a whole number, and update the date and
 figure in the comment above it. Never lower it to get a change through; add the tests
-instead (`tests/test_distribution.py` fails if `fail_under` drops below 94).
+instead (`tests/test_distribution.py` fails if `fail_under` drops below 95, the floor since
+UNVAR-87).
 
 ## Findings into GitHub and Jira
 

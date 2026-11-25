@@ -8,6 +8,51 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Batch mode for verify and prose
+
+- `backends.<name>.batch: true` (Anthropic only, off by default) sends the verify phase and
+  the render prose calls through the Message Batches API at half the price, resumes a stored
+  batch after a stop, retries what a batch could not answer as ordinary calls, and prices it
+  at the batch rate in `cost` and `run --dry-run`; extract and the rollups stay synchronous
+  (UNVAR-94).
+
+### `add --link` says how it is used
+
+- `unvarnish add NAME --link PATH` now answers with the right form,
+  `add NAME --link --repo PATH` (or `--files DIR`), instead of click's "unexpected extra
+  argument", and `--link`'s help says it goes with `--repo` or `--files` (UNVAR-86).
+
+### A timing test that no longer depends on runner speed
+
+- The hidden-text linear-time test compares the cost of n and 4n characters instead of
+  asserting a 10-second wall-clock bound, which failed on slow CI runners and turned `main`
+  red; it still fails on a quadratic scan (UNVAR-97).
+
+### The engagement lock's edge cases are tested
+
+- Tests now cover the engagement lock's boot-time read, heartbeat fallbacks and a release
+  that cannot empty the lock file (`lock.py` from 83% to 99%), and the coverage floor rises
+  from 94 to 95 (UNVAR-87).
+
+### Document headers without empty fields
+
+- A document header leaves out the client or the firm when `init` was not given one,
+  instead of printing `**Client:** —` in a client deliverable; `init` says when the
+  documents will carry no client or firm name and how to set one (UNVAR-85).
+
+### Hidden text in rule files and source
+
+- A new `hidden_text` scanner reports characters that display as nothing: bidirectional
+  controls (Trojan Source, high), Unicode tag characters (high), runs of 32 or more variation
+  selectors or private-use characters (an encoded payload, high) and zero-width characters
+  (medium) in source and configuration, and any of them in an AI rule file (`.cursorrules`,
+  `CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `.cursor/rules/`, high). It
+  also flags MCP configs that start a server from an unpinned npm or Python package or a
+  script piped into a shell, for review. Emoji sequences, right-to-left locale files, Persian
+  and Indic joiners and a byte order mark at the start of a file are not findings. Every
+  excerpt, note, model prompt (prose and ask included), rendered document and export shows the
+  characters as `[U+XXXX]` escapes, never raw, and line numbers are unchanged. Scans rerun once (UNVAR-92).
+
 ### Which AI services a tool uses
 
 - A new `ai_usage` scanner records how a tool's own code uses AI: each AI SDK import, provider
@@ -55,6 +100,16 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   offline bundle; with it, an advisory CISA lists as exploited is critical and says "Known
   exploited (CISA KEV, added <date>)", and every advisory shows its EPSS score, which orders
   them, in `dependencies.json`, findings.md, CSV and SARIF (UNVAR-90).
+
+### The README has an install line that works today
+
+- The README's first install line is `uv tool install git+https://github.com/Bonham-Technologies/unvarnish`;
+  the PyPI line is marked "not yet", and a clone-and-`docker build` route sits beside it
+  (UNVAR-84).
+
+### Optional Opengrep SAST scanner
+
+- New `sast` scanner: with `opengrep` on PATH and `scanners.sast.rules` set to a local rules directory, code-level flaws are scanner findings (one per rule, capped by `max_evidence`, redacted, matched by rule on re-audit); otherwise "Not analysed" says `sast: not checked` with the reason. No rules are bundled or fetched; ignore files and `nosem` comments are reported as suppressions (UNVAR-89).
 
 ### The site lives at unvarnish.tech
 

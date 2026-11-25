@@ -21,6 +21,10 @@ def allow_new_calls() -> None:
     _INTERRUPTED.clear()
 
 
+def new_calls_stopped() -> bool:
+    return _INTERRUPTED.is_set()
+
+
 def limiter_for(key: str, concurrency: int) -> threading.BoundedSemaphore:
     """One semaphore per engagement and limit, shared by every backend built for it."""
     with _LOCK:

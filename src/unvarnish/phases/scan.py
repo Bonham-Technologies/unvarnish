@@ -18,8 +18,9 @@ from unvarnish.util.plural import plural
 
 # Bump when scanner summaries, notes or detection rules change, so a scan written by an
 # earlier version reruns once (deterministic, no model calls) instead of rendering the old
-# text or findings (UNVAR-57, UNVAR-67, UNVAR-81, UNVAR-82, UNVAR-90, UNVAR-91, UNVAR-93).
-SCANNER_TEXT_VERSION = "2026-11-24.5"
+# text or findings (UNVAR-57, UNVAR-67, UNVAR-81, UNVAR-82, UNVAR-90, UNVAR-91, UNVAR-92,
+# UNVAR-93).
+SCANNER_TEXT_VERSION = "2026-11-25.1"
 
 
 def sort_findings(findings: list[Finding]) -> list[Finding]:
@@ -49,8 +50,12 @@ class ScanPhase:
         options = json.dumps({n: ctx.config.scanners.get(n, {}) for n in names}, sort_keys=True)
         # The band table (UNVAR-42): a scan from before the bands, or of other bands, reruns.
         bands = json.dumps(EFFORT_RULES, sort_keys=True)
+        # What a scanner reads outside the source, such as sast's rule files (UNVAR-89).
+        extra = [digest(dict(ctx.config.scanners.get(s.name, {})), ctx.engagement.root)
+                 for s in self.scanners()
+                 if (digest := getattr(s, "inputs_digest", None)) is not None]
         return hash_inputs([hash_files(self._artifacts(ctx)), ",".join(names), options, bands,
-                            SCANNER_TEXT_VERSION])
+                            SCANNER_TEXT_VERSION, *[e for e in extra if e]])
 
     def outputs(self, ctx: ToolContext) -> list[Path]:
         # ai-usage.json is written only by the ai_usage scanner (UNVAR-91).
@@ -74,6 +79,7 @@ class ScanPhase:
                 tool=ctx.tool, source_root=ctx.source_root, census=census, metrics=metrics,
                 git=git, dependencies=deps,
                 options=dict(ctx.config.scanners.get(scanner.name, {})),
+                engagement_root=ctx.engagement.root,
             )
             try:
                 findings.extend(scanner.run(sctx))

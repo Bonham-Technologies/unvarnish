@@ -363,6 +363,7 @@ Scanner notes:
 - dependencies: exploit data: not checked (no exploit data bundle); advisories are not marked as known exploited (CISA KEV) or ordered by exploit likelihood (EPSS) (run `unvarnish vulndata refresh` while online, or set UNVARNISH_VULNDATA_DIR to a folder holding vulndata.gz, then rerun)
 - dependencies: licences: not checked (offline mode); osv-scanner reads package licences from deps.dev, so no licence is listed in the SBOM export and none is checked against an allowlist (set scanners.dependencies.offline: false, then rerun)
 - end_of_life: no end-of-life data bundle; runtime and framework versions were not checked against end-of-life dates (run `unvarnish eol refresh` while online, or set UNVARNISH_EOL_DIR to a folder holding endoflife.json, then rerun)
+- sast: not checked (no rules directory configured; set scanners.sast.rules to a local Opengrep rules directory)
 
 1 model finding was rejected on verification and is excluded above; it remains in `analysis/findings.json` for inspection.
 

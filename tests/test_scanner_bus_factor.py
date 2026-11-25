@@ -57,5 +57,7 @@ def test_builtin_registry_order():
     assert [s.name for s in builtin_scanners()] == [
         "secrets", "oversized_files", "hygiene", "bus_factor", "dependencies",
         "hardcoded_infra", "vendored_bulk", "generated_bulk", "client_exposure", "end_of_life",
+        "hidden_text",
+        "sast",
         "ai_usage",
     ]

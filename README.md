@@ -9,7 +9,7 @@ tests and CI, single-author risk, and how the tool was built. Every finding is t
 file and line.
 
 It runs deterministic scanners (secrets, dependency advisories, end-of-life runtimes, hardcoded
-infrastructure, hygiene, bus factor) and model-assisted analysis against Anthropic or any
+infrastructure, hygiene, bus factor, hidden text) and model-assisted analysis against Anthropic or any
 OpenAI-compatible endpoint, online or air-gapped, and writes three documents per tool
 (architecture, findings, requirements) plus a cross-tool comparison. It answers questions over
 the analysis and exports to DOCX, HTML, and PDF (findings also to SARIF and CSV, dependencies
@@ -25,12 +25,18 @@ Requires Python 3.13+ and git; document exports also need pandoc 2.19+, Graphviz
 weasyprint (or use the Docker image below). SARIF, CSV and CycloneDX exports need nothing more. Linux and
 macOS run it natively; on Windows use the Docker image, since native Windows is unsupported.
 
-    uv tool install unvarnish        # once published
+    uv tool install git+https://github.com/Bonham-Technologies/unvarnish  # today, from git
+    uv tool install unvarnish        # once published to PyPI (not yet)
     uv tool install .                # from a checkout
     uv sync && uv run unvarnish ...  # or run in place
     unvarnish grammars fetch         # once, while online: the tree-sitter grammars
     unvarnish eol refresh            # while online: end-of-life dates from endoflife.date
     unvarnish vulndata refresh       # while online: CISA KEV and EPSS exploit data
+
+Or build the Docker image from a clone (see [Docker](#docker) for running it):
+
+    git clone https://github.com/Bonham-Technologies/unvarnish && cd unvarnish
+    docker build -t unvarnish .
 
 The tree-sitter grammars that measure functions and split code into units download from GitHub
 on first use; `grammars fetch` gets them ahead of time, so a later run needs no network for
@@ -71,6 +77,8 @@ Deterministic, no model needed; options live under `scanners:` in `engagement.ya
 | `client_exposure` | what AI-built web apps ship to the browser: Supabase service-role keys and Firebase config in client code, secret-named `NEXT_PUBLIC_`/`VITE_`/`REACT_APP_`/`EXPO_PUBLIC_` variables, tables without row level security and `using (true)` policies in SQL migrations, CORS `*` with credentials, credentials in committed `.env` files and MCP configs, and route handlers with no auth check nearby (one review finding, passed to extraction to confirm). Values redacted | `client_roots`, `client_extensions`, `public_names`, `auth_window`, `cors_window`, `max_evidence`, `include_tests` |
 | `ai_usage` | how the tool's own code uses AI: each provider, model id and `file:line`, hosted or local (from SDK imports, endpoints including raw HTTP, model ids and dependencies), in architecture.md and the comparison; request input built into a prompt (one review finding, OWASP LLM01), model output reaching eval/exec, a shell or SQL (high), model calls with no token limit or timeout, and model-callable tools beside powerful actions. Values redacted | `max_evidence`, `include_tests` |
 | `end_of_life` | runtimes, base images and frameworks past end of life (high) or within the warning window of it (medium), from `.python-version`, `requires-python`, Poetry's `python`, `Pipfile`, `setup.cfg` and `setup.py` `python_requires`, `runtime.txt`, `package.json` engines, `.nvmrc` (a version or `lts/<codename>`), `.tool-versions`, `go.mod`, project-file TargetFramework, Dockerfile `FROM`, `.ruby-version`, the Gemfile's `ruby`, `composer.json` and framework dependencies; dates from an offline endoflife.date bundle (`unvarnish eol refresh`; an older bundle than `max_data_age_days` is noted) | `warn_months`, `max_data_age_days` |
+| `hidden_text` | characters that display as nothing: bidirectional controls (Trojan Source), Unicode tag characters and long runs of variation selectors or private-use characters (high), zero-width characters (medium) in source and config; any of them in an AI rule file (`.cursorrules`, `.windsurfrules`, `CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `.cursor/rules/`, `.claude/` and others, high); and MCP configs that start a server from an unpinned package or a piped download (review). Shown as `[U+XXXX]` escapes, never raw, in every document, export and model prompt | `long_run`, `max_evidence`, `include_tests` |
+| `sast` | code-level flaws (SQL injection, `eval` of request input and whatever else your rules cover) from [Opengrep](https://github.com/opengrep/opengrep), when `opengrep` is on PATH and `rules` names a local rules directory; otherwise listed as not checked. Local rules only, never a registry; one finding per rule, excerpts redacted; `.semgrepignore` files and `nosem` comments are disregarded and reported as suppressions | `rules`, `max_evidence` |
 
 ## Model configuration
 
@@ -81,6 +89,7 @@ skips the model phases. To enable them, add a backend and a default model to `en
       anthropic:
         type: anthropic
         api_key_env: ANTHROPIC_API_KEY
+        # batch: true               # verify and prose via the Message Batches API, half price
       onprem:
         type: openai_compatible
         base_url: http://llm.client.internal:8000/v1

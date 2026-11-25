@@ -16,6 +16,7 @@ from unvarnish.model.base import (
     ModelRefusal,
 )
 from unvarnish.schemas.cost import Usage
+from unvarnish.util.hidden_text import CANDIDATE_RE, escape_hidden
 
 JSON_IN_PROMPT_SUFFIX = (
     "\n\nRespond with exactly one JSON object and nothing else: no prose, no code fences. "
@@ -185,6 +186,23 @@ def is_schema_rejection(exc: BaseException) -> bool:
     return any(m in msg for m in GRAMMAR_ERROR_MARKERS)
 
 
+def escape_request(req: CompletionRequest) -> CompletionRequest:
+    """The request with hidden characters (bidi controls, zero-width and tag characters,
+    encoded runs) in its system prompt and messages written as [U+XXXX] escapes: source and
+    rule files reach every structured call (extract, rollups, verify, compare, ask), and the
+    model must see what a reviewer would, never steer on what nobody sees (UNVAR-92). Lines
+    are unchanged, so cited line numbers still hold; a request without any is returned as is,
+    so its cache key does not change."""
+    texts = [req.system, *(m.content for m in req.messages)]
+    if not any(CANDIDATE_RE.search(t) for t in texts):
+        return req
+    return req.model_copy(update={
+        "system": escape_hidden(req.system, at_start=False),
+        "messages": [m.model_copy(update={"content": escape_hidden(m.content, at_start=False)})
+                     for m in req.messages],
+    })
+
+
 def complete_structured[T: BaseModel](
     backend: Backend, req: CompletionRequest, model_cls: type[T]
 ) -> StructuredResult[T]:
@@ -192,6 +210,7 @@ def complete_structured[T: BaseModel](
 
     When the backend rejects the schema itself (a grammar too large to compile), the whole
     conversation is retried once in JSON-in-prompt mode, which has no such limit."""
+    req = escape_request(req)
     native = backend.capabilities.json_schema
     try:
         return _complete_structured(backend, req, model_cls, native=native)
@@ -203,17 +222,31 @@ def complete_structured[T: BaseModel](
         raise
 
 
-def _complete_structured[T: BaseModel](
-    backend: Backend, req: CompletionRequest, model_cls: type[T], *, native: bool
-) -> StructuredResult[T]:
-    schema = strict_schema(model_cls)
-    base = req.model_copy(update={
+def _base_request(req: CompletionRequest, model_cls: type[BaseModel], schema: dict, *,
+                  native: bool) -> CompletionRequest:
+    return req.model_copy(update={
         "output_schema": schema if native else None,
         "schema_name": model_cls.__name__,
         "system": (req.system if native
                    else req.system + JSON_IN_PROMPT_SHORT if req.schema_in_system
                    else req.system + JSON_IN_PROMPT_SUFFIX + json.dumps(schema)),
     })
+
+
+def first_request(backend: Backend, req: CompletionRequest,
+                  model_cls: type[BaseModel]) -> CompletionRequest:
+    """The request complete_structured sends first for `req`: what a message batch must hold
+    for its reply to be found in the response cache by the call that follows (UNVAR-94)."""
+    req = escape_request(req)
+    native = backend.capabilities.json_schema
+    return _base_request(req, model_cls, strict_schema(model_cls), native=native)
+
+
+def _complete_structured[T: BaseModel](
+    backend: Backend, req: CompletionRequest, model_cls: type[T], *, native: bool
+) -> StructuredResult[T]:
+    schema = strict_schema(model_cls)
+    base = _base_request(req, model_cls, schema, native=native)
     usage = Usage()
     messages = list(base.messages)
     last_text, last_error = "", ""
