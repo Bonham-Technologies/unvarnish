@@ -1622,3 +1622,11 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   reruns only online inventories, once, so they pick licences up. The new note is scanner
   text, so the scan reruns once everywhere (SCANNER_TEXT_VERSION 2026-11-24.3). *Cost if
   wrong:* one osv-scanner call per online tool on upgrade.
+
+## Empty header fields (UNVAR-85)
+
+- **A missing client or firm is left out of the header, not shown as a dash.** The
+  comparison keeps "Engagement" in its title when there is no client, because a title needs
+  a noun. The template change reruns the render phase once on every engagement. *Cost if
+  wrong:* a reader of a document without a client cannot tell whether the field was
+  forgotten; `init` now says so at the start instead.
