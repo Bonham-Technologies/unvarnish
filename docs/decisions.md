@@ -1684,3 +1684,44 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   a noun. The template change reruns the render phase once on every engagement. *Cost if
   wrong:* a reader of a document without a client cannot tell whether the field was
   forgotten; `init` now says so at the start instead.
+
+## Opengrep SAST scanner (UNVAR-89)
+
+- **Bring your own rules; nothing bundled (owner's choice: bundle a rule set only if its
+  licence allows redistribution, otherwise this first).** The opengrep/opengrep-rules
+  repository's LICENSE (read 2026-11-23) is the semgrep-rules licence: LGPL 2.1 with the
+  "Commons Clause" License Condition v1.0, licensor Semgrep, Inc. The clause withholds the
+  right to "Sell", defined as providing to third parties, for a fee, "a product or service
+  whose value derives, entirely or substantially, from the functionality of the Software",
+  expressly including consulting and support fees. Unvarnish is a consultant's paid
+  review tool, so shipping those rules in the image is at best unclear; the Dockerfile, site
+  kit and CI are unchanged and the consultant supplies a rules directory. Latest Opengrep
+  release seen: 2.0.0 (13 November 2026, GitHub releases page). *Cost if wrong:* if the
+  clause does not reach this use, a scan without the consultant's own rules finds no
+  code-level flaws that bundled rules would have; bundling is a later, separate change.
+- **Local rules only.** `scanners.sast.rules` must be a local directory holding `.yml` or
+  `.yaml` files; `auto`, registry names and URLs are refused before Opengrep starts, and its
+  absolute path is what Opengrep sees. *Cost if wrong:* a consultant who wants a registry
+  pack downloads it into a folder first.
+- **Offline flags from Opengrep's source, not its docs.** Opengrep's `scan` command has no
+  `--metrics` flag (passing one fails the run) and accepts `--disable-version-check` as an
+  inert flag kept for Semgrep compatibility; both read from `Scan_CLI.ml` and
+  `CLI_common.ml` on main. Unvarnish passes `--disable-version-check` and no `--metrics`.
+  *Cost if wrong:* a release that rejects the flag turns the scan into a "not checked" note.
+- **The vetted repository's ignore rules never apply.** Opengrep runs with `--no-git-ignore`,
+  `--x-ignore-semgrepignore-files` and `--disable-nosem`, in an empty temp folder (the
+  gitleaks lesson of UNVAR-66), and Unvarnish's census filters the results. Ignore files and
+  `nosem` comments are reported as one low "Opengrep suppressions in the source" finding,
+  low because they are disregarded (gitleaks' `.gitleaksignore` is medium because it still
+  applies). *Cost if wrong:* results in gitignored files the census would also exclude are
+  dropped anyway; a nosem comment that marks a confirmed false positive still costs a review.
+- **One finding per rule.** Rule id goes in a `group:` tag with a `count:`, so the re-audit
+  delta matches it by scanner and rule (UNVAR-49) and reports a changed count. Severity maps
+  `ERROR` to high, `WARNING` to medium, `INFO` to low (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW` too);
+  category follows the rule's `metadata.category`, security by default. Effort band M per
+  rule, S for the suppression finding. *Cost if wrong:* a rule with hundreds of matches is
+  one finding with a long count, which is the intent.
+- **The scan's inputs include the rule files and whether `opengrep` is on PATH**, so editing
+  rules or installing Opengrep rescans; the Opengrep version is not included. No scanner
+  text version bump: the new scanner name already changes every scan's inputs hash.
+  *Cost if wrong:* an Opengrep upgrade keeps an older scan until `--force`.

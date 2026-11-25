@@ -94,6 +94,10 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   the PyPI line is marked "not yet", and a clone-and-`docker build` route sits beside it
   (UNVAR-84).
 
+### Optional Opengrep SAST scanner
+
+- New `sast` scanner: with `opengrep` on PATH and `scanners.sast.rules` set to a local rules directory, code-level flaws are scanner findings (one per rule, capped by `max_evidence`, redacted, matched by rule on re-audit); otherwise "Not analysed" says `sast: not checked` with the reason. No rules are bundled or fetched; ignore files and `nosem` comments are reported as suppressions (UNVAR-89).
+
 ### The site lives at unvarnish.tech
 
 - The public site's canonical address, Open Graph and structured-data URLs, sitemap, robots

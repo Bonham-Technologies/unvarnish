@@ -88,6 +88,10 @@ EFFORT_RULES: dict[str, dict[str, tuple[Effort, str]]] = {
         "invisible": (S, "remove the characters"),
         "mcp_unpinned": (S, "pin each server to an exact version"),
     },
+    "sast": {
+        "rule": (M, "fix each flagged place and add a test that exercises it"),
+        "suppression": (S, "review each suppression entry"),
+    },
 }
 
 

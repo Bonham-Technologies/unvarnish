@@ -18,6 +18,7 @@ class ScanContext:
     git: GitStats
     dependencies: Dependencies
     options: dict[str, Any] = field(default_factory=dict)
+    engagement_root: Path | None = None  # relative option paths resolve against it
 
 
 class Scanner(Protocol):

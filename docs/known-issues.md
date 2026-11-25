@@ -205,6 +205,13 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   rule, so the row headers in an HTML export's summary tables take its header styling (wash
   background, bold) until the rule is copied from the bundled `report.css`. PDF and Word are
   unaffected.
+- [UNVAR-89] `sast` excerpts are redacted by Unvarnish's own secret rules only: a credential
+  only gitleaks recognises can appear in an Opengrep excerpt. Opengrep's command line was
+  checked against its source on main (November 2026), not run against a released binary in
+  CI; `--x-ignore-semgrepignore-files` is marked internal upstream and may disappear, which
+  turns the scan into a "not checked" note rather than wrong results. A new Opengrep version
+  alone does not rerun a fresh scan. Two rules whose ids end in the same word get the same
+  title (the full rule id is in the summary and the evidence notes).
 
 - [UNVAR-92] An engagement extracted before the hidden-text escaping keeps those extractions:
   the extract phase reruns only when its units, model or prompt change, so a unit with hidden

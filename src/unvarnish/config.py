@@ -29,6 +29,8 @@ DEFAULT_SCANNER_OPTIONS: dict[str, dict[str, Any]] = {
     },
     "end_of_life": {"warn_months": 6, "max_data_age_days": 90},
     "hidden_text": {"long_run": 32, "max_evidence": 25, "include_tests": False},
+    # Opengrep with a local rules directory only (UNVAR-89); empty: not checked.
+    "sast": {"rules": "", "max_evidence": 25},
 }
 
 
