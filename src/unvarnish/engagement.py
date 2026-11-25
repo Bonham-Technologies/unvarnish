@@ -54,6 +54,10 @@ class ToolPaths:
         self.baseline = self.analysis / "baseline.json"  # run --baseline's snapshot (UNVAR-40)
         self.delta = self.analysis / "delta.json"
 
+    def batch_state(self, phase: str) -> Path:
+        """The message batches a phase has submitted and not yet collected (UNVAR-94)."""
+        return self.analysis / "batches" / f"{phase}.json"
+
     def ensure_dirs(self) -> None:
         for d in (self.root, self.inventory, self.analysis, self.docs):
             d.mkdir(parents=True, exist_ok=True)

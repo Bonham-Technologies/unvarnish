@@ -222,17 +222,31 @@ def complete_structured[T: BaseModel](
         raise
 
 
-def _complete_structured[T: BaseModel](
-    backend: Backend, req: CompletionRequest, model_cls: type[T], *, native: bool
-) -> StructuredResult[T]:
-    schema = strict_schema(model_cls)
-    base = req.model_copy(update={
+def _base_request(req: CompletionRequest, model_cls: type[BaseModel], schema: dict, *,
+                  native: bool) -> CompletionRequest:
+    return req.model_copy(update={
         "output_schema": schema if native else None,
         "schema_name": model_cls.__name__,
         "system": (req.system if native
                    else req.system + JSON_IN_PROMPT_SHORT if req.schema_in_system
                    else req.system + JSON_IN_PROMPT_SUFFIX + json.dumps(schema)),
     })
+
+
+def first_request(backend: Backend, req: CompletionRequest,
+                  model_cls: type[BaseModel]) -> CompletionRequest:
+    """The request complete_structured sends first for `req`: what a message batch must hold
+    for its reply to be found in the response cache by the call that follows (UNVAR-94)."""
+    req = escape_request(req)
+    native = backend.capabilities.json_schema
+    return _base_request(req, model_cls, strict_schema(model_cls), native=native)
+
+
+def _complete_structured[T: BaseModel](
+    backend: Backend, req: CompletionRequest, model_cls: type[T], *, native: bool
+) -> StructuredResult[T]:
+    schema = strict_schema(model_cls)
+    base = _base_request(req, model_cls, schema, native=native)
     usage = Usage()
     messages = list(base.messages)
     last_text, last_error = "", ""

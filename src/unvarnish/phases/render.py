@@ -11,10 +11,11 @@ from unvarnish.analysis.effort import effort_days_part
 from unvarnish.artifacts import hash_files, hash_inputs, read_artifact, write_artifact
 from unvarnish.config import EngagementConfig, user_config_path
 from unvarnish.model.base import Backend, BackendUnavailable
+from unvarnish.model.batch import find_batcher
 from unvarnish.model.budget import BudgetTracker, record_cost
 from unvarnish.model.registry import NoModelConfigured, resolve_backend, resolve_model_ref
 from unvarnish.phases.base import PhaseResult, PhaseStatus, ToolContext
-from unvarnish.phases.modelrun import merge_failures
+from unvarnish.phases.modelrun import batch_first_calls, merge_failures
 from unvarnish.render.architecture import build_architecture_context
 from unvarnish.render.findings import build_findings_context
 from unvarnish.render.inputs import RenderInputs, load_render_inputs
@@ -24,7 +25,7 @@ from unvarnish.render.markdown import (
     render_document,
     template_source_hash,
 )
-from unvarnish.render.prose import PROSE_PROMPT_VERSION, generate_prose
+from unvarnish.render.prose import PROSE_PROMPT_VERSION, first_prose_requests, generate_prose
 from unvarnish.render.requirements import build_requirements_context
 from unvarnish.schemas.analysis import FailureRecord
 from unvarnish.schemas.cost import CostEntry, Usage
@@ -148,16 +149,37 @@ class RenderPhase:
         stopped = False
         retry_later = False
         ctx.paths.docs.mkdir(parents=True, exist_ok=True)
-        for template, attr, builder, required in DOCUMENTS:
+        # Each document's context and prose facts first, so that in batch mode every prose
+        # block of the tool goes in one message batch before any document is written.
+        prepared: dict[str, tuple[dict, dict[str, dict]] | Exception] = {}
+        for template, _, builder, required in DOCUMENTS:
+            if required and getattr(inp, required) is None:
+                continue
+            try:
+                context = builder(ctx, inp)
+                names = prose_block_names(env, template)
+                prepared[template] = (context, {n: context["prose_facts"].get(n, {})
+                                                for n in names})
+            except BackendUnavailable:
+                raise
+            except Exception as exc:  # reported below, where the document is written
+                prepared[template] = exc
+        batch_usage = Usage()
+        if backend is not None and find_batcher(backend) is not None:
+            batch_usage = batch_first_calls(ctx, self.name, backend, [
+                req for item in prepared.values() if not isinstance(item, Exception)
+                for req in first_prose_requests(item[1], tone=tone, effort=effort)], budget)
+        for template, attr, _, required in DOCUMENTS:
             path: Path = getattr(ctx.paths, attr)
             if required and getattr(inp, required) is None:
                 path.unlink(missing_ok=True)  # its inputs are gone; never keep a stale document
                 continue
             try:
-                context = builder(ctx, inp)
+                item = prepared[template]
+                if isinstance(item, Exception):
+                    raise item
+                context, facts = item
                 diagrams.update(context.get("diagrams", {}))
-                names = prose_block_names(env, template)
-                facts = {n: context["prose_facts"].get(n, {}) for n in names}
                 prose = generate_prose(backend, facts, tone=tone, effort=effort, budget=budget)
                 usage = usage + prose.usage
                 failures.extend(prose.failures)
@@ -177,6 +199,7 @@ class RenderPhase:
             hashes[path.name] = hashlib.sha256(doc.encode("utf-8")).hexdigest()
         # failures.json is one of this phase's inputs: write it before recording the hash,
         # otherwise the phase would be stale the moment it finished.
+        budget.add(batch_usage)  # after the prose calls: a paid batch is used whatever the cap
         merge_failures(ctx, self.name, failures)
         write_artifact(ctx.paths.diagrams, DiagramSet(diagrams=diagrams), produced_by=self.name,
                        inputs_hash="")
@@ -193,8 +216,8 @@ class RenderPhase:
                 tool=ctx.tool, phase=self.name, backend=backend.name, model=backend.model,
                 usage=usage, at=datetime.now(UTC)))
         msg = f"wrote {', '.join(written)}"
-        if usage.total():
-            msg += f" ({usage.total():,} tokens of prose)"
+        if (usage + batch_usage).total():
+            msg += f" ({(usage + batch_usage).total():,} tokens of prose)"
         if stopped:
             msg = f"{budget.stop_reason}: " + msg
         log.info("render %s: %s", ctx.tool, msg)

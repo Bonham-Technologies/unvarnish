@@ -5,6 +5,7 @@ import threading
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
 
@@ -17,7 +18,8 @@ from unvarnish.model.base import (
     CompletionRequest,
     ModelRefusal,
 )
-from unvarnish.model.budget import BudgetExceeded, BudgetTracker
+from unvarnish.model.batch import run_batch
+from unvarnish.model.budget import BudgetExceeded, BudgetTracker, record_cost
 from unvarnish.model.structured import (
     StructuredOutputError,
     StructuredResult,
@@ -25,7 +27,7 @@ from unvarnish.model.structured import (
 )
 from unvarnish.phases.base import ToolContext
 from unvarnish.schemas.analysis import FailureRecord, Failures
-from unvarnish.schemas.cost import Usage
+from unvarnish.schemas.cost import CostEntry, Usage
 
 log = logging.getLogger("unvarnish.modelrun")
 
@@ -162,3 +164,21 @@ def merge_failures(ctx: ToolContext, phase: str, items: list[FailureRecord]) -> 
     kept = [f for f in existing if f.phase != phase]
     write_artifact(ctx.paths.failures, Failures(tool=ctx.tool, items=kept + items),
                    produced_by=phase, inputs_hash="")
+
+
+def batch_first_calls(ctx: ToolContext, phase: str, backend: Backend,
+                      requests: list[CompletionRequest], budget: BudgetTracker) -> Usage:
+    """Send the first call of each request in a message batch when the phase's backend has
+    `batch: true` (UNVAR-94); the replies land in the response cache, where the phase's
+    ordinary calls find them. The batch's usage goes in the ledger at once, marked as billed
+    at the batch rate, and is returned for the phase's artifact and its budget."""
+    out = run_batch(backend, requests, ctx.paths.batch_state(phase), budget=budget,
+                    phase=phase)
+    if out.submitted or out.resumed:
+        log.info("%s %s: batch answered %d, %d go as ordinary calls", phase, ctx.tool,
+                 out.cached, out.unanswered)
+    if out.usage.total():
+        record_cost(ctx.engagement, CostEntry(
+            tool=ctx.tool, phase=phase, backend=backend.name, model=backend.model,
+            usage=out.usage, at=datetime.now(UTC), batch=True))
+    return out.usage

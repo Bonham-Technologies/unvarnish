@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from unvarnish.artifacts import hash_files, hash_inputs, read_artifact, write_artifact
-from unvarnish.model.base import Backend
+from unvarnish.model.base import Backend, CompletionRequest
+from unvarnish.model.batch import find_batcher
 from unvarnish.model.budget import BudgetTracker, record_cost
 from unvarnish.model.prompts.verify import (
     VERIFY_PROMPT_VERSION,
@@ -15,11 +16,18 @@ from unvarnish.model.prompts.verify import (
     build_verify_system,
 )
 from unvarnish.model.registry import NoModelConfigured, resolve_backend, resolve_model_ref
+from unvarnish.model.structured import first_request
 from unvarnish.phases.base import PhaseResult, PhaseStatus, ToolContext
-from unvarnish.phases.modelrun import ItemOutcome, call_structured, merge_failures, run_parallel
+from unvarnish.phases.modelrun import (
+    ItemOutcome,
+    batch_first_calls,
+    call_structured,
+    merge_failures,
+    run_parallel,
+)
 from unvarnish.scanners.secrets import is_placeholder, redact_text
 from unvarnish.schemas.analysis import UnitResult, UnitsIndex
-from unvarnish.schemas.cost import CostEntry
+from unvarnish.schemas.cost import CostEntry, Usage
 from unvarnish.schemas.finding import (
     SEVERITY_ORDER,
     Evidence,
@@ -419,10 +427,21 @@ class VerifyPhase:
                 f.verification_note = TOOL_LEVEL_NOTE
                 unverified += 1
 
-        def worker(f: Finding, stop: threading.Event) -> ItemOutcome[VerdictItem]:
+        def request(f: Finding) -> CompletionRequest:
             excerpts = whole.get(f.id) or [evidence_excerpt(ctx.source_root, e)
                                            for e in f.evidence[:MAX_EVIDENCE]]
-            req = build_verify_request(f, excerpts, effort, system=system)
+            return build_verify_request(f, excerpts, effort, system=system)
+
+        # Batch mode: the first calls are answered by a message batch into the response cache,
+        # so the workers below find them there and call only for what the batch missed.
+        batch_usage = Usage()
+        if find_batcher(backend) is not None and to_verify:
+            batch_usage = batch_first_calls(
+                ctx, self.name, backend,
+                [first_request(backend, request(f), Verdict) for f in to_verify], budget)
+
+        def worker(f: Finding, stop: threading.Event) -> ItemOutcome[VerdictItem]:
+            req = request(f)
             res, failure = call_structured(backend, req, Verdict, phase=self.name,
                                            item_id=f.id, path=f.evidence[0].path, stop=stop)
             if res is None:
@@ -432,6 +451,8 @@ class VerifyPhase:
 
         outcome = run_parallel(to_verify, worker, workers=ctx.config.pipeline.concurrency,
                                budget=budget, phase=self.name)
+        budget.add(batch_usage)  # after the workers: a paid batch is used whatever the cap
+        usage = outcome.usage + batch_usage
         verdicts: dict[str, tuple[Verdict | None, str | None]] = {
             fid: (v, err) for fid, v, err in outcome.results}
         counts = {"confirmed": 0, "downgraded": 0, "rejected": placeholders}
@@ -456,7 +477,7 @@ class VerifyPhase:
         mf = ModelFindings(tool=ctx.tool, findings=findings, verified=sum(counts.values()),
                            confirmed=counts["confirmed"], downgraded=counts["downgraded"],
                            rejected=counts["rejected"], unverified=unverified,
-                           usage=outcome.usage, stopped_for_budget=outcome.stopped_for_budget)
+                           usage=usage, stopped_for_budget=outcome.stopped_for_budget)
         write_artifact(ctx.paths.model_findings, mf, produced_by=self.name,
                        inputs_hash="" if outcome.stopped else self.inputs_hash(ctx))
         if outcome.usage.total():
@@ -470,7 +491,7 @@ class VerifyPhase:
                f"{len(to_verify) + placeholders} verifiable: "
                f"{counts['confirmed']} confirmed, {counts['downgraded']} downgraded, "
                f"{counts['rejected']} rejected, {unverified} unverified, "
-               f"{outcome.usage.total():,} tokens")
+               f"{usage.total():,} tokens")
         status = PhaseStatus.stopped if outcome.stopped_for_budget else PhaseStatus.ok
         if outcome.stopped_for_budget:
             msg = f"{budget.stop_reason}: " + msg

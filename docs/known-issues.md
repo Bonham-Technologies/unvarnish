@@ -233,6 +233,14 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   `pipx run` and `curl | sh`, also behind `cmd /c`, `sh -c` or `powershell -Command`. A
   Docker image tag, a TOML or YAML agent config and a remote server given by `url` are not
   checked.
+- [UNVAR-94] Batch mode covers only verify and the render prose calls (option B). Batching
+  every phase (option A: extract in waves that respect the neighbourhood order, the rollups
+  after it) is a follow-up. In batch mode a request the batch could not answer, a structured
+  reply that needs a retry or repair, a cut-off or miscounted prose block, and a refusal's
+  retry and fallback are ordinary calls at the full price, so a refused request reaches the
+  primary model once more than in a synchronous run. A batched phase waits for its whole
+  batch (usually under an hour, at most 24 hours) before writing anything. The `compare` and
+  `ask` calls are never batched.
 
 ## Fixed
 

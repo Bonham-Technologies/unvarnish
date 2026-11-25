@@ -49,6 +49,7 @@ from unvarnish.model.base import (
     CompletionRequest,
     Message,
 )
+from unvarnish.model.batch import RETENTION_NOTICE, batch_configured
 from unvarnish.model.budget import BudgetTracker, load_ledger, record_cost
 from unvarnish.model.cache import CachingBackend, clear_cache
 from unvarnish.model.estimate import estimate_plan
@@ -75,7 +76,7 @@ from unvarnish.phases.compare import (
 from unvarnish.phases.ingest import IngestError, ingest_tool, load_tool_meta
 from unvarnish.scanners import load_scanners
 from unvarnish.schemas.analysis import ExtractState, UnitExtraction
-from unvarnish.schemas.cost import CostEntry, Usage, priced
+from unvarnish.schemas.cost import BATCH_RATE, CostEntry, Usage, priced
 from unvarnish.schemas.delta import DELTA_SCHEMA_VERSION, BaselineSnapshot
 from unvarnish.schemas.rollup import ModulesIndex
 from unvarnish.schemas.verify import ModelFindings
@@ -350,7 +351,8 @@ def run(
                 usage, note = est
                 table.add_row(name, p_name, "estimate",
                               f"≈ {usage.total():,} tokens"
-                              f"{_usd(usage, _phase_price(eng, p_name))} · {note}")
+                              f"{_usd(usage, _phase_price(eng, p_name),
+                                      batch=batch_configured(eng.config, p_name))} · {note}")
         if table.row_count:
             console.print(table)
         else:  # `phase` passed runner.plan's check, so it is a known name, safe as markup
@@ -760,9 +762,11 @@ def _phase_price(eng: Engagement, phase: str) -> Prices | None:
     return priced(eng.config.budget.prices, ref.model) if ref else None
 
 
-def _usd(usage: Usage, prices: Prices | None) -> str:
+def _usd(usage: Usage, prices: Prices | None, *, batch: bool = False) -> str:
     if prices is None:
         return ""
+    if batch:  # the phase's calls go in message batches (UNVAR-94)
+        return f" (≈ USD {usage.usd(prices) * BATCH_RATE:,.2f} at the batch rate)"
     return f" (≈ USD {usage.usd(prices):,.2f})"
 
 
@@ -783,7 +787,8 @@ def cost(engagement: Path | None = EngagementOption) -> None:
     for col in ("input", "cache read", "cache write", "output"):
         table.add_column(col, justify="right")
     for e in ledger.entries:
-        table.add_row(escape(e.tool), escape(e.phase), escape(f"{e.backend}/{e.model}"),
+        phase = f"{e.phase} (batch)" if e.batch else e.phase
+        table.add_row(escape(e.tool), escape(phase), escape(f"{e.backend}/{e.model}"),
                       f"{e.usage.input_tokens:,}",
                       f"{e.usage.cache_read_tokens:,}", f"{e.usage.cache_write_tokens:,}",
                       f"{e.usage.output_tokens:,}")
@@ -792,6 +797,9 @@ def cost(engagement: Path | None = EngagementOption) -> None:
     usd = ledger.estimate_usd(prices)
     cost_text = f" (≤ USD {usd:,.2f})" if usd is not None else ""
     console.print(f"Total: {total.total():,} tokens{cost_text}")
+    if usd is not None and any(e.batch for e in ledger.entries):
+        console.print(f"Entries marked (batch) are priced at the batch rate "
+                      f"({BATCH_RATE:.0%} of the synchronous price).")
     if prices is not None and ledger.unpriced(prices):
         console.print(f"No price configured for: {escape(', '.join(ledger.unpriced(prices)))}")
     if eng.config.budget.max_tokens:
@@ -1152,6 +1160,12 @@ def config_check(
         console.print("No model configured: `unvarnish run` still runs the scanners and skips "
                       "the model phases. To add a model, set models.default in "
                       "engagement.yaml.", highlight=False, soft_wrap=True)
+    # Batch mode changes where the provider keeps the replies (UNVAR-94): say so once per
+    # backend, even when no phase uses it yet.
+    for name, cfg in eng.config.backends.items():
+        if cfg.batch:
+            console.print(f"note: {escape(RETENTION_NOTICE.format(name=name))}",
+                          highlight=False, soft_wrap=True)
     _print_errors(errors)
     if failed:
         raise typer.Exit(code=2)
