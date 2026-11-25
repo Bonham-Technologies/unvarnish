@@ -544,7 +544,8 @@ fully covered. A partial run (one test file, `-k`) covers far less than the floo
 To raise the floor after adding tests: run `uv run pytest -q`, read the `TOTAL` line, set
 `fail_under` to that percentage rounded down to a whole number, and update the date and
 figure in the comment above it. Never lower it to get a change through; add the tests
-instead (`tests/test_distribution.py` fails if `fail_under` drops below 94).
+instead (`tests/test_distribution.py` fails if `fail_under` drops below 95, the floor since
+UNVAR-87).
 
 ## Findings into GitHub and Jira
 
