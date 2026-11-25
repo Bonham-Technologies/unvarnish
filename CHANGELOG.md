@@ -8,6 +8,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### A timing test that no longer depends on runner speed
+
+- The hidden-text linear-time test compares the cost of n and 4n characters instead of
+  asserting a 10-second wall-clock bound, which failed on slow CI runners and turned `main`
+  red; it still fails on a quadratic scan (UNVAR-97).
+
 ### The engagement lock's edge cases are tested
 
 - Tests now cover the engagement lock's boot-time read, heartbeat fallbacks and a release
