@@ -1669,4 +1669,8 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   the wait at once and leaves the batch to resume; tests never sleep. There is no local
   timeout: the API ends every batch within 24 hours, expiring what it did not process. A
   rate-limited status check (HTTP 429) counts as "still in progress", never as the batch's
-  failure: dropping the batch would send its requests again and pay for them twice.
+  failure: dropping the batch would send its requests again and pay for them twice. A
+  rate-limited results download is tried again a poll later (up to 10 times, then the run
+  stops and the next run collects the batch). Any other non-fatal error reading a batch, new
+  or stored, drops that batch and sends its uncollected requests as ordinary calls; the phase
+  still ends normally.

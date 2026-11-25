@@ -22,12 +22,17 @@ from typing import Any, Protocol
 from pydantic import BaseModel, Field
 
 from unvarnish.config import EngagementConfig
-from unvarnish.model.base import BackendError, CompletionRequest, CompletionResponse
+from unvarnish.model.base import (
+    BackendError,
+    BackendUnavailable,
+    CompletionRequest,
+    CompletionResponse,
+)
 from unvarnish.model.budget import BudgetExceeded, BudgetTracker
 from unvarnish.schemas.cost import BATCH_RATE, Usage
 
-__all__ = ["BATCH_PHASES", "BATCH_RATE", "BatchResult", "batch_configured", "find_batcher",
-           "run_batch"]  # BATCH_RATE lives with the ledger that prices it
+__all__ = ["BATCH_PHASES", "BATCH_RATE", "BatchResult", "BatchRetryLater", "batch_configured",
+           "find_batcher", "run_batch"]  # BATCH_RATE lives with the ledger that prices it
 log = logging.getLogger("unvarnish.batch")
 
 # The phases whose calls may go in batches. Extract needs its neighbours' summaries in order,
@@ -36,9 +41,15 @@ BATCH_PHASES = ("verify", "render")
 POLL_SECONDS = 30   # between status checks; a batch usually ends within the hour
 MAX_BATCH_REQUESTS = 100_000          # the API's limits per batch
 MAX_BATCH_BYTES = 200 * 1024 * 1024   # of 256 MB, leaving room for the request envelope
+MAX_RESULT_TRIES = 10  # rate-limited result downloads, a poll apart, before the run stops
 RETENTION_NOTICE = ("backend {name!r} sends verify and prose through the Message Batches API: "
                     "the provider keeps results for 29 days, and batches are not eligible for "
                     "zero data retention")
+
+
+class BatchRetryLater(BackendError):
+    """A batch endpoint rate limited the request (HTTP 429). Nothing is wrong with the batch:
+    ask again later, and never drop it, or its requests would be paid for twice."""
 
 
 @dataclass
@@ -152,39 +163,89 @@ def _stopping(budget: BudgetTracker) -> bool:
     return budget.interrupted.is_set() or new_calls_stopped()
 
 
-def _wait(batcher: Batcher, batch_id: str, budget: BudgetTracker) -> bool:
-    """Until the batch ends (True), in one-second steps so that Ctrl-C stops the wait at once
-    (False). A stop leaves the state file: the next run picks the same batch up."""
-    while not batcher.batch_ended(batch_id):
-        for _ in range(POLL_SECONDS):
-            if _stopping(budget):
-                log.info("stopped while message batch %s is in progress; the next run "
-                         "collects it", batch_id)
-                return False
-            batcher.sleep(1.0)
+def _pause(batcher: Batcher, budget: BudgetTracker) -> bool:
+    """One poll interval in one-second steps, so that Ctrl-C ends it at once (False)."""
+    for _ in range(POLL_SECONDS):
+        if _stopping(budget):
+            return False
+        batcher.sleep(1.0)
     return True
+
+
+def _wait(batcher: Batcher, batch_id: str, budget: BudgetTracker) -> bool:
+    """Until the batch ends (True), or a stop (False). A stop leaves the state file: the next
+    run picks the same batch up. A rate-limited status check counts as still in progress."""
+    while True:
+        try:
+            if batcher.batch_ended(batch_id):
+                return True
+        except BatchRetryLater as exc:
+            log.info("status check of batch %s rate limited (%s); checking again later",
+                     batch_id, exc)
+        if not _pause(batcher, budget):
+            log.info("stopped while message batch %s is in progress; the next run collects it",
+                     batch_id)
+            return False
 
 
 def _collect(batcher: Batcher, cache: Any, batch_id: str, budget: BudgetTracker,
-             out: BatchOutcome) -> bool:
-    """The batch's replies into the cache once it ends; False when stopped while waiting."""
-    if not _wait(batcher, batch_id, budget):
-        return False
-    for r in batcher.batch_results(batch_id):
-        if r.response is not None:
-            out.usage = out.usage + r.response.usage
-            if cache.store(r.custom_id, r.response):
-                out.cached += 1
-                continue
-            why = (f"refused ({r.response.refusal_category})" if r.response.refusal_category
-                   else f"stop reason {r.response.stop_reason}" if r.response.text.strip()
-                   else "empty reply")
-        else:
-            why = r.error or "no result"
-        out.unanswered += 1
-        log.info("batch %s: request %s %s; it goes as an ordinary call", batch_id,
-                 r.custom_id[:12], why)
-    return True
+             out: BatchOutcome, phase: str) -> str:
+    """The batch's replies into the cache once it ends: "done"; "stopped" on a stop, the batch
+    kept for the next run; "lost" when its results cannot be read (a non-fatal error), its
+    uncollected requests then going as ordinary calls. A rate-limited download is tried again
+    a poll later, skipping the replies already taken; a fatal error propagates with the batch
+    kept. The batch's usage counts once it is done or lost, never while it is kept, so that
+    the run which finally collects it bills it exactly once."""
+    usage = Usage()
+    seen: set[str] = set()
+    try:
+        if not _wait(batcher, batch_id, budget):
+            return "stopped"
+        for attempt in range(1, MAX_RESULT_TRIES + 1):
+            try:
+                for r in batcher.batch_results(batch_id):
+                    if r.custom_id in seen:
+                        continue
+                    seen.add(r.custom_id)
+                    usage = _take(cache, batch_id, r, usage, out)
+                break
+            except BatchRetryLater as exc:
+                if attempt == MAX_RESULT_TRIES:
+                    raise BackendUnavailable(
+                        f"results of batch {batch_id} still rate limited after "
+                        f"{MAX_RESULT_TRIES} tries: {exc}; the next run collects it") from exc
+                log.info("results of batch %s rate limited (%s); trying again later",
+                         batch_id, exc)
+                if not _pause(batcher, budget):
+                    return "stopped"
+    except BackendError as exc:
+        if getattr(exc, "fatal", False):
+            raise
+        log.warning("%s: batch %s cannot be read (%s); its requests go again", phase,
+                    batch_id, exc)
+        out.usage = out.usage + usage  # the replies already cached are used, and were paid
+        return "lost"
+    out.usage = out.usage + usage
+    return "done"
+
+
+def _take(cache: Any, batch_id: str, r: BatchResult, usage: Usage,
+          out: BatchOutcome) -> Usage:
+    """One result into the cache, or counted as unanswered; the batch's usage so far."""
+    if r.response is not None:
+        usage = usage + r.response.usage
+        if cache.store(r.custom_id, r.response):
+            out.cached += 1
+            return usage
+        why = (f"refused ({r.response.refusal_category})" if r.response.refusal_category
+               else f"stop reason {r.response.stop_reason}" if r.response.text.strip()
+               else "empty reply")
+    else:
+        why = r.error or "no result"
+    out.unanswered += 1
+    log.info("batch %s: request %s %s; it goes as an ordinary call", batch_id,
+             r.custom_id[:12], why)
+    return usage
 
 
 def run_batch(backend: Any, requests: list[CompletionRequest], state_path: Path, *,
@@ -212,17 +273,11 @@ def run_batch(backend: Any, requests: list[CompletionRequest], state_path: Path,
         out.resumed = True
         for sub in list(state.batches):
             log.info("%s: resuming message batch %s", phase, sub.batch_id)
-            try:
-                if not _collect(batcher, backend, sub.batch_id, budget, out):
-                    return out
-            except BackendError as exc:
-                if getattr(exc, "fatal", False):
-                    raise
-                log.warning("%s: stored batch %s cannot be read (%s); its requests go again",
-                            phase, sub.batch_id, exc)
-                _done(state_path, state, sub.batch_id, phase)
-                continue
-            covered.update(sub.keys)
+            got = _collect(batcher, backend, sub.batch_id, budget, out, phase)
+            if got == "stopped":
+                return out
+            if got == "done":
+                covered.update(sub.keys)
             _done(state_path, state, sub.batch_id, phase)
     elif state is not None:
         log.info("%s: stored batch was for %s/%s; not resumed", phase, state.backend,
@@ -253,7 +308,7 @@ def run_batch(backend: Any, requests: list[CompletionRequest], state_path: Path,
         log.warning("%s: batch submission failed (%s); the rest go as ordinary calls", phase,
                     exc)
     for sub in list(state.batches):
-        if not _collect(batcher, backend, sub.batch_id, budget, out):
+        if _collect(batcher, backend, sub.batch_id, budget, out, phase) == "stopped":
             return out
         _done(state_path, state, sub.batch_id, phase)
     state_path.unlink(missing_ok=True)

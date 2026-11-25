@@ -550,3 +550,70 @@ def test_a_rate_limited_status_check_keeps_waiting_for_the_batch(ingested, tmp_p
     assert limited and len(batches.created) == 1 and backend._client.sync_calls == []
     mf = read_artifact(ctx.paths.model_findings, ModelFindings).data
     assert mf.confirmed == len(batches.created["msgbatch_01"])
+
+
+# --- QC fixes ----------------------------------------------------------------------------------
+
+def test_rate_limited_results_are_fetched_again_not_paid_twice(ingested, tmp_path):
+    from unvarnish.model.batch import BatchRetryLater
+
+    eng, tool = ingested
+    ctx = _upstream(eng, tool)
+    stub = BatchStubBackend(REPLIES)
+    real = stub.batch_results
+    tries: list[str] = []
+
+    def results(batch_id):
+        tries.append(batch_id)
+        it = real(batch_id)
+        yield next(it)  # one reply arrives, then the download is rate limited
+        if len(tries) == 1:
+            raise BatchRetryLater("stub: batch results: HTTP 429: rate limited")
+        yield from it
+
+    stub.batch_results = results
+    assert VerifyPhase(backend=_cached(stub, tmp_path, "b")).run(ctx).status == PhaseStatus.ok
+    n = stub.count_batched("Verdict")
+    assert len(tries) == 2 and len(stub.batches) == 1 and stub.requests == []
+    billed = [e.usage for e in load_ledger(eng).entries if e.phase == "verify"]
+    assert billed == [Usage(input_tokens=100 * n, output_tokens=20 * n)]  # each reply once
+    assert not ctx.paths.batch_state("verify").exists()
+
+
+
+def test_unreadable_results_of_a_fresh_batch_fall_back_to_calls(ingested, tmp_path):
+    # As for a stored batch: a non-fatal error reading the results is that batch's problem;
+    # the phase still ends ok, its requests going as ordinary calls.
+    eng, tool = ingested
+    ctx = _upstream(eng, tool)
+    stub = BatchStubBackend(REPLIES)
+
+    def results(batch_id):
+        raise BackendError("stub: batch results: HTTP 404: not found")
+        yield  # pragma: no cover - a generator
+
+    stub.batch_results = results
+    assert VerifyPhase(backend=_cached(stub, tmp_path, "b")).run(ctx).status == PhaseStatus.ok
+    assert stub.count("Verdict") == stub.count_batched("Verdict") > 0
+    assert not ctx.paths.batch_state("verify").exists()
+
+
+
+def test_anthropic_rate_limited_results_ask_to_retry_later():
+    import anthropic
+    import httpx2
+
+    from unvarnish.model.batch import BatchRetryLater
+
+    batches = FakeBatches()
+    b = _anthropic(batches)
+    batch_id = b.submit_batch([("a", _req())])
+
+    def results(bid):
+        resp = httpx2.Response(429, request=httpx2.Request(
+            "GET", f"https://api.example.test/v1/messages/batches/{bid}/results"))
+        raise anthropic.RateLimitError("rate limited", response=resp, body=None)
+
+    batches.results = results
+    with pytest.raises(BatchRetryLater):
+        list(b.batch_results(batch_id))
