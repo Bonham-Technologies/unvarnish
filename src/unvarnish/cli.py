@@ -196,16 +196,34 @@ EngagementOption = typer.Option(
 )
 
 
-@app.command()
+@app.command(context_settings={"allow_extra_args": True})
 def add(
+    ctx: typer.Context,
     name: str = typer.Argument(..., help="Tool name: lowercase, digits, - and _."),
     repo: str | None = typer.Option(None, "--repo", help="Git URL or local repo path."),
     files: Path | None = typer.Option(None, "--files", help="Directory of loose files."),
     branch: str | None = typer.Option(None, "--branch", help="Branch to check out."),
-    link: bool = typer.Option(False, "--link", help="Record the path instead of copying."),
+    link: bool = typer.Option(
+        False, "--link",
+        help="Record the local path instead of copying it; use with --repo or --files.",
+    ),
     engagement: Path | None = EngagementOption,
 ) -> None:
     """Register a tool and ingest its source."""
+    if ctx.args:  # `add z --link PATH`: --link is a flag, so PATH lands here (UNVAR-86)
+        extra = " ".join(ctx.args)
+        if link and repo is None and files is None:
+            err_console.print(
+                f"[red]error:[/red] --link takes no path; name the source with --repo or "
+                f"--files: unvarnish add {escape(name)} --link --repo PATH (or --files DIR)",
+                soft_wrap=True, highlight=False)
+        else:
+            err_console.print(
+                f"[red]error:[/red] unexpected {pluralize(len(ctx.args), 'argument')} "
+                f"{escape(extra)}" + ("" if repo is not None or files is not None else
+                                      "; name the source with --repo URL|PATH or --files DIR"),
+                soft_wrap=True, highlight=False)
+        raise typer.Exit(code=2)
     if (repo is None) == (files is None):
         err_console.print("[red]error:[/red] pass exactly one of --repo or --files")
         raise typer.Exit(code=2)

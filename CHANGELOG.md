@@ -8,6 +8,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### `add --link` says how it is used
+
+- `unvarnish add NAME --link PATH` now answers with the right form,
+  `add NAME --link --repo PATH` (or `--files DIR`), instead of click's "unexpected extra
+  argument", and `--link`'s help says it goes with `--repo` or `--files` (UNVAR-86).
+
 ### A timing test that no longer depends on runner speed
 
 - The hidden-text linear-time test compares the cost of n and 4n characters instead of
