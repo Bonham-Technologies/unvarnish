@@ -1,6 +1,6 @@
 # {{ tool.name }}: Findings
 
-**Client:** {{ client or "—" }} · **Prepared by:** {{ consultant or "—" }} · **Generated:** {{ generated_at }}\
+{% if client %}**Client:** {{ client }} · {% endif %}{% if consultant %}**Prepared by:** {{ consultant }} · {% endif %}**Generated:** {{ generated_at }}\
 **Source:** {{ tool.origin_kind }} `{{ tool.origin }}`{% if tool.commit %} at `{{ tool.commit[:12] }}`{% endif %}
 
 {{ "" }}

@@ -132,8 +132,8 @@ def test_coverage_floor_is_enforced_by_plain_pytest():
     assert "--cov" in cfg["tool"]["pytest"]["ini_options"]["addopts"].split()
     assert cfg["tool"]["coverage"]["run"] == {"source": ["unvarnish"], "branch": True}
     floor = cfg["tool"]["coverage"]["report"]["fail_under"]
-    # The floor only rises: lowering fail_under below the UNVAR-10 baseline fails here too.
-    assert isinstance(floor, int) and 94 <= floor <= 100
+    # The floor only rises: lowering fail_under below the UNVAR-87 level fails here too.
+    assert isinstance(floor, int) and 95 <= floor <= 100
     assert any(d.startswith("pytest-cov") for d in cfg["dependency-groups"]["dev"])
 
 

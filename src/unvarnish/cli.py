@@ -123,6 +123,14 @@ def init(
         err_console.print(f"[red]error:[/red] {escape(str(exc))}")
         raise typer.Exit(code=2) from exc
     console.print(f"Created engagement at [bold]{escape(str(eng.root))}[/bold]")
+    if not client:
+        console.print("Note: the documents will carry no client name; set one with "
+                      "[cyan]--client[/cyan], or as [cyan]client:[/cyan] in "
+                      "engagement.yaml.")
+    if not consultant:
+        console.print("Note: the documents will carry no firm name; set one with "
+                      "[cyan]--consultant[/cyan], or as [cyan]consultant:[/cyan] in "
+                      "engagement.yaml.")
     console.print("Next: [cyan]unvarnish add <name> --repo <url|path>[/cyan] from inside it.")
 
 

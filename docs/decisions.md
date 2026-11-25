@@ -1676,3 +1676,11 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   stops and the next run collects the batch). Any other non-fatal error reading a batch, new
   or stored, drops that batch and sends its uncollected requests as ordinary calls; the phase
   still ends normally.
+
+## Empty header fields (UNVAR-85)
+
+- **A missing client or firm is left out of the header, not shown as a dash.** The
+  comparison keeps "Engagement" in its title when there is no client, because a title needs
+  a noun. The template change reruns the render phase once on every engagement. *Cost if
+  wrong:* a reader of a document without a client cannot tell whether the field was
+  forgotten; `init` now says so at the start instead.

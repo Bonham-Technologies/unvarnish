@@ -1,6 +1,6 @@
 # {{ client or "Engagement" }}: Tool Comparison
 
-**Prepared by:** {{ consultant or "—" }} · **Generated:** {{ generated_at }} · **Tools:** {% for t in tools %}`{{ t }}`{{ ", " if not loop.last }}{% endfor %}
+{% if consultant %}**Prepared by:** {{ consultant }} · {% endif %}**Generated:** {{ generated_at }} · **Tools:** {% for t in tools %}`{{ t }}`{{ ", " if not loop.last }}{% endfor %}
 
 {{ "" }}
 > Rendered from `comparison/comparison.json`. Prose sections are model-written ({{ analysis_mode }});
