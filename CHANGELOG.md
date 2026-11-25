@@ -8,6 +8,14 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### Batch mode for verify and prose
+
+- `backends.<name>.batch: true` (Anthropic only, off by default) sends the verify phase and
+  the render prose calls through the Message Batches API at half the price, resumes a stored
+  batch after a stop, retries what a batch could not answer as ordinary calls, and prices it
+  at the batch rate in `cost` and `run --dry-run`; extract and the rollups stay synchronous
+  (UNVAR-94).
+
 ### `add --link` says how it is used
 
 - `unvarnish add NAME --link PATH` now answers with the right form,
@@ -79,6 +87,12 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   offline bundle; with it, an advisory CISA lists as exploited is critical and says "Known
   exploited (CISA KEV, added <date>)", and every advisory shows its EPSS score, which orders
   them, in `dependencies.json`, findings.md, CSV and SARIF (UNVAR-90).
+
+### The README has an install line that works today
+
+- The README's first install line is `uv tool install git+https://github.com/Bonham-Technologies/unvarnish`;
+  the PyPI line is marked "not yet", and a clone-and-`docker build` route sits beside it
+  (UNVAR-84).
 
 ### Optional Opengrep SAST scanner
 

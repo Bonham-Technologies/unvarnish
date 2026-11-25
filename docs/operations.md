@@ -87,6 +87,31 @@ The scale rehearsal is repeatable without spending tokens:
 
     UNVARNISH_SCALE_REPO=/path/to/repo uv run pytest --no-cov tests/test_scale.py -s
 
+### Batch mode (Anthropic)
+
+`batch: true` on an Anthropic backend sends the verify phase and the render prose calls
+through the Message Batches API, at half the synchronous price:
+
+    backends:
+      anthropic:
+        type: anthropic
+        api_key_env: ANTHROPIC_API_KEY
+        batch: true
+
+Extract and the rollups stay synchronous. A batched phase submits one batch per tool and
+phase, checks it every 30 seconds and goes on once it ends, usually within the hour (at most
+24 hours). The replies land in the response cache, so the phase then runs as usual; anything
+the batch could not answer (errored, expired, refused, unparseable) is sent as an ordinary call
+and, if that fails too, recorded in `failures.json`. Ctrl-C while a batch is in progress
+leaves its id in `tools/<tool>/analysis/batches/<phase>.json`; the next `run` collects that
+batch instead of sending a new one. `cost` lists batch spending as `<phase> (batch)` priced
+at the batch rate, and `run --dry-run` prices a batched phase at the same rate.
+
+The provider keeps batch results for 29 days, and batches are not eligible for zero data
+retention; `config check` says so for each batch backend. Leave batch mode off for a client
+with a zero-retention agreement. `batch: true` on an `openai_compatible` backend is a
+configuration error.
+
 ## Docker
 
 - Native Windows is unsupported: the engagement lock needs `fcntl`, so the CLI stops at

@@ -47,7 +47,7 @@ def build_backend(name: str, cfg: BackendConfig, model: str,
 
         return AnthropicBackend(name=name, model=model, api_key=key, base_url=cfg.base_url,
                                 capabilities=cfg.capabilities,
-                                rate_limit_retries=rate_limit_retries)
+                                rate_limit_retries=rate_limit_retries, batch=cfg.batch)
     from unvarnish.model.openai_backend import OpenAICompatibleBackend
 
     if not cfg.base_url:

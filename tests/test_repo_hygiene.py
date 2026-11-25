@@ -270,3 +270,18 @@ def test_gitleaksignore_names_no_archive_only_commit():
                if line and not line.startswith("#")]
     stale = [e for e in entries if e.split(":", 1)[0] in ARCHIVE_ONLY_COMMITS]
     assert stale == []
+
+
+def test_readme_install_works_before_a_release():
+    # The repo is public with no package release yet: the README's first install line must
+    # be one a visitor can paste today, from git (UNVAR-84).
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    install = readme.split("\n## Install\n", 1)[1].split("\n## ", 1)[0]
+    lines = [line.strip() for line in install.splitlines() if line.startswith("    ")]
+    assert lines[0].startswith(
+        "uv tool install git+https://github.com/Bonham-Technologies/unvarnish"), lines
+    assert any(line.startswith("uv tool install unvarnish") and "PyPI" in line
+               for line in lines), lines
+    assert any(line.startswith("git clone https://github.com/Bonham-Technologies/unvarnish")
+               for line in lines), lines
+    assert any(line.startswith("docker build") for line in lines), lines

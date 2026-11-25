@@ -1623,6 +1623,60 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   text, so the scan reruns once everywhere (SCANNER_TEXT_VERSION 2026-11-24.3). *Cost if
   wrong:* one osv-scanner call per online tool on upgrade.
 
+## Batch mode for verify and prose (UNVAR-94)
+
+- **Only verify and the render prose calls go in batches (owner's choice, option B).**
+  Extract needs each unit's neighbours summarised in order (spec §6.6), and the module and
+  tool rollups wait on each other, so batching them would serialise a run on hour-long
+  batches. Verify's calls are independent of each other, and so are a tool's prose blocks.
+  `rollup_modules` stays synchronous: it is structured output feeding `rollup_tool`, not the
+  prose path. *Cost if wrong:* extract, the bulk of a run's tokens, still costs the
+  synchronous price; option A (every phase) is the follow-up in known-issues.
+- **A batch fills the response cache; the phase then runs as it always does.** Each phase
+  works out the exact first request its ordinary path would send (`first_request` for
+  structured calls, `first_prose_requests` for prose), sends them in one batch with the
+  request's cache key as the custom id, and writes each usable reply into the response cache.
+  The workers then find their first call answered there. Anything the batch could not answer
+  (errored, expired, canceled, refused, empty, cut off, or a reply that fails validation)
+  goes through the ordinary path: retried as a call, and recorded in `failures.json` if that
+  fails too, never dropped. One code path produces the artifacts, so a batched run's are the
+  same as a synchronous run's on the same replies. *Cost if wrong:* a request the batch
+  missed costs the synchronous price; on a mostly failing batch the run pays twice for those.
+- **The batch id is kept until its results are in the cache.** `analysis/batches/<phase>.json`
+  holds the submitted batch ids and their requests' cache keys (no request content, no key).
+  A run stopped while a batch is in progress collects the same batch on the next run and
+  never sends its requests in a second batch. Each batch leaves the file as soon as its
+  results are in the cache, so a stop between two batches of one phase never has the next
+  run collect, and bill, the first one again; the file is deleted once all are in.
+  A stored batch the API no longer returns (results are kept 29 days) is dropped and its
+  requests go in a new batch. *Cost if wrong:* a stop in the instant between the API
+  accepting a batch and the file being written pays for that batch twice.
+- **The budget cap is checked once, before a batch is submitted, and the batch's usage counts
+  after its replies are used.** A batch is one spend that cannot stop half way; counting it
+  before the workers ran would throw away replies already paid for. Each batch's usage
+  reaches the ledger as soon as it is collected, even when a later batch of the same phase
+  fails, and the in-run budget counts it whether the phase ends normally or raises. *Cost if wrong:* a run
+  can pass `budget.max_tokens` by one phase's batch; the next phase stops as usual.
+- **Batch usage is a separate ledger entry, marked `batch`, priced at half.** `cost` shows
+  such an entry as `<phase> (batch)` and prices it at `BATCH_RATE` (0.5); `run --dry-run`
+  prices a batched phase's estimate at the same rate. Cache reads and writes inside a batch
+  get the same discount, as Anthropic bills them. *Cost if wrong:* if the provider's
+  discount changes, estimates and the ledger are off until `BATCH_RATE` follows it.
+- **`batch: true` on an `openai_compatible` backend is a configuration error**, not ignored:
+  a consultant who asked for half-price runs must not get full-price ones silently.
+  `config check` prints one notice line per batch backend: the provider keeps batch results
+  for 29 days and batches are not eligible for zero data retention. *Cost if wrong:* none
+  known; a client with a zero-retention agreement leaves batch mode off.
+- **Polling waits in one-second steps of an injected sleeper, every 30 seconds.** Ctrl-C stops
+  the wait at once and leaves the batch to resume; tests never sleep. There is no local
+  timeout: the API ends every batch within 24 hours, expiring what it did not process. A
+  rate-limited status check (HTTP 429) counts as "still in progress", never as the batch's
+  failure: dropping the batch would send its requests again and pay for them twice. A
+  rate-limited results download is tried again a poll later (up to 10 times, then the run
+  stops and the next run collects the batch). Any other non-fatal error reading a batch, new
+  or stored, drops that batch and sends its uncollected requests as ordinary calls; the phase
+  still ends normally.
+
 ## Empty header fields (UNVAR-85)
 
 - **A missing client or firm is left out of the header, not shown as a dash.** The
