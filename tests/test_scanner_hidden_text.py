@@ -508,17 +508,31 @@ def test_rendered_documents_escape_hidden_characters_from_any_field(tmp_path: Pa
 def test_a_long_zero_width_run_escapes_in_linear_time():
     # QC: merging zero-width runs one character at a time was quadratic; a 6 MB run of
     # U+200B took minutes, so one planted file could stall an unattended scan.
+    # UNVAR-97: a wall-clock bound failed on slow CI runners, so the test compares the cost
+    # of n and 4n characters instead: linear work grows about 4x, quadratic about 16x. The
+    # best of three timings at each size keeps one stalled measurement from deciding it.
     import time
 
     from unvarnish.util.hidden_text import escape_hidden, hidden_runs
 
-    text = "a" + "​" * 1_000_000 + "b"
-    started = time.monotonic()
+    def cost(n: int) -> float:
+        text = "a" + "\u200b" * n + "b"
+        best = float("inf")
+        for _ in range(3):
+            started = time.perf_counter()
+            hidden_runs(text, at_start=False)
+            escape_hidden(text, at_start=False)
+            best = min(best, time.perf_counter() - started)
+        return best
+
+    small, large = cost(50_000), cost(200_000)
+    assert large / small < 9, f"n: {small:.3f} s, 4n: {large:.3f} s"
+
+    text = "a" + "\u200b" * 200_000 + "b"
     runs = hidden_runs(text, at_start=False)
     escaped = escape_hidden(text, at_start=False)
-    assert time.monotonic() - started < 10
-    assert len(runs) == 1 and runs[0].length == 1_000_000
-    assert escaped.startswith("a[U+200B]") and escaped.endswith("[+999992 more]b")
+    assert len(runs) == 1 and runs[0].length == 200_000
+    assert escaped.startswith("a[U+200B]") and escaped.endswith("[+199992 more]b")
 
 
 def test_the_detector_pattern_is_written_with_escapes_only():
