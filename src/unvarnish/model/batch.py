@@ -188,14 +188,17 @@ def _wait(batcher: Batcher, batch_id: str, budget: BudgetTracker) -> bool:
             return False
 
 
-def _collect(batcher: Batcher, cache: Any, batch_id: str, budget: BudgetTracker,
+def _collect(batcher: Batcher, cache: Any, sub: SubmittedBatch, budget: BudgetTracker,
              out: BatchOutcome, phase: str) -> str:
     """The batch's replies into the cache once it ends: "done"; "stopped" on a stop, the batch
     kept for the next run; "lost" when its results cannot be read (a non-fatal error), its
     uncollected requests then going as ordinary calls. A rate-limited download is tried again
     a poll later, skipping the replies already taken; a fatal error propagates with the batch
     kept. The batch's usage counts once it is done or lost, never while it is kept, so that
-    the run which finally collects it bills it exactly once."""
+    the run which finally collects it bills it exactly once. A result whose id is not one of
+    the batch's own requests (a misbehaving proxy at base_url) is never cached: the id names
+    the cache file."""
+    batch_id, keys = sub.batch_id, set(sub.keys)
     usage = Usage()
     seen: set[str] = set()
     try:
@@ -207,6 +210,10 @@ def _collect(batcher: Batcher, cache: Any, batch_id: str, budget: BudgetTracker,
                     if r.custom_id in seen:
                         continue
                     seen.add(r.custom_id)
+                    if r.custom_id not in keys:
+                        log.warning("batch %s: a result for a request it does not hold "
+                                    "(%r) is ignored", batch_id, r.custom_id[:70])
+                        continue
                     usage = _take(cache, batch_id, r, usage, out)
                 break
             except BatchRetryLater as exc:
@@ -277,7 +284,7 @@ def run_batch(backend: Any, requests: list[CompletionRequest], state_path: Path,
         out.resumed = True
         for sub in list(state.batches):
             log.info("%s: resuming message batch %s", phase, sub.batch_id)
-            got = _collect(batcher, backend, sub.batch_id, budget, out, phase)
+            got = _collect(batcher, backend, sub, budget, out, phase)
             if got == "stopped":
                 return out
             if got == "done":
@@ -312,7 +319,7 @@ def run_batch(backend: Any, requests: list[CompletionRequest], state_path: Path,
         log.warning("%s: batch submission failed (%s); the rest go as ordinary calls", phase,
                     exc)
     for sub in list(state.batches):
-        if _collect(batcher, backend, sub.batch_id, budget, out, phase) == "stopped":
+        if _collect(batcher, backend, sub, budget, out, phase) == "stopped":
             return out
         _done(state_path, state, sub.batch_id, phase)
     state_path.unlink(missing_ok=True)

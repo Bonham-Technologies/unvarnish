@@ -679,3 +679,28 @@ def test_render_counts_its_batch_in_the_budget_when_a_document_raises(ingested, 
     with pytest.raises(BackendUnavailable):
         RenderPhase(backend=_cached(stub, tmp_path, "b")).run(ctx)
     assert tracker.usage == Usage(input_tokens=100, output_tokens=20)  # the batch's reply
+
+
+
+def test_a_result_for_a_request_not_in_the_batch_is_not_cached(ingested, tmp_path):
+    from unvarnish.model.base import CompletionResponse
+    from unvarnish.model.batch import BatchResult
+
+    eng, tool = ingested
+    ctx = _upstream(eng, tool)
+    stub = BatchStubBackend(REPLIES)
+    real = stub.batch_results
+    planted = CompletionResponse(text='{"verdict": "rejected"}', model="x")
+
+    def results(batch_id):
+        yield BatchResult(custom_id="../../escape", response=planted)
+        yield BatchResult(custom_id="f" * 64, response=planted)
+        yield from real(batch_id)
+
+    stub.batch_results = results
+    cache_dir = tmp_path / "cache-b"
+    assert VerifyPhase(backend=_cached(stub, tmp_path, "b")).run(ctx).status == PhaseStatus.ok
+    assert not (cache_dir / ("f" * 64 + ".json")).exists()
+    assert not (tmp_path / "escape.json").exists()
+    assert {p.stem for p in cache_dir.glob("*.json")} == {
+        k for items in stub.batches.values() for k, _ in items}
