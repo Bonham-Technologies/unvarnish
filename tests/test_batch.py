@@ -522,3 +522,31 @@ def test_a_batch_collected_before_a_stop_is_not_collected_or_billed_again(ingest
             billed = billed + e.usage
     assert billed == Usage(input_tokens=100 * n, output_tokens=20 * n)
 
+
+
+def test_a_rate_limited_status_check_keeps_waiting_for_the_batch(ingested, tmp_path):
+    # A 429 on a status check is the poll's problem, not the batch's: abandoning the batch
+    # would send its requests again and pay for them twice.
+    import anthropic
+    import httpx2
+
+    eng, tool = ingested
+    ctx = _upstream(eng, tool)
+    batches = FakeBatches(reply=lambda p: '{"verdict": "confirmed", "reason": "seen"}')
+    real_retrieve = batches.retrieve
+    limited: list[str] = []
+
+    def retrieve(batch_id):
+        if not limited:
+            limited.append(batch_id)
+            resp = httpx2.Response(429, request=httpx2.Request(
+                "GET", f"https://api.example.test/v1/messages/batches/{batch_id}"))
+            raise anthropic.RateLimitError("rate limited", response=resp, body=None)
+        return real_retrieve(batch_id)
+
+    batches.retrieve = retrieve
+    backend = _anthropic(batches)
+    assert VerifyPhase(backend=_cached(backend, tmp_path, "a")).run(ctx).status == PhaseStatus.ok
+    assert limited and len(batches.created) == 1 and backend._client.sync_calls == []
+    mf = read_artifact(ctx.paths.model_findings, ModelFindings).data
+    assert mf.confirmed == len(batches.created["msgbatch_01"])

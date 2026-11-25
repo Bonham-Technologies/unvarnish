@@ -1667,4 +1667,6 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   known; a client with a zero-retention agreement leaves batch mode off.
 - **Polling waits in one-second steps of an injected sleeper, every 30 seconds.** Ctrl-C stops
   the wait at once and leaves the batch to resume; tests never sleep. There is no local
-  timeout: the API ends every batch within 24 hours, expiring what it did not process.
+  timeout: the API ends every batch within 24 hours, expiring what it did not process. A
+  rate-limited status check (HTTP 429) counts as "still in progress", never as the batch's
+  failure: dropping the batch would send its requests again and pay for them twice.

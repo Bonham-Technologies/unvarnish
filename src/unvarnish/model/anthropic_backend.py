@@ -165,8 +165,19 @@ class AnthropicBackend:
         return batch.id
 
     def batch_ended(self, batch_id: str) -> bool:
-        with self._batch_errors(f"batch {batch_id}"):
-            batch = self._client.messages.batches.retrieve(batch_id)
+        import anthropic
+
+        try:
+            with self._batch_errors(f"batch {batch_id}"):
+                batch = self._client.messages.batches.retrieve(batch_id)
+        except BackendError as exc:
+            # A 429 on a status check says nothing about the batch: keep waiting. Treating it
+            # as the batch's error would send its requests again and pay for them twice.
+            if isinstance(exc.__cause__, anthropic.RateLimitError):
+                log.info("%s: status check of batch %s rate limited; checking again later",
+                         self.name, batch_id)
+                return False
+            raise
         counts = getattr(batch, "request_counts", None)
         if counts is not None:
             log.info("%s: batch %s %s: %s processing, %s succeeded, %s errored, %s expired",
