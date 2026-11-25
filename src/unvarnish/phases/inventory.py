@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path, PurePosixPath
 
 from unvarnish.analysis import eol, treesitter, vulndata
-from unvarnish.analysis.advisories import lookup_advisories
+from unvarnish.analysis.advisories import lookup_dependencies
 from unvarnish.analysis.dependencies import parse_manifests
 from unvarnish.analysis.languages import (
     Classification,
@@ -15,6 +15,7 @@ from unvarnish.analysis.languages import (
     detect_language,
     is_binary,
 )
+from unvarnish.analysis.licences import attach_licences
 from unvarnish.analysis.metrics import compute_metrics, count_lines_in_file
 from unvarnish.artifacts import (
     digest_file,
@@ -106,7 +107,11 @@ class InventoryPhase:
         # The advisory lookup depends on whether osv-scanner is installed and on its options,
         # so installing it or changing them makes the inventory stale. Tracking or untracking a
         # gitignored file changes what is excluded without touching the tree (UNVAR-28).
-        deps_options = json.dumps(ctx.config.scanners.get("dependencies", {}), sort_keys=True)
+        # The licence allowlist is the scanner's, never osv-scanner's (UNVAR-93): changing it
+        # reruns the scan, not the lookup. Left out, an engagement without it hashes as before.
+        deps_options = json.dumps({k: v for k, v in ctx.config.scanners.get("dependencies",
+                                                                             {}).items()
+                                   if k != "licences"}, sort_keys=True)
         tracked = tracked_files(ctx)
         index = "no-index" if tracked is None else hash_inputs(sorted(tracked))
         parts = [hash_tree(ctx.source_root), deps_options,
@@ -125,6 +130,10 @@ class InventoryPhase:
         # Likewise the exploit data bundle, which marks the advisories (UNVAR-90).
         if vuln_date:
             parts.append("vulndata:" + vuln_date)
+        # Online, the lookup also reads licences (UNVAR-93), so an online inventory from
+        # before them reruns once; offline adds nothing and its hash is what it was.
+        if ctx.config.scanners.get("dependencies", {}).get("offline", True) is False:
+            parts.append("licences")
         return hash_inputs(parts)
 
     def outputs(self, ctx: ToolContext) -> list[Path]:
@@ -194,15 +203,23 @@ class InventoryPhase:
         write_artifact(ctx.paths.census, census, produced_by=self.name, inputs_hash=h)
         write_artifact(ctx.paths.metrics, Metrics(tool=ctx.tool, files=metrics),
                        produced_by=self.name, inputs_hash=h)
-        checked, advisories, note = lookup_advisories(
-            root, dict(ctx.config.scanners.get("dependencies", {})))
+        options = dict(ctx.config.scanners.get("dependencies", {}))
+        checked, advisories, note, packages = lookup_dependencies(root, options)
         advisories, exploit_date, exploit_note = vulndata.annotate(advisories)
+        if packages is not None:
+            deps = attach_licences(deps, packages)
+        # Offline needs no note: the option says why, and the artifact stays as it was.
+        offline = options.get("offline", True) is not False
+        licences_note = None if packages is not None or offline else note or "not looked up"
         write_artifact(ctx.paths.dependencies,
                        Dependencies(tool=ctx.tool, dependencies=deps, advisories_checked=checked,
                                     advisories=advisories, advisories_note=note,
                                     eol_data_date=eol_date,
                                     exploit_data_date=exploit_date,
-                                    exploit_data_note=exploit_note),
+                                    exploit_data_note=exploit_note,
+                                    licences_checked=packages is not None,
+                                    licences_note=licences_note,
+                                    packages=packages or []),
                        produced_by=self.name, inputs_hash=h)
         message = f"{plural(totals.files, 'file')}, {len(metrics)} measured"
         if gaps:

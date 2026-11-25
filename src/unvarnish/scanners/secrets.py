@@ -16,6 +16,7 @@ from unvarnish.scanners.effort import rule_effort
 from unvarnish.scanners.gitleaks import run_gitleaks
 from unvarnish.schemas.finding import Category, Evidence, Finding, Severity, Source
 from unvarnish.util.gitcmd import GitError, git, git_lines, is_git_repo
+from unvarnish.util.hidden_text import escape_hidden
 from unvarnish.util.plural import plural
 
 MAX_SCAN_BYTES = 5_000_000
@@ -308,8 +309,8 @@ def redact_text(text: str) -> str:
 
 
 def _redact_value(value):
-    if isinstance(value, str):
-        return redact_text(value)
+    if isinstance(value, str):  # a model can also echo a hidden character (UNVAR-92)
+        return redact_text(escape_hidden(value, at_start=False))
     if isinstance(value, list):
         return [_redact_value(v) for v in value]
     if isinstance(value, dict):
@@ -319,7 +320,8 @@ def _redact_value(value):
 
 def redact_model_text[M](model: M) -> M:
     """A copy of a model's output with every string run through redact_text: a model can
-    repeat a secret it read in a summary, a description, or a risk."""
+    repeat a secret it read in a summary, a description, or a risk. Hidden characters are
+    written as [U+XXXX] escapes too."""
     data = _redact_value(model.model_dump())  # type: ignore[attr-defined]
     return type(model).model_validate(data)  # type: ignore[attr-defined]
 

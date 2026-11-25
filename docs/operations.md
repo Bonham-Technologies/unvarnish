@@ -98,6 +98,10 @@ The scale rehearsal is repeatable without spending tokens:
   yours; the image marks every directory as a git `safe.directory` and sets `HOME=/tmp`.
 - `docker save unvarnish | gzip > unvarnish.tar.gz` moves the image to an air-gapped site.
 - Tools added with `--link` are invisible inside the container; use `--repo` or `--files`.
+- CI's `docker` job builds the image and runs it on `tests/data/docker-smoke/` with no
+  network, on every push to `main` and on pull requests that change the image's inputs
+  (UNVAR-80). A Dependabot bump of a pinned image therefore shows a build failure on its pull
+  request; its "Does this change touch the image?" step lists the changed files it looked at.
 
 ## Tree-sitter grammars
 
@@ -140,6 +144,42 @@ The scale rehearsal is repeatable without spending tokens:
 - After refreshing the database, rerun `unvarnish run --phase inventory --force` and
   `unvarnish run`.
 - Set `scanners.dependencies.offline: false` to query osv.dev directly where the site allows it.
+  Online, osv-scanner also reads each package's licences from deps.dev (`--licenses`, no
+  allowlist), and the inventory stores them in `dependencies.json` (UNVAR-93).
+
+## Dependency licences and the SBOM
+
+- Licences are checked only online. Offline (the default) the findings document says
+  "licences: not checked (offline mode)" under "Not analysed", and the SBOM lists no licence:
+  none is ever guessed. Switching to `offline: false` reruns the inventory once.
+- Set the client's accepted licences as SPDX identifiers, matched without regard to case:
+
+      scanners:
+        dependencies:
+          offline: false
+          licences: [MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC]
+
+  An expression is accepted when any `OR` branch and every `AND` part is on the list
+  (`MIT OR GPL-3.0` passes with MIT); `X WITH exception` passes when X or the whole of it is
+  listed. Each manifest and licence outside the list is one compliance finding: medium when the
+  licence cannot be met without a copyleft one (GPL, AGPL, LGPL, MPL, EPL, EUPL, CDDL, OSL,
+  SSPL, CC-BY-SA...), low otherwise, and low for a package deps.dev names no licence for. It
+  covers every package osv-scanner resolved, transitive ones from a lockfile included; a
+  declared dependency it resolved no version for (a range without a lockfile) is named in a
+  note, since its licence was not checked. Without the option nothing is flagged and a note
+  says so; changing it reruns the scan only, not the inventory's osv-scanner lookup.
+- The allowlist never reaches osv-scanner, and osv-scanner always gets Unvarnish's own empty
+  `--config`, so an `osv-scanner.toml` in the vetted repository cannot override or ignore a
+  package's licence, just as it cannot hide advisories.
+- `unvarnish export --format cyclonedx [tool...]` writes `exports/sbom-<tool>-<timestamp>.cdx.json`
+  (CycloneDX 1.6, JSON) from `inventory/dependencies.json`, with no osv-scanner call: declared
+  dependencies (package URL, exact version or the constraint as `unvarnish:constraint`, the
+  manifest as `unvarnish:manifest`, dev dependencies with scope `optional`), online also the
+  packages osv-scanner resolved, and each package an advisory names. Advisories are
+  `vulnerabilities` with their aliases as references, the severity Unvarnish rated, the KEV and
+  EPSS data as properties, and `affects` pointing at the component. The metadata says whether
+  licences and advisories were checked. A tool not yet inventoried is skipped. Rerun `export`
+  after `run`: the file is a snapshot.
 
 ## Exploit data (CISA KEV and EPSS)
 
@@ -287,6 +327,24 @@ The scale rehearsal is repeatable without spending tokens:
   pg_class` before calling them open.
 - The route review finding is a list to confirm, not a verdict. With a model configured,
   extraction is told about each listed handler and reports the ones it confirms.
+
+## Hidden text
+
+- `hidden_text` findings show each hidden character as a `[U+XXXX]` escape; a run longer than
+  eight ends in `[+N more]`. To see the raw bytes, open the cited line with
+  `sed -n '<line>p' <file> | od -c` or an editor that shows invisible characters (VS Code's
+  `editor.renderControlCharacters` and `editor.unicodeHighlight.invisibleCharacters`).
+- A rule-file finding is high whatever the characters are, because the file steers every
+  generation the assistant makes: read the file's history (`git log -p -- <file>`) and review
+  code generated after the characters arrived.
+- Model prompts carry the same escapes (at the one structured-call function every model phase
+  uses), so the model sees what a reviewer would and cites the same line numbers. A unit with
+  hidden characters gets a new cache key, so a later extract run asks about it again.
+- Runs of variation selectors or private-use characters shorter than
+  `scanners.hidden_text.long_run` (32) are not reported in source: icon fonts and variation
+  sequences make short runs normal. Lower it to search for smaller payloads.
+- The MCP finding is a review item: pin `npx`/`uvx` servers to an exact version
+  (`pkg@1.2.3`, `pkg==1.2.3`); a server given by `url` is not reported.
 
 ## Private repositories over SSH
 
@@ -512,7 +570,8 @@ fully covered. A partial run (one test file, `-k`) covers far less than the floo
 To raise the floor after adding tests: run `uv run pytest -q`, read the `TOTAL` line, set
 `fail_under` to that percentage rounded down to a whole number, and update the date and
 figure in the comment above it. Never lower it to get a change through; add the tests
-instead (`tests/test_distribution.py` fails if `fail_under` drops below 94).
+instead (`tests/test_distribution.py` fails if `fail_under` drops below 95, the floor since
+UNVAR-87).
 
 ## Findings into GitHub and Jira
 

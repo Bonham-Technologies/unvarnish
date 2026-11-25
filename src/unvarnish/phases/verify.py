@@ -31,6 +31,7 @@ from unvarnish.schemas.finding import (
 from unvarnish.schemas.rollup import Module, module_file_id
 from unvarnish.schemas.toolmodel import ToolModel
 from unvarnish.schemas.verify import ModelFindings, Verdict
+from unvarnish.util.hidden_text import escape_hidden
 from unvarnish.util.plural import plural
 
 log = logging.getLogger("unvarnish.verify")
@@ -238,8 +239,9 @@ def ground_evidence(findings: list[Finding], source_root: Path) -> None:
                 continue
             if e.path not in texts:
                 try:
-                    texts[e.path] = (source_root / e.path).read_text(encoding="utf-8",
-                                                                     errors="replace")
+                    # escaped as the model saw it, so a quote of hidden text still matches
+                    texts[e.path] = escape_hidden((source_root / e.path).read_text(
+                        encoding="utf-8", errors="replace"), at_start=False)
                 except OSError:
                     texts[e.path] = None
             text = texts[e.path]

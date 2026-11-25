@@ -8,6 +8,58 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 
 ## [Unreleased] — 0.1.1
 
+### `add --link` says how it is used
+
+- `unvarnish add NAME --link PATH` now answers with the right form,
+  `add NAME --link --repo PATH` (or `--files DIR`), instead of click's "unexpected extra
+  argument", and `--link`'s help says it goes with `--repo` or `--files` (UNVAR-86).
+
+### A timing test that no longer depends on runner speed
+
+- The hidden-text linear-time test compares the cost of n and 4n characters instead of
+  asserting a 10-second wall-clock bound, which failed on slow CI runners and turned `main`
+  red; it still fails on a quadratic scan (UNVAR-97).
+
+### The engagement lock's edge cases are tested
+
+- Tests now cover the engagement lock's boot-time read, heartbeat fallbacks and a release
+  that cannot empty the lock file (`lock.py` from 83% to 99%), and the coverage floor rises
+  from 94 to 95 (UNVAR-87).
+
+### Document headers without empty fields
+
+- A document header leaves out the client or the firm when `init` was not given one,
+  instead of printing `**Client:** —` in a client deliverable; `init` says when the
+  documents will carry no client or firm name and how to set one (UNVAR-85).
+
+### Hidden text in rule files and source
+
+- A new `hidden_text` scanner reports characters that display as nothing: bidirectional
+  controls (Trojan Source, high), Unicode tag characters (high), runs of 32 or more variation
+  selectors or private-use characters (an encoded payload, high) and zero-width characters
+  (medium) in source and configuration, and any of them in an AI rule file (`.cursorrules`,
+  `CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `.cursor/rules/`, high). It
+  also flags MCP configs that start a server from an unpinned npm or Python package or a
+  script piped into a shell, for review. Emoji sequences, right-to-left locale files, Persian
+  and Indic joiners and a byte order mark at the start of a file are not findings. Every
+  excerpt, note, model prompt (prose and ask included), rendered document and export shows the
+  characters as `[U+XXXX]` escapes, never raw, and line numbers are unchanged. Scans rerun once (UNVAR-92).
+
+### A CycloneDX SBOM per tool, and licence checks online
+
+- `unvarnish export --format cyclonedx` writes `exports/sbom-<tool>-<timestamp>.cdx.json`, a
+  CycloneDX 1.6 SBOM of each tool's dependencies (package URL, version or constraint,
+  manifest) and known advisories, without running osv-scanner. Online, package licences from
+  deps.dev reach the SBOM, and `scanners.dependencies.licences` flags each licence outside
+  that allowlist as a compliance finding; offline the documents say "licences: not checked".
+  Scans rerun once to pick up the new note (UNVAR-93).
+
+### CI builds the Docker image
+
+- A new `docker` CI job builds the image and runs a no-model review and an HTML export on a
+  small fixture inside it, with no network, so Dockerfile and base-image bumps no longer merge
+  untested; `ci-status` waits for it (UNVAR-80).
+
 ### The unvarnish.tech demo shows the current report
 
 - The NodeGoat demo was recorded again with current `main` and the image's WeasyPrint, so the

@@ -16,6 +16,7 @@ from jinja2 import (
 from jinja2.ext import Extension
 
 from unvarnish.artifacts import hash_inputs
+from unvarnish.util.hidden_text import escape_hidden
 from unvarnish.util.plural import is_are, plural, pluralize
 
 PROSE_TAG_RE = re.compile(r"{%-?\s*prose\s+[\"']([a-z_][a-z0-9_]*)[\"']\s*-?%}")
@@ -180,7 +181,10 @@ def make_env(override_dirs: Sequence[Path] = ()) -> Environment:
 
 
 def render_document(env: Environment, template_name: str, context: dict) -> str:
-    return env.get_template(template_name).render(**context)
+    """The rendered document, with any hidden character (bidi controls, zero-width and tag
+    characters, encoded runs) from a path, a name or a model's text written as a [U+XXXX]
+    escape, so no document or export made from it carries one raw (UNVAR-92)."""
+    return escape_hidden(env.get_template(template_name).render(**context), at_start=False)
 
 
 def template_source_hash(env: Environment, template_name: str) -> str:
