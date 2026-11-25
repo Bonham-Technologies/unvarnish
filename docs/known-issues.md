@@ -241,6 +241,14 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   primary model once more than in a synchronous run. A batched phase waits for its whole
   batch (usually under an hour, at most 24 hours) before writing anything. The `compare` and
   `ask` calls are never batched.
+- [UNVAR-94] A rerun whose prompts changed since a batch was stored (new inputs, another
+  effort, a new prompt version) first waits for that old batch to end and caches its replies,
+  which the new prompts never use, then submits a new batch and waits again.
+- [UNVAR-94] A stored batch submitted for another backend or model than the phase now uses is
+  dropped without being collected, although it was paid for.
+- [UNVAR-94] Batch mode has not run against the live Message Batches API. Structured output
+  (`output_config.format`), `effort` and `cache_control` inside a batch request's params, and
+  the shapes of its results, are checked only against fakes built from the SDK's own types.
 
 ## Fixed
 
