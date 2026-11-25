@@ -16,6 +16,18 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
   at the batch rate in `cost` and `run --dry-run`; extract and the rollups stay synchronous
   (UNVAR-94).
 
+### `add --link` says how it is used
+
+- `unvarnish add NAME --link PATH` now answers with the right form,
+  `add NAME --link --repo PATH` (or `--files DIR`), instead of click's "unexpected extra
+  argument", and `--link`'s help says it goes with `--repo` or `--files` (UNVAR-86).
+
+### A timing test that no longer depends on runner speed
+
+- The hidden-text linear-time test compares the cost of n and 4n characters instead of
+  asserting a 10-second wall-clock bound, which failed on slow CI runners and turned `main`
+  red; it still fails on a quadratic scan (UNVAR-97).
+
 ### The engagement lock's edge cases are tested
 
 - Tests now cover the engagement lock's boot-time read, heartbeat fallbacks and a release

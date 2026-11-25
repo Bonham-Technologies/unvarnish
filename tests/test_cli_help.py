@@ -67,3 +67,8 @@ def test_shell_completion_offers_valid_values():
     assert _complete("unvarnish export --format ") == [*FORMATS, *DATA_FORMATS, *SBOM_FORMATS,
                                                        "all"]
     assert _complete("unvarnish export --doc f") == ["findings"]
+
+
+def test_add_help_says_link_goes_with_repo_or_files():
+    # UNVAR-86: `add z --link PATH` was the natural first guess.
+    assert "use with --repo or --files" in _help("add")
