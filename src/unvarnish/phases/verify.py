@@ -449,9 +449,11 @@ class VerifyPhase:
                                    failures=[failure] if failure else [])
             return ItemOutcome(result=(f.id, res.parsed, None), usage=res.usage)
 
-        outcome = run_parallel(to_verify, worker, workers=ctx.config.pipeline.concurrency,
-                               budget=budget, phase=self.name)
-        budget.add(batch_usage)  # after the workers: a paid batch is used whatever the cap
+        try:
+            outcome = run_parallel(to_verify, worker, workers=ctx.config.pipeline.concurrency,
+                                   budget=budget, phase=self.name)
+        finally:  # after the workers: a paid batch is used whatever the cap
+            budget.add(batch_usage)
         usage = outcome.usage + batch_usage
         verdicts: dict[str, tuple[Verdict | None, str | None]] = {
             fid: (v, err) for fid, v, err in outcome.results}

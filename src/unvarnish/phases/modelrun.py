@@ -18,7 +18,7 @@ from unvarnish.model.base import (
     CompletionRequest,
     ModelRefusal,
 )
-from unvarnish.model.batch import run_batch
+from unvarnish.model.batch import BatchOutcome, run_batch
 from unvarnish.model.budget import BudgetExceeded, BudgetTracker, record_cost
 from unvarnish.model.structured import (
     StructuredOutputError,
@@ -171,14 +171,24 @@ def batch_first_calls(ctx: ToolContext, phase: str, backend: Backend,
     """Send the first call of each request in a message batch when the phase's backend has
     `batch: true` (UNVAR-94); the replies land in the response cache, where the phase's
     ordinary calls find them. The batch's usage goes in the ledger at once, marked as billed
-    at the batch rate, and is returned for the phase's artifact and its budget."""
-    out = run_batch(backend, requests, ctx.paths.batch_state(phase), budget=budget,
-                    phase=phase)
+    at the batch rate, and is returned for the phase's artifact and its budget. It reaches the
+    ledger even when a later batch raises: the batches collected before it are in the cache,
+    so the next run gets their replies free and would never bill them. On such an error the
+    phase ends here, so the budget counts it too; otherwise the phase adds it to the budget
+    once its workers have used the replies."""
+    out = BatchOutcome()
+    try:
+        run_batch(backend, requests, ctx.paths.batch_state(phase), budget=budget,
+                  phase=phase, out=out)
+    except BaseException:
+        budget.add(out.usage)
+        raise
+    finally:
+        if out.usage.total():
+            record_cost(ctx.engagement, CostEntry(
+                tool=ctx.tool, phase=phase, backend=backend.name, model=backend.model,
+                usage=out.usage, at=datetime.now(UTC), batch=True))
     if out.submitted or out.resumed:
         log.info("%s %s: batch answered %d, %d go as ordinary calls", phase, ctx.tool,
                  out.cached, out.unanswered)
-    if out.usage.total():
-        record_cost(ctx.engagement, CostEntry(
-            tool=ctx.tool, phase=phase, backend=backend.name, model=backend.model,
-            usage=out.usage, at=datetime.now(UTC), batch=True))
     return out.usage

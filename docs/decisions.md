@@ -1653,7 +1653,9 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   accepting a batch and the file being written pays for that batch twice.
 - **The budget cap is checked once, before a batch is submitted, and the batch's usage counts
   after its replies are used.** A batch is one spend that cannot stop half way; counting it
-  before the workers ran would throw away replies already paid for. *Cost if wrong:* a run
+  before the workers ran would throw away replies already paid for. Each batch's usage
+  reaches the ledger as soon as it is collected, even when a later batch of the same phase
+  fails, and the in-run budget counts it whether the phase ends normally or raises. *Cost if wrong:* a run
   can pass `budget.max_tokens` by one phase's batch; the next phase stops as usual.
 - **Batch usage is a separate ledger entry, marked `batch`, priced at half.** `cost` shows
   such an entry as `<phase> (batch)` and prices it at `BATCH_RATE` (0.5); `run --dry-run`

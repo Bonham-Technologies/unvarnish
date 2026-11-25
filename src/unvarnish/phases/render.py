@@ -169,37 +169,39 @@ class RenderPhase:
             batch_usage = batch_first_calls(ctx, self.name, backend, [
                 req for item in prepared.values() if not isinstance(item, Exception)
                 for req in first_prose_requests(item[1], tone=tone, effort=effort)], budget)
-        for template, attr, _, required in DOCUMENTS:
-            path: Path = getattr(ctx.paths, attr)
-            if required and getattr(inp, required) is None:
-                path.unlink(missing_ok=True)  # its inputs are gone; never keep a stale document
-                continue
-            try:
-                item = prepared[template]
-                if isinstance(item, Exception):
-                    raise item
-                context, facts = item
-                diagrams.update(context.get("diagrams", {}))
-                prose = generate_prose(backend, facts, tone=tone, effort=effort, budget=budget)
-                usage = usage + prose.usage
-                failures.extend(prose.failures)
-                stopped = stopped or prose.stopped_for_budget
-                retry_later = retry_later or bool(prose.failures and backend is not None)
-                doc = render_document(env, template, {**context, "prose": prose.text})
-            except BackendUnavailable:
-                raise
-            except Exception as exc:  # a broken template override takes down one document
-                log.exception("render %s: %s failed", ctx.tool, template)
-                failures.append(FailureRecord(phase=self.name, unit_id=template,
-                                              error=repr(exc)[:500]))
-                path.unlink(missing_ok=True)  # never leave a stale document behind
-                continue
-            path.write_text(doc, encoding="utf-8")
-            written.append(path.name)
-            hashes[path.name] = hashlib.sha256(doc.encode("utf-8")).hexdigest()
+        try:
+            for template, attr, _, required in DOCUMENTS:
+                path: Path = getattr(ctx.paths, attr)
+                if required and getattr(inp, required) is None:
+                    path.unlink(missing_ok=True)  # its inputs are gone; never keep a stale document
+                    continue
+                try:
+                    item = prepared[template]
+                    if isinstance(item, Exception):
+                        raise item
+                    context, facts = item
+                    diagrams.update(context.get("diagrams", {}))
+                    prose = generate_prose(backend, facts, tone=tone, effort=effort, budget=budget)
+                    usage = usage + prose.usage
+                    failures.extend(prose.failures)
+                    stopped = stopped or prose.stopped_for_budget
+                    retry_later = retry_later or bool(prose.failures and backend is not None)
+                    doc = render_document(env, template, {**context, "prose": prose.text})
+                except BackendUnavailable:
+                    raise
+                except Exception as exc:  # a broken template override takes down one document
+                    log.exception("render %s: %s failed", ctx.tool, template)
+                    failures.append(FailureRecord(phase=self.name, unit_id=template,
+                                                  error=repr(exc)[:500]))
+                    path.unlink(missing_ok=True)  # never leave a stale document behind
+                    continue
+                path.write_text(doc, encoding="utf-8")
+                written.append(path.name)
+                hashes[path.name] = hashlib.sha256(doc.encode("utf-8")).hexdigest()
+        finally:  # after the prose calls: a paid batch is used whatever the cap
+            budget.add(batch_usage)
         # failures.json is one of this phase's inputs: write it before recording the hash,
         # otherwise the phase would be stale the moment it finished.
-        budget.add(batch_usage)  # after the prose calls: a paid batch is used whatever the cap
         merge_failures(ctx, self.name, failures)
         write_artifact(ctx.paths.diagrams, DiagramSet(diagrams=diagrams), produced_by=self.name,
                        inputs_hash="")

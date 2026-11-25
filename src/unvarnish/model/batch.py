@@ -249,7 +249,8 @@ def _take(cache: Any, batch_id: str, r: BatchResult, usage: Usage,
 
 
 def run_batch(backend: Any, requests: list[CompletionRequest], state_path: Path, *,
-              budget: BudgetTracker, phase: str) -> BatchOutcome:
+              budget: BudgetTracker, phase: str,
+              out: BatchOutcome | None = None) -> BatchOutcome:
     """Answer `requests` through message batches, into `backend`'s response cache.
 
     `backend` is the phase's backend: a CachingBackend over a chain that holds a batcher.
@@ -257,10 +258,13 @@ def run_batch(backend: Any, requests: list[CompletionRequest], state_path: Path,
     progress) is collected first and its requests are never sent again in a batch. The cap
     is checked once before a new batch: a batch is one spend that cannot stop half way.
     A stop (Ctrl-C) returns at once and keeps the state; the phase then stops as it does
-    synchronously, without calls, and the next run collects the batch."""
+    synchronously, without calls, and the next run collects the batch.
+
+    `out` collects as it goes: a caller that passes its own still has the usage of the
+    batches already collected when a later one raises."""
     from unvarnish.model.cache import CachingBackend
 
-    out = BatchOutcome()
+    out = out if out is not None else BatchOutcome()
     batcher = find_batcher(backend)
     if batcher is None:
         return out

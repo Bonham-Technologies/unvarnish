@@ -617,3 +617,65 @@ def test_anthropic_rate_limited_results_ask_to_retry_later():
     batches.results = results
     with pytest.raises(BatchRetryLater):
         list(b.batch_results(batch_id))
+
+
+
+def test_usage_of_a_collected_batch_reaches_the_ledger_when_a_later_one_fails(
+        ingested, tmp_path, monkeypatch):
+    import unvarnish.model.batch as batch_mod
+    from unvarnish.model.base import BackendUnavailable
+
+    monkeypatch.setattr(batch_mod, "MAX_BATCH_REQUESTS", 1)
+    eng, tool = ingested
+    ctx = _upstream(eng, tool)
+    stub = BatchStubBackend(REPLIES, polls=0)
+    real = stub.batch_ended
+
+    def ended(batch_id):
+        if batch_id == "msgbatch_stub2":
+            raise BackendUnavailable("stub: batch msgbatch_stub2: connection failed")
+        return real(batch_id)
+
+    stub.batch_ended = ended
+    tracker = BudgetTracker(None)
+    ctx = build_context(eng, tool, budget=tracker)
+    backend = _cached(stub, tmp_path, "b")
+    with pytest.raises(BackendUnavailable):
+        VerifyPhase(backend=backend).run(ctx)
+    first = [e.usage for e in load_ledger(eng).entries if e.phase == "verify"]
+    assert first == [Usage(input_tokens=100, output_tokens=20)]  # batch 1, collected
+    assert tracker.usage == Usage(input_tokens=100, output_tokens=20)
+
+    stub.batch_ended = real
+    n = stub.count_batched("Verdict")
+    ctx = build_context(eng, tool, budget=BudgetTracker(None))
+    assert VerifyPhase(backend=backend).run(ctx).status == PhaseStatus.ok
+    assert len(stub.batches) == n and stub.requests == []
+    billed = Usage()
+    for e in load_ledger(eng).entries:
+        if e.phase == "verify":
+            billed = billed + e.usage
+    assert billed == Usage(input_tokens=100 * n, output_tokens=20 * n)
+
+
+def test_render_counts_its_batch_in_the_budget_when_a_document_raises(ingested, tmp_path):
+    from unvarnish.model.base import BackendUnavailable
+
+    eng, tool = ingested
+    ctx = _upstream(eng, tool)
+    assert VerifyPhase(backend=StubBackend(REPLIES)).run(ctx).status == PhaseStatus.ok
+    seen: list[str] = []
+
+    def fail(req):  # the first prose block is answered by the batch, the rest expire
+        seen.append(req.messages[0].content)
+        return None if len(seen) == 1 else "expired"
+
+    def prose(req):  # replies inside the batch; an outage for the ordinary calls after it
+        return BackendUnavailable("stub: outage") if stub.requests else _prose(req)
+
+    stub = BatchStubBackend({**REPLIES, "prose": prose}, fail=fail)
+    tracker = BudgetTracker(None)
+    ctx = build_context(eng, tool, budget=tracker)
+    with pytest.raises(BackendUnavailable):
+        RenderPhase(backend=_cached(stub, tmp_path, "b")).run(ctx)
+    assert tracker.usage == Usage(input_tokens=100, output_tokens=20)  # the batch's reply
