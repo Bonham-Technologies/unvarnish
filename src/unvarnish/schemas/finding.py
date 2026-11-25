@@ -6,6 +6,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from unvarnish.util.hidden_text import escape_optional
+
 
 class Category(StrEnum):
     security = "security"
@@ -76,6 +78,14 @@ class Evidence(BaseModel):
         if v.startswith("/") or "\\" in v or v.startswith("../"):
             raise ValueError("evidence path must be a relative POSIX path inside the tool")
         return v
+
+    @field_validator("excerpt", "note")
+    @classmethod
+    def _no_hidden_text(cls, v: str | None) -> str | None:
+        # Hidden characters (bidi controls, zero-width, tag characters, encoded runs) are
+        # shown as [U+XXXX] escapes in every excerpt and note, from any scanner or model, so
+        # no document or export carries them raw (UNVAR-92).
+        return escape_optional(v)
 
 
 class AdvisoryExploit(BaseModel):

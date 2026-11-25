@@ -206,6 +206,34 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   background, bold) until the rule is copied from the bundled `report.css`. PDF and Word are
   unaffected.
 
+- [UNVAR-92] An engagement extracted before the hidden-text escaping keeps those extractions:
+  the extract phase reruns only when its units, model or prompt change, so a unit with hidden
+  characters is asked again with escaped text only on such a rerun or `run --force`. The scan
+  reruns once and reports the characters either way.
+- [UNVAR-92] Hidden characters are reported in source, config and rule files only, not in
+  Markdown or other documentation outside the rule-file list, generated or minified files, or
+  (by default) tests. Runs of variation selectors or private-use characters shorter than
+  `long_run` (32) are escaped in excerpts and prompts but not reported. A single variation
+  selector after a visible character is treated as legitimate, so a payload spread one
+  selector per character is neither reported nor escaped. A tag-character payload is shown
+  as escapes, not decoded to the text it spells.
+- [UNVAR-92] Right-to-left locale files are recognised by a language code (`ar`, `he`, `fa`,
+  `ur` and others) in the path of a translation-shaped file (`.json`, `.po`, `.xliff`,
+  `.properties`, ...; `.js` and `.ts` only inside a locale folder); one elsewhere reports its
+  isolates, and so does a locale line with no right-to-left letter. A bidi mark on a line
+  with a right-to-left letter is not reported in any file, and an override on such a line of
+  a locale file is not either, so an attacker who adds such a letter hides a mark anywhere,
+  or an override only in a translation file. Other invisible characters (U+00AD soft hyphen,
+  U+034F, U+115F/U+1160/U+3164 Hangul fillers, U+180E) are neither reported nor escaped, and
+  a path or file name with a hidden character is escaped in documents and exports but kept
+  raw in the JSON artifacts, which need it to open the file.
+- [UNVAR-92] The MCP check reads JSON configs (`.mcp.json`, `claude_desktop_config.json`,
+  `.cursor/mcp.json`, `.vscode/mcp.json` with comments, and the Windsurf, Roo, Gemini, Kiro
+  and Amazon Q names): `npx`, `bunx`, `pnpm dlx`, `yarn dlx`, `npm exec`, `uvx`, `uv tool run`,
+  `pipx run` and `curl | sh`, also behind `cmd /c`, `sh -c` or `powershell -Command`. A
+  Docker image tag, a TOML or YAML agent config and a remote server given by `url` are not
+  checked.
+
 ## Fixed
 
 Fixed in the known-issues burn-down (see the CHANGELOG for details):

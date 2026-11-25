@@ -302,6 +302,24 @@ The scale rehearsal is repeatable without spending tokens:
 - The route review finding is a list to confirm, not a verdict. With a model configured,
   extraction is told about each listed handler and reports the ones it confirms.
 
+## Hidden text
+
+- `hidden_text` findings show each hidden character as a `[U+XXXX]` escape; a run longer than
+  eight ends in `[+N more]`. To see the raw bytes, open the cited line with
+  `sed -n '<line>p' <file> | od -c` or an editor that shows invisible characters (VS Code's
+  `editor.renderControlCharacters` and `editor.unicodeHighlight.invisibleCharacters`).
+- A rule-file finding is high whatever the characters are, because the file steers every
+  generation the assistant makes: read the file's history (`git log -p -- <file>`) and review
+  code generated after the characters arrived.
+- Model prompts carry the same escapes (at the one structured-call function every model phase
+  uses), so the model sees what a reviewer would and cites the same line numbers. A unit with
+  hidden characters gets a new cache key, so a later extract run asks about it again.
+- Runs of variation selectors or private-use characters shorter than
+  `scanners.hidden_text.long_run` (32) are not reported in source: icon fonts and variation
+  sequences make short runs normal. Lower it to search for smaller payloads.
+- The MCP finding is a review item: pin `npx`/`uvx` servers to an exact version
+  (`pkg@1.2.3`, `pkg==1.2.3`); a server given by `url` is not reported.
+
 ## Private repositories over SSH
 
 - git never prompts during a run. Unvarnish appends `-o BatchMode=yes` to your

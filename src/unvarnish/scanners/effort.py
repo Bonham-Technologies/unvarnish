@@ -80,6 +80,14 @@ EFFORT_RULES: dict[str, dict[str, tuple[Effort, str]]] = {
         "past": (L, "move to a supported release, retest and update every place it is pinned"),
         "near": (L, "plan the move to a supported release before support ends"),
     },
+    "hidden_text": {
+        "rule_file": (S, "remove the characters and review what the file steered"),
+        "bidi": (S, "remove the characters and add a CI check"),
+        "tag": (S, "remove the characters and add a CI check"),
+        "encoded_run": (M, "remove the payload and find how it got in"),
+        "invisible": (S, "remove the characters"),
+        "mcp_unpinned": (S, "pin each server to an exact version"),
+    },
 }
 
 
