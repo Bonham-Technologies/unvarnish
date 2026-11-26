@@ -60,4 +60,5 @@ def test_builtin_registry_order():
         "hidden_text",
         "sast",
         "ai_usage",
+        "sensitive_data",
     ]

@@ -383,6 +383,32 @@ configuration error.
 - Test code and vendored directories are skipped; set `scanners.ai_usage.include_tests: true`
   to include tests.
 
+## Sensitive data
+
+- `sensitive_data` writes `inventory/sensitive-data.json` and the "Sensitive data" section of
+  requirements.md: the data classes field names suggest, where each is declared, and the
+  external systems and AI providers the same tool reaches. Without a model, requirements.md
+  holds that section alone, and only when a field matched.
+- It opens source code (SQL included) and `.prisma` schemas only, never data files,
+  configuration (JSON, YAML, XML, TOML) or notebooks; in `.sql` files, strings and dump rows
+  (`INSERT`, `COPY ... FROM stdin`) are blanked before parsing.
+- The pattern set is `src/unvarnish/scanners/sensitive_data.yaml`; `unvarnish scanners list`
+  shows the set in effect. Change it in engagement.yaml:
+
+  ```yaml
+  scanners:
+    sensitive_data:
+      patterns:
+        classes:
+          contact: {terms: [email, phone, fax]}        # replaces the bundled terms
+          employee: {label: Employee records, terms: [payroll id, staff number]}
+        ignore: [user agent, health check, email template, minor version, address family]
+  ```
+
+  A list replaces the bundled list it names, so restate the bundled entries you keep;
+  `terms: []` turns a class off. `unvarnish config check` reports a malformed set.
+- Test code is skipped; set `scanners.sensitive_data.include_tests: true` to include it.
+
 ## Private repositories over SSH
 
 - git never prompts during a run. Unvarnish appends `-o BatchMode=yes` to your

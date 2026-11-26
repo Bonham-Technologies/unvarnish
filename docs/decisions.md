@@ -1796,6 +1796,107 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   text version bump: the new scanner name already changes every scan's inputs hash.
   *Cost if wrong:* an Opengrep upgrade keeps an older scan until `--force`.
 
+## Sensitive data by field name (UNVAR-100)
+
+- **Deterministic name patterns only (owner's choice, option A).** The data inventory in
+  requirements.md is model-written and has no sensitivity classes or map of where data
+  goes. A pass over declared structures (SQL `CREATE TABLE` and `ALTER TABLE ... ADD`, in
+  `.sql` files and in SQL strings in any source file; Django, SQLAlchemy, SQLModel,
+  Pydantic, dataclass, attrs, TypedDict, NamedTuple and MongoEngine classes, read with
+  Python's `ast`; Django and Alembic migrations; Prisma models; TypeScript interfaces and
+  object types, TypeORM entities; Mongoose, Zod and Drizzle schemas) matches each field
+  name against a pattern set. *Cost if wrong:* a name that says nothing (`notes`, `data`)
+  hides what it holds, and a structure declared in another form is not read; the section
+  says both under "Not analysed".
+- **A registered scanner whose output is an inventory, not an analysis step.** The ticket
+  wants it in `unvarnish scanners list` and configured under `scanners.sensitive_data`, and
+  the scan phase already writes a scanner's inventory beside the findings (UNVAR-91's
+  `ScanContext.inventory`). The scan phase now has a table of inventory scanners
+  (`INVENTORIES`: ai_usage, sensitive_data), so `inventory/sensitive-data.json` is one of its
+  outputs, is written with its inputs hash and is deleted when the scanner does not run or
+  fails (the document then says "Not checked"). The scanner returns no findings and has no
+  effort rules: a field holding personal data is not a defect. *Cost if wrong:* if the
+  owner wants findings (say, card numbers stored in the clear), they are a later rule over
+  the same inventory; an analysis step would have needed its own config key and listing.
+- **Words, not substrings.** A name is split into words at `_`, `-`, digits and camelCase
+  humps, and a pattern matches when its words appear next to each other in order (the last
+  one may be plural, and all of them may be joined, so `firstname` matches "first name").
+  `user_agent`, `email_template`, `health_check` and `minor_version` are in the `ignore`
+  list, and a name ending in a descriptive word (`template`, `check`, `label`, `regex`,
+  `format`, `enabled`, ...) is never classified. Bare words that are common outside personal
+  data are left out of the bundled set (`name`, `token`, `child`, `children`, `parent`,
+  `location`, `mobile`, `age`, `health`, and `minor`, which is also money in minor units
+  and a version part; `is_minor`, `minor_flag`, `is_child`, `under_13` count instead), and
+  the section's "Not analysed" list names them, so "none found" is not read as "no personal
+  data". Per-class `exclude` lists stop `mac_address`
+  or `server_address` counting as contact details. Only declared structures are read, never
+  variables or function parameters. A name may match more than one class
+  (`billing_address` is payment and contact details). *Cost if wrong:* a `name` or
+  `children` column holding personal data is missed until the consultant adds a pattern.
+- **The pattern set is data in the package and an ordinary scanner option.**
+  `src/unvarnish/scanners/sensitive_data.yaml` is loaded into the default value of
+  `scanners.sensitive_data.patterns`, so engagement.yaml merges into it with the same deep
+  merge as every option (a mapping merges key by key, a list replaces its list), its
+  change reruns the scan through the scan's options hash, and `config check` and the
+  scanner itself reject a malformed override naming the key. `scanners list` shows the
+  number of classes in the option column and the full set in effect below the table, not a
+  dump of the mapping in one cell. *Cost if wrong:* a consultant who wants to drop one term
+  from a bundled class restates that class's terms.
+- **The destinations table is a join, never a trace.** Rows are the tool model's outbound
+  external systems (`outbound` or `both`; inbound systems are not destinations) and the
+  ai_usage scanner's providers. Two columns join them to the stores: the stores declared
+  in a file the destination's code is in (tool model modules, AI service paths), and the
+  tool model's data flows whose target is the destination's name. Without a model the
+  section still renders from the scan, with the AI providers alone and a sentence saying
+  external systems are not included; without a model requirements.md is written only when
+  the scan found a field, so a tool with nothing to report still gets findings.md alone.
+  *Cost if wrong:* a store and a destination in different files show no link even when
+  data flows between them; the table says it is not a trace of which field goes where.
+- **Wording.** The section says field names "suggest" a class, that classification is by
+  name alone, that no data values were read, that it is not a legal or regulatory
+  classification, and what was not analysed (uninformative names, other declaration forms,
+  languages whose structures are not read with their file counts, files that could not be
+  parsed, tests unless `include_tests`, and the path from store to destination).
+  This PR waits for the owner's merge because it adds data-protection wording to a client
+  deliverable. *Cost if wrong:* the wording is in `requirements.md.j2`, one template edit.
+- **Only source code, SQL and Prisma files are opened (review).** The pass opens a file
+  only when it is in a programming language (SQL included) or is a `.prisma` schema: never
+  data files (`.csv`, `.jsonl` and other data extensions, or text with no known language),
+  configuration (JSON, YAML, XML, TOML, INI, `.env`, HCL), documents or notebooks, whose
+  saved outputs can hold data. In `.sql` files, `COPY ... FROM stdin` rows (to their `\.`
+  line) are blanked first, so an apostrophe in a row cannot invert which text counts as a
+  string (psql's `\copy ... from stdin` too), then string literals, then
+  `INSERT`/`REPLACE INTO` statements (a double-quoted value with a `;` does not end one
+  early). String literals are read two ways, standard (`'it''s'`, a string may end in `\`)
+  and backslash-escaped (MySQL, Postgres `E''`: `'O\'Brien'`); a reading that leaves a
+  string open at the end of the file is dropped, and when neither or both close every
+  string, text either reading puts in a string is blanked. Only `CREATE TABLE`
+  and `ALTER TABLE ... ADD` are parsed. That keeps the section's "no data values were
+  read" sentence true as written. *Cost if wrong:* a schema or migration kept in YAML or
+  JSON (Liquibase, Hasura) is not read; the section lists it under "Not analysed".
+- **Hostile input costs linear time (review).** The pass reads code the client wrote, so a
+  file must not be able to hang a run: the regular expressions bound the gap between a
+  declaration's name and its brace (300 characters) instead of nesting lazy repeats, a
+  property match allows at most 8 decorators and 4 modifiers, each matching one way only
+  (a decorator or name is length-capped and never cut short, and no two whitespace runs
+  meet), and stops at the body's end, one
+  file's bodies share a budget of four times its length, Python names are read from the
+  syntax tree without `ast.unparse`, and a parser error (syntax, recursion or memory limit)
+  costs that file alone, listed as not parsed. *Cost if wrong:* a generic or `extends`
+  clause over 300 characters hides that interface.
+- **"Stores or handles", from the inventory (review).** Each field records whether its
+  store persists data (a table, an ORM model, a document schema) or describes it in memory
+  or in transit (a TypeScript type, a Pydantic model, a Zod schema). The lead sentence says
+  "stores", "handles" or "stores or handles" from those counts, never "holds", which would
+  claim storage the code may not do. Names from the client's code go through `code_span`,
+  so a backtick in a name cannot end its span. *Cost if wrong:* a type that mirrors a table
+  counts as handled, not stored; the table's own declaration says stored.
+- **No prose without model inputs (review).** With a model configured but no
+  capabilities.json (a budget stop before the tool rollup), requirements.md holds the
+  sensitive data section alone; its prose blocks are not shown there, so the render phase
+  does not ask the model for them. *Cost if wrong:* none; those blocks had no facts to
+  write from.
+
 ## Leadership brief (UNVAR-99)
 
 - **A separate `comparison/brief.md`, not a section of comparison.md (owner's choice, option

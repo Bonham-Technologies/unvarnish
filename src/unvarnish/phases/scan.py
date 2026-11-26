@@ -10,6 +10,7 @@ from unvarnish.scanners import load_scanners
 from unvarnish.scanners.ai_usage import NAME as AI_USAGE
 from unvarnish.scanners.base import ScanContext, Scanner
 from unvarnish.scanners.effort import EFFORT_RULES
+from unvarnish.scanners.sensitive_data import NAME as SENSITIVE_DATA
 from unvarnish.schemas.finding import SEVERITY_ORDER, Finding
 from unvarnish.schemas.git import GitStats
 from unvarnish.schemas.inventory import Census, Dependencies, Metrics
@@ -19,8 +20,12 @@ from unvarnish.util.plural import plural
 # Bump when scanner summaries, notes or detection rules change, so a scan written by an
 # earlier version reruns once (deterministic, no model calls) instead of rendering the old
 # text or findings (UNVAR-57, UNVAR-67, UNVAR-81, UNVAR-82, UNVAR-90, UNVAR-91, UNVAR-92,
-# UNVAR-93).
-SCANNER_TEXT_VERSION = "2026-11-25.1"
+# UNVAR-93, UNVAR-100).
+SCANNER_TEXT_VERSION = "2026-11-26.2"
+
+# Scanners that build an inventory artifact, which the scan phase writes beside the findings
+# (UNVAR-91, UNVAR-100): scanner name -> ToolPaths attribute.
+INVENTORIES = {AI_USAGE: "ai_usage", SENSITIVE_DATA: "sensitive_data"}
 
 
 def sort_findings(findings: list[Finding]) -> list[Finding]:
@@ -58,9 +63,11 @@ class ScanPhase:
                             SCANNER_TEXT_VERSION, *[e for e in extra if e]])
 
     def outputs(self, ctx: ToolContext) -> list[Path]:
-        # ai-usage.json is written only by the ai_usage scanner (UNVAR-91).
-        ai = [ctx.paths.ai_usage] if any(s.name == AI_USAGE for s in self.scanners()) else []
-        return [ctx.paths.scanner_findings, *ai]
+        # An inventory is written only when its scanner is registered (UNVAR-91, UNVAR-100).
+        names = {s.name for s in self.scanners()}
+        return [ctx.paths.scanner_findings,
+                *[getattr(ctx.paths, attr) for name, attr in INVENTORIES.items()
+                  if name in names]]
 
     def run(self, ctx: ToolContext) -> PhaseResult:
         census = read_artifact(ctx.paths.census, Census).data
@@ -72,7 +79,7 @@ class ScanPhase:
         skipped: list[SkippedScanner] = []
         notes: list[str] = []
         run_names: list[str] = []
-        ai_usage = None
+        inventories: dict[str, object] = {}
         for scanner in self.scanners():
             run_names.append(scanner.name)
             sctx = ScanContext(
@@ -83,19 +90,22 @@ class ScanPhase:
             )
             try:
                 findings.extend(scanner.run(sctx))
-                if scanner.name == AI_USAGE:
-                    ai_usage = sctx.inventory
+                if scanner.name in INVENTORIES and sctx.inventory is not None:
+                    inventories[scanner.name] = sctx.inventory
             except Exception as exc:  # a broken scanner is recorded, never fatal
                 skipped.append(SkippedScanner(name=scanner.name, error=repr(exc)))
             notes.extend(getattr(scanner, "notes", None) or [])
 
-        # The AI services inventory (UNVAR-91): absent when the scanner did not run or failed,
-        # which the documents show as "not checked", never as an empty inventory.
-        if ai_usage is not None:
-            write_artifact(ctx.paths.ai_usage, ai_usage, produced_by=self.name,
-                           inputs_hash=self.inputs_hash(ctx))
-        else:
-            ctx.paths.ai_usage.unlink(missing_ok=True)
+        # Each inventory (the AI services, UNVAR-91; sensitive data, UNVAR-100) is absent when
+        # its scanner did not run or failed, which the documents show as "not checked", never
+        # as an empty inventory.
+        for name, attr in INVENTORIES.items():
+            path = getattr(ctx.paths, attr)
+            if name in inventories:
+                write_artifact(path, inventories[name], produced_by=self.name,
+                               inputs_hash=self.inputs_hash(ctx))
+            else:
+                path.unlink(missing_ok=True)
         out = ScannerFindings(tool=ctx.tool, findings=sort_findings(findings), skipped=skipped,
                               scanners_run=run_names, notes=notes)
         write_artifact(ctx.paths.scanner_findings, out, produced_by=self.name,

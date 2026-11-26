@@ -32,16 +32,27 @@ from unvarnish.schemas.cost import CostEntry, Usage
 from unvarnish.schemas.delta import DELTA_SCHEMA_VERSION, BaselineSnapshot, Delta
 from unvarnish.schemas.diagrams import DiagramSet
 from unvarnish.schemas.render import RenderState
+from unvarnish.schemas.sensitive_data import SensitiveData
 
 log = logging.getLogger("unvarnish.render")
 
 Builder = Callable[[ToolContext, RenderInputs], dict]
-# (template, ToolPaths attribute, context builder, RenderInputs field that must be present)
-DOCUMENTS: list[tuple[str, str, Builder, str | None]] = [
+# Whether a document has the inputs it needs; None: always.
+Needs = Callable[[RenderInputs], bool] | None
+# (template, ToolPaths attribute, context builder, what the document needs)
+DOCUMENTS: list[tuple[str, str, Builder, Needs]] = [
     ("findings.md.j2", "findings_doc", build_findings_context, None),
-    ("architecture.md.j2", "architecture_doc", build_architecture_context, "tool_model"),
-    ("requirements.md.j2", "requirements_doc", build_requirements_context, "requirements"),
+    ("architecture.md.j2", "architecture_doc", build_architecture_context,
+     lambda inp: inp.tool_model is not None),
+    # Without a model, requirements.md holds only the sensitive data section, written when
+    # field names suggest any (UNVAR-100).
+    ("requirements.md.j2", "requirements_doc", build_requirements_context,
+     lambda inp: inp.requirements is not None or has_sensitive_fields(inp.sensitive_data)),
 ]
+
+
+def has_sensitive_fields(sd: SensitiveData | None) -> bool:
+    return sd is not None and bool(sd.fields)
 
 
 def override_dirs(root: Path, config: EngagementConfig) -> list[Path]:
@@ -81,7 +92,7 @@ class RenderPhase:
         p = ctx.paths
         return [p.census, p.metrics, p.git, p.dependencies, p.scanner_findings, p.units_index,
                 p.extract_state, p.modules_index, p.tool_model, p.capabilities,
-                p.model_findings, p.failures, p.ai_usage]
+                p.model_findings, p.failures, p.ai_usage, p.sensitive_data]
 
     def inputs_hash(self, ctx: ToolContext) -> str:
         env = self._env(ctx)
@@ -109,9 +120,19 @@ class RenderPhase:
             out.append(p.delta)
         if p.tool_model.exists():
             out.append(p.architecture_doc)
-        if p.capabilities.exists():
+        if p.capabilities.exists() or self._sensitive_fields(ctx):
             out.append(p.requirements_doc)
         return out
+
+    @staticmethod
+    def _sensitive_fields(ctx: ToolContext) -> bool:
+        if not ctx.paths.sensitive_data.exists():
+            return False
+        try:
+            return has_sensitive_fields(read_artifact(ctx.paths.sensitive_data,
+                                                      SensitiveData).data)
+        except Exception:  # unreadable: render ignores it too
+            return False
 
     def _delta(self, ctx: ToolContext, inp: RenderInputs,
                failures: list[FailureRecord]) -> Delta | None:
@@ -153,11 +174,12 @@ class RenderPhase:
         # block of the tool goes in one message batch before any document is written.
         prepared: dict[str, tuple[dict, dict[str, dict]] | Exception] = {}
         for template, _, builder, required in DOCUMENTS:
-            if required and getattr(inp, required) is None:
+            if required is not None and not required(inp):
                 continue
             try:
                 context = builder(ctx, inp)
-                names = prose_block_names(env, template)
+                # A document built without its model inputs shows no prose (UNVAR-100).
+                names = [] if context.get("no_prose") else prose_block_names(env, template)
                 prepared[template] = (context, {n: context["prose_facts"].get(n, {})
                                                 for n in names})
             except BackendUnavailable:
@@ -172,7 +194,7 @@ class RenderPhase:
         try:
             for template, attr, _, required in DOCUMENTS:
                 path: Path = getattr(ctx.paths, attr)
-                if required and getattr(inp, required) is None:
+                if required is not None and not required(inp):
                     path.unlink(missing_ok=True)  # its inputs are gone; never keep a stale document
                     continue
                 try:

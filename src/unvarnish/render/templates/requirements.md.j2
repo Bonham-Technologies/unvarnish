@@ -1,9 +1,71 @@
+{% macro sensitive_section() %}
+{% if sensitive is none %}
+Not checked: the sensitive_data scanner did not run for this tool.
+{% else %}
+{% if sensitive.rows %}
+Field names suggest the tool {{ "stores" if not sensitive.transient else ("handles" if not sensitive.persistent else "stores or handles") }} {{ sensitive.classes | plural("class", "classes") }} of sensitive data, in {{ sensitive.fields | plural("field") }}{% if sensitive.persistent and sensitive.transient %}: {{ sensitive.persistent | fmt_int }} in tables, models and documents that persist data, {{ sensitive.transient | fmt_int }} in types and schemas for data in memory or in transit{% elif not sensitive.persistent %}, all in types and schemas for data in memory or in transit{% endif %}.
+{% else %}
+Field names suggest none of the sensitive data classes: no field of the tables, models and types read ({{ sensitive.structures | fmt_int }}) matched the pattern set.
+{% endif %}
+
+Classification is by name alone: the names of columns, model fields and typed-structure properties in SQL, ORM models, migrations, schemas and type definitions were matched against {{ "the bundled pattern set with this engagement's changes" if sensitive.overridden else "the bundled pattern set" }} (`unvarnish scanners list` shows it). No data values were read: no database was queried; only source code, SQL files and Prisma schemas were opened, never data files (exports, spreadsheets, database files) or configuration files (JSON, YAML, XML, TOML); in SQL files, string literals and the rows of a dump (`INSERT` and `COPY` data) were skipped before anything was parsed; and only names were recorded, never a value. A name can mislead either way (a `notes` column can hold health data; an `ssn` column can be empty), so confirm each class with the people who own the data. This is an inventory to start that conversation, not a legal or regulatory classification.
+{% if sensitive.rows %}
+
+| Data class | Field names | Where declared | Evidence |
+|---|---|---|---|
+{% for r in sensitive.rows %}
+| {{ r.label | cell }} | {{ r.fields | cell }} | {{ r.stores | cell }} | {{ r.evidence | cell }} |
+{% endfor %}
+
+**Where this data may go**
+
+{% if sensitive.destinations %}
+The destinations already in the analysis: outbound external systems from the tool model (model-written) and AI model providers from the ai_usage scanner. A row says that the tool whose field names suggest the classes above also reaches the destination; it is not a trace of which field goes where. *Stores in the same files* lists the stores declared in a file that also reaches the destination; *Data flow* is what the tool model says travels there.
+
+| Destination | Kind | Found by | Code | Stores in the same files | Data flow (tool model) |
+|---|---|---|---|---|---|
+{% for d in sensitive.destinations %}
+| {{ d.name | cell }} | {{ d.kind | cell }} | {{ d.found_by }} | {{ d.code | cell }} | {{ d.stores | cell }} | {{ d.flows | cell }} |
+{% endfor %}
+{% if sensitive.more_destinations %}
+
+{{ sensitive.more_destinations }} more in `analysis/tool.json` and `inventory/ai-usage.json`.
+{% endif %}
+{% else %}
+No destinations are in the analysis: the tool model names no outbound external system and the ai_usage scanner found no AI model provider.
+{% endif %}
+{% if not sensitive.tool_model %}
+
+External systems from the tool model are not included because no model has analysed this tool; only the AI model providers the ai_usage scanner found are listed.
+{% endif %}
+{% if not sensitive.ai_usage %}
+
+AI model providers are not included because the ai_usage scanner did not run for this tool.
+{% endif %}
+{% endif %}
+
+**Not analysed**
+
+- Data whose field names say nothing about it (`notes`, `payload`, `data`), free-text and JSON columns, and stores with no declared structure (key-value stores, files, schemaless collections).
+- Common words left out of the bundled pattern set because they usually mean something else: `name`, `age`, `token`, `child`, `children`, `parent`, `location`, `mobile`, `health` and `minor`. A field named only one of these is not counted, so "none found" does not mean no personal data.
+- Structures declared in other forms: Sequelize, Rails and other migration DSLs, GraphQL, OpenAPI and JSON Schema, schemas and migrations kept in configuration files, and generated code.
+{% if sensitive.not_read %}
+- Source files in languages whose structures this pass does not read (SQL in their strings was read): {% for lang, n in sensitive.not_read.items() %}{{ lang }} {{ n | fmt_int }}{{ "; " if not loop.last }}{% endfor %}.
+{% endif %}
+{% if sensitive.unparsed %}
+- {{ sensitive.unparsed | length | plural("file") }} that could not be parsed: {% for p in sensitive.unparsed | cap(10) %}{{ p | code_span }}{{ ", " if not loop.last }}{% endfor %}{% if sensitive.unparsed | length > 10 %}, and {{ sensitive.unparsed | length - 10 }} more{% endif %}.
+{% endif %}
+- Test code, unless `scanners.sensitive_data.include_tests` is set, and vendored, generated and excluded files.
+- Which fields reach which destination: the code paths between stores and destinations were not traced.
+{% endif %}
+{% endmacro %}
 # {{ tool.name }}: Requirements Inventory
 
 {% if client %}**Client:** {{ client }} · {% endif %}{% if consultant %}**Prepared by:** {{ consultant }} · {% endif %}**Generated:** {{ generated_at }}\
 **Source:** {{ tool.origin_kind }} `{{ tool.origin }}`{% if tool.commit %} at `{{ tool.commit[:12] }}`{% endif %}
 
 {{ "" }}
+{% if req is not none %}
 > Reverse-engineered from the code by Unvarnish ({{ analysis_mode }}). This is what the tool does today,
 > not what anyone asked it to do. Capabilities marked *implicit* exist only as hardcoded rules. Treat
 > every row as a question for the people who own and use the tool.
@@ -54,7 +116,10 @@
 {{ more(data_rows) }}
 {% endif %}
 
-## 4. Business rules found in code
+## 4. Sensitive data
+
+{{ sensitive_section() }}
+## 5. Business rules found in code
 
 | Rule | Kind | Module |
 |---|---|---|
@@ -68,7 +133,7 @@
 {{ more(req.business_rules) }}
 {% endif %}
 
-## 5. Open questions for stakeholder interviews
+## 6. Open questions for stakeholder interviews
 
 {% prose "open_questions" %}{{ "" }}
 
@@ -82,4 +147,14 @@ Raised directly by the analysis:
 
 {{ more(req.open_questions) }}
 {% endif %}
+{% endif %}
+{% else %}
+> No model analysis is available for this tool (no model was configured, or the model phases
+> did not finish), so this document holds only the sensitive data section, which comes from
+> field names alone. The actors, capabilities, data inventory, business rules and open questions
+> need a completed model-assisted run.
+
+## Sensitive data
+
+{{ sensitive_section() }}
 {% endif %}

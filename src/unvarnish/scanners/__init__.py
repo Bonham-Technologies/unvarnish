@@ -23,12 +23,13 @@ def builtin_scanners() -> list[Scanner]:
     from unvarnish.scanners.oversized_files import OversizedFilesScanner
     from unvarnish.scanners.sast import SastScanner
     from unvarnish.scanners.secrets import SecretsScanner
+    from unvarnish.scanners.sensitive_data import SensitiveDataScanner
     from unvarnish.scanners.vendored_bulk import VendoredBulkScanner
 
     return [SecretsScanner(), OversizedFilesScanner(), HygieneScanner(), BusFactorScanner(),
             DependenciesScanner(), HardcodedInfraScanner(), VendoredBulkScanner(),
             GeneratedBulkScanner(), ClientExposureScanner(), EndOfLifeScanner(),
-            HiddenTextScanner(), SastScanner(), AIUsageScanner()]
+            HiddenTextScanner(), SastScanner(), AIUsageScanner(), SensitiveDataScanner()]
 
 
 def load_scanners() -> list[Scanner]:

@@ -4,6 +4,27 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
 
 ## Open
 
+- [UNVAR-100] The `sensitive_data` scanner reads field names only, so a column whose name
+  says nothing (`notes`, `payload`, `data`) is not classified, and a short or common word is
+  not in the bundled set (`name`, `token`, `children`, `location`, `age`). It reads SQL
+  `CREATE TABLE` and `ALTER TABLE ... ADD`, Python model and typed classes, Django and
+  Alembic migrations, Prisma, TypeScript interfaces and object types, TypeORM entities and
+  Mongoose, Zod and Drizzle schemas; Sequelize, Rails and other migration DSLs, GraphQL,
+  OpenAPI and JSON Schema, schemas and migrations kept in configuration files (Liquibase or
+  Hasura YAML), Go, Java, C# and other languages' types are not read (SQL in their
+  strings is). A Python class counts when its base or decorator is recognised in the same
+  file (a model whose base class is imported from another module counts only with a
+  `__tablename__`). A TypeScript body is followed by counting brackets outside strings, so
+  a bracket in a regular expression inside a type body can end it early. The destinations
+  table joins stores to destinations by file and by the tool model's data-flow names, not
+  by tracing the code. One file's table and type bodies are followed for at most four times
+  the file's length in all (bodies that never close), and a declaration's name and its
+  opening brace may be at most 300 characters apart (generics, `extends`), so a file built
+  to defeat the parser is read in part without saying so. A decorator over 100 characters or
+  a property name over 201 hides that property. In a `.sql` file where the standard and the
+  backslash-escaped reading of string literals both close every string but disagree (mixed
+  `\'` and `'...\'` strings), the text either reading puts in a string is blanked, so a
+  `CREATE TABLE` after such strings can be missed; a value is never recorded instead.
 - [UNVAR-91] The `ai_usage` checks follow data within one file, by assignment: request input
   passed through a function parameter, or a prompt built in one file and sent from another,
   is missed (a FastAPI or Gradio handler's parameters are not request input to it). A value

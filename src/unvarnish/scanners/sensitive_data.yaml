@@ -1,0 +1,234 @@
+# Field-name patterns for the sensitive_data scanner (UNVAR-100).
+#
+# A pattern is one or more words. A field name is split into words at underscores, hyphens,
+# digits and camelCase humps ("dateOfBirth" -> date, of, birth) and matches a pattern when the
+# pattern's words appear in it in order and next to each other, or joined as one word
+# ("firstname" matches "first name"). The last word may also carry a plural "s" or "es".
+#
+# Override in engagement.yaml under scanners.sensitive_data.patterns: a mapping merges into
+# this one key by key, and a list replaces the list it names. To add a class, give a new key
+# under classes with a label and terms; to turn one off, give it `terms: []`.
+# `unvarnish scanners list` shows the set in effect.
+
+# Names never classified, wherever these words appear in them.
+ignore:
+  - user agent
+  - health check
+  - email template
+  - minor version
+  - address family
+
+# A name whose last word is one of these describes data; it does not hold it.
+ignore_suffixes:
+  - template
+  - check
+  - checker
+  - regex
+  - pattern
+  - validator
+  - format
+  - formatter
+  - enabled
+  - disabled
+  - label
+  - placeholder
+  - provider
+  - service
+  - config
+  - settings
+
+classes:
+  identity:
+    label: Identity
+    terms:
+      - first name
+      - last name
+      - full name
+      - given name
+      - family name
+      - middle name
+      - maiden name
+      - legal name
+      - surname
+      - username
+      - user name
+      - date of birth
+      - dob
+      - birth date
+      - birthday
+      - place of birth
+      - gender
+      - sex
+      - nationality
+      - ethnicity
+      - religion
+      - marital status
+      - ip address
+  contact:
+    label: Contact details
+    terms:
+      - email
+      - e mail
+      - phone
+      - telephone
+      - mobile number
+      - mobile phone
+      - cell phone
+      - fax
+      - address
+      - street
+      - postcode
+      - post code
+      - postal code
+      - zip code
+    exclude:
+      - ip address
+      - mac address
+      - server address
+      - bind address
+      - listen address
+      - remote address
+      - wallet address
+      - base address
+      - memory address
+  government_id:
+    label: Government identifier
+    terms:
+      - ssn
+      - social security
+      - national id
+      - national identifier
+      - national insurance
+      - nino
+      - passport
+      - driver license
+      - drivers license
+      - driver licence
+      - driving licence
+      - driving license
+      - tax id
+      - taxpayer id
+      - tax number
+      - nhs number
+      - medicare number
+      - aadhaar
+      - voter id
+      - citizen id
+      - residence permit
+  payment:
+    label: Payment
+    terms:
+      - card number
+      - credit card
+      - debit card
+      - cc number
+      - card holder
+      - cvv
+      - cvc
+      - card expiry
+      - exp month
+      - exp year
+      - iban
+      - bank account
+      - account number
+      - routing number
+      - sort code
+      - billing address
+  health:
+    label: Health
+    terms:
+      - diagnosis
+      - diagnoses
+      - medical
+      - health record
+      - health condition
+      - health data
+      - health information
+      - health insurance
+      - mental health
+      - patient
+      - prescription
+      - medication
+      - allergy
+      - allergies
+      - blood type
+      - blood group
+      - disability
+      - disabilities
+      - symptom
+      - icd
+      - mrn
+      - vaccination
+      - pregnancy
+      - treatment plan
+      - lab result
+  credentials:
+    label: Credentials
+    terms:
+      - password
+      - passwd
+      - pwd
+      - passcode
+      - pin code
+      - secret
+      - api key
+      - access token
+      - refresh token
+      - auth token
+      - session token
+      - bearer token
+      - id token
+      - private key
+      - otp
+      - totp
+      - mfa secret
+      - recovery code
+      - security answer
+      - credential
+  location:
+    label: Location
+    terms:
+      - latitude
+      - longitude
+      - lat
+      - lng
+      - geolocation
+      - geo location
+      - gps
+      - geohash
+      - geo point
+      - location history
+      - current location
+      - last location
+      - home location
+      - device location
+  minors:
+    label: Minors
+    # Not bare "minor": it is also money in minor units (amount_minor) and a version part
+    # (major, minor, patch).
+    terms:
+      - is minor
+      - minor flag
+      - minor status
+      - minor consent
+      - is child
+      - is underage
+      - underage
+      - under 13
+      - under 16
+      - under 18
+      - guardian
+      - parental consent
+      - parent consent
+      - parent email
+      - parent phone
+      - parent name
+      - child name
+      - child age
+      - child birthday
+      - child date of birth
+      - student
+      - pupil
+      - school
+      - grade level
+      - coppa
