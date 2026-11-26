@@ -71,6 +71,7 @@ class ScanPhase:
         findings: list[Finding] = []
         skipped: list[SkippedScanner] = []
         notes: list[str] = []
+        coverage: dict[str, dict[str, int]] = {}
         run_names: list[str] = []
         ai_usage = None
         for scanner in self.scanners():
@@ -85,6 +86,8 @@ class ScanPhase:
                 findings.extend(scanner.run(sctx))
                 if scanner.name == AI_USAGE:
                     ai_usage = sctx.inventory
+                if (counts := getattr(scanner, "coverage", None)) is not None:
+                    coverage[scanner.name] = dict(counts)
             except Exception as exc:  # a broken scanner is recorded, never fatal
                 skipped.append(SkippedScanner(name=scanner.name, error=repr(exc)))
             notes.extend(getattr(scanner, "notes", None) or [])
@@ -97,7 +100,7 @@ class ScanPhase:
         else:
             ctx.paths.ai_usage.unlink(missing_ok=True)
         out = ScannerFindings(tool=ctx.tool, findings=sort_findings(findings), skipped=skipped,
-                              scanners_run=run_names, notes=notes)
+                              scanners_run=run_names, notes=notes, coverage=coverage)
         write_artifact(ctx.paths.scanner_findings, out, produced_by=self.name,
                        inputs_hash=self.inputs_hash(ctx))
         return PhaseResult(

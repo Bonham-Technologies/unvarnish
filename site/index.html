@@ -116,7 +116,7 @@
         <div class="container">
             <p class="eyebrow">What it finds</p>
             <h2>Deterministic scanners first, no model needed</h2>
-            <p class="section-lede">Thirteen scanners run before any model sees the code. Their
+            <p class="section-lede">Fourteen scanners run before any model sees the code. Their
                 findings are reproducible and carry their evidence. Without a model configured,
                 Unvarnish still writes the scanner-based findings document.</p>
             <div class="table-wrap">
@@ -137,6 +137,7 @@
                         <tr><td><code>hidden_text</code></td><td>Characters that display as nothing: bidirectional controls that reorder code on screen, zero-width and tag characters that hide text, and long encoded runs, in source and in AI rule files such as <code>.cursorrules</code> and <code>CLAUDE.md</code>; and MCP configs that start an unpinned server. Shown as <code>[U+XXXX]</code> escapes, never raw, in reports and model prompts.</td></tr>
                         <tr><td><code>sast</code></td><td>Code-level flaws such as SQL injection or <code>eval</code> of request input, from Opengrep with a rule set you supply, when it is installed. Optional; one finding per rule, excerpts redacted.</td></tr>
                         <tr><td><code>ai_usage</code></td><td>How the tool itself uses AI: each model provider and model it calls, where, and whether it is hosted or local; request input built into a prompt, model output reaching code execution, a shell or SQL, calls with no token limit or timeout, and model-callable tools beside commands, code execution or data writes. Values redacted.</td></tr>
+                        <tr><td><code>deployment_exposure</code></td><td>How the tool is exposed once deployed, from its Compose files, Dockerfiles, Kubernetes manifests and Terraform: ports and database ports published on all interfaces, privileged containers, host networking, mounted Docker sockets, containers running as root, unverified downloads, literal passwords and baked-in secrets, missing resource limits, <code>latest</code> images, ingress open to the internet and public storage buckets. Offline, values redacted.</td></tr>
                     </tbody>
                 </table>
             </div>

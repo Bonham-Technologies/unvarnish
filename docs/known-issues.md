@@ -4,6 +4,18 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
 
 ## Open
 
+- [UNVAR-98] `deployment_exposure` judges files one at a time: a Compose port bound through
+  an `.env` file (`${BIND_ADDR}:5432:5432` with no default) is treated as unknown and not
+  reported, a Compose `extends` or override file is not merged with its base, a Dockerfile
+  whose final stage starts from an image (not a stage) that already runs as non-root is
+  reported as root unless the image name or tag says `nonroot` or `rootless`, and a
+  Kubernetes LimitRange anywhere in the tool silences every missing-limits result. Terraform
+  is read by line scanning, not an HCL parser: modules, variables and `for_each` values are
+  not resolved, so an ingress from a variable CIDR is missed and a port set by a variable
+  counts as all ports; `.tf.json`, AWS network ACLs, `publicly_accessible` databases and
+  CloudFormation or Pulumi files are not read. A literal password in a Compose file named
+  `*.example.yml` is still reported.
+
 - [UNVAR-91] The `ai_usage` checks follow data within one file, by assignment: request input
   passed through a function parameter, or a prompt built in one file and sent from another,
   is missed (a FastAPI or Gradio handler's parameters are not request input to it). A value

@@ -1795,3 +1795,42 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   rules or installing Opengrep rescans; the Opengrep version is not included. No scanner
   text version bump: the new scanner name already changes every scan's inputs hash.
   *Cost if wrong:* an Opengrep upgrade keeps an older scan until `--force`.
+
+## Deployment exposure scanner (UNVAR-98)
+
+- **Own offline rules, YAML and regex, no new dependency (owner's choice, option A).** Compose
+  and Kubernetes are read with PyYAML's node tree (`yaml.compose_all` with the safe loader),
+  which keeps line numbers and never constructs objects; merge keys (`<<: *anchor`) are
+  resolved by hand. Dockerfiles and Terraform are line-scanned: HCL with a small brace and
+  string tracker that skips comments and heredoc bodies. *Cost if wrong:* HCL that only a
+  real parser reads (variables, modules, generated JSON) is missed; a dependency such as
+  `python-hcl2` or a checkov/trivy binary would cover more at the price of an install.
+- **Severity is a table in the scanner (`RULES`), listed by `unvarnish scanners list`.**
+  Database port on all interfaces, privileged containers, the Docker socket, literal
+  passwords, secrets baked into an image, open ingress and public storage are high; other
+  published ports, host networking, root users, `ADD <url>`, password fallbacks, secret build
+  arguments and missing limits are medium; `latest` images are low. Severity is not
+  configurable; effort bands are (`scanners.deployment_exposure.effort`). Each rule has a
+  category (security; public storage is data handling, missing limits reliability, floating
+  images dependency). A CWE id per rule (UNVAR-95) is one more field on `Rule`. *Cost if
+  wrong:* a consultant who disagrees with a severity edits the finding in the report.
+- **One finding per rule, grouped with `group:<rule>` and `count:<n>` tags**, so the re-audit
+  delta matches it by rule and reports a changed count, as for sast. *Cost if wrong:* one
+  rule with many places is one long finding, which is the intent.
+- **Avoiding false positives:** a port bound to a loopback or a single address, or to an
+  address set by a variable without a default, is not reported; a published port is a
+  database port by its container port or by the image name. Only the final Dockerfile stage
+  is judged, and a stage built `FROM` an earlier stage inherits its `USER`. `ADD
+  --checksum=` is accepted. Secret names exclude `_FILE`, `_PATH`, `_URL`, `_NAME`, `_TTL`
+  and switches such as `MYSQL_ALLOW_EMPTY_PASSWORD`. Terraform ingress limited to ports 80
+  and 443 is not reported, egress never is, and a bucket policy with `Principal: "*"` and a
+  `Condition` is not reported. *Cost if wrong:* a database published on an unusual port from
+  an unknown image is reported as an ordinary port (medium, not high).
+- **Strict redaction.** A secret's excerpt is cut after its key (`KEY=…[redacted N chars]`)
+  rather than searched and replaced, so an escaped or multi-line value cannot survive; every
+  other excerpt drops comments, masks URL passwords and values after secret-named keys, and
+  runs through the secrets redactor. *Cost if wrong:* an excerpt shows less than the line.
+- **What was checked is recorded in the scan artifact (`coverage`, files per family)** so
+  architecture.md can say which deployment files were read without reading the source again.
+  No scanner text version bump: the new scanner name already changes every scan's inputs
+  hash, and its options are hashed with every other scanner's.

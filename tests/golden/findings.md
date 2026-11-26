@@ -364,6 +364,7 @@ Scanner notes:
 - dependencies: licences: not checked (offline mode); osv-scanner reads package licences from deps.dev, so no licence is listed in the SBOM export and none is checked against an allowlist (set scanners.dependencies.offline: false, then rerun)
 - end_of_life: no end-of-life data bundle; runtime and framework versions were not checked against end-of-life dates (run `unvarnish eol refresh` while online, or set UNVARNISH_EOL_DIR to a folder holding endoflife.json, then rerun)
 - sast: not checked (no rules directory configured; set scanners.sast.rules to a local Opengrep rules directory)
+- deployment_exposure: not checked (no deployment files found: Compose files, Dockerfiles, Kubernetes manifests, Terraform files)
 
 1 model finding was rejected on verification and is excluded above; it remains in `analysis/findings.json` for inspection.
 

@@ -4,10 +4,14 @@ from unvarnish.phases.base import ToolContext
 from unvarnish.render.diagram import context_diagram, module_diagram, to_mermaid
 from unvarnish.render.findings import ai_indicators, analysis_mode, generated_at
 from unvarnish.render.inputs import RenderInputs
+from unvarnish.scanners.deployment_exposure import FAMILIES, FAMILY_NOUNS
+from unvarnish.scanners.deployment_exposure import NAME as DEPLOYMENT
+from unvarnish.util.plural import plural
 
 TOP_AUTHORS = 5
 HARDCODED_ROWS = 30
 AI_ROWS = 40
+EXPOSURE_TITLES = 3  # finding titles named in the Deployment exposure paragraph
 
 
 def module_mermaid_or_none(tm, diagram=None) -> str | None:
@@ -94,7 +98,7 @@ def build_architecture_context(ctx: ToolContext, inp: RenderInputs) -> dict:
         "module_diagram_note": mod_diagram.note,
         "diagrams": {"context": ctx_diagram, "modules": mod_diagram},
         "coverage": coverage, "ai_indicators": indicators, "hardcoded": hardcoded,
-        "ai_services": ai_services,
+        "ai_services": ai_services, "deployment_exposure": deployment_exposure(inp),
         "analysis_mode": analysis_mode(inp), "prose_facts": prose_facts,
     }
 
@@ -112,3 +116,34 @@ def _ai_services(inp: RenderInputs) -> dict | None:
     more = len(rows) - AI_ROWS
     return {"rows": rows[:AI_ROWS], "more": more if more > 0 else 0,
             "tools": tools[:AI_ROWS], "more_tools": max(0, len(tools) - AI_ROWS)}
+
+
+def _join(parts: list[str]) -> str:
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
+def deployment_exposure(inp: RenderInputs) -> str:
+    """The "Deployment exposure" paragraph (UNVAR-98), from the scan artifact alone."""
+    scan = inp.scan
+    if DEPLOYMENT not in scan.scanners_run or any(s.name == DEPLOYMENT for s in scan.skipped):
+        why = "failed" if DEPLOYMENT in scan.scanners_run else "did not run"
+        return (f"Not checked: the {DEPLOYMENT} scanner {why}, so the Compose, Dockerfile, "
+                "Kubernetes and Terraform files were not read.")
+    counts = scan.coverage.get(DEPLOYMENT, {})
+    files = [plural(n, *FAMILY_NOUNS[f]) for f in FAMILIES if (n := counts.get(f, 0))]
+    if not files:
+        return ("No deployment files (Compose, Dockerfile, Kubernetes manifests, Terraform) "
+                "were found, so how the tool is exposed once deployed was not analysed.")
+    checked = f"The deployment files ({_join(files)}) were checked offline"
+    findings = [f for f in scan.findings if f.scanner == DEPLOYMENT]
+    if not findings:
+        return (f"{checked}: no port published on all interfaces, privileged or root "
+                "container, literal password, open ingress or public storage was found.")
+    by_severity = ", ".join(f"{n} {sev}" for sev in dict.fromkeys(f.severity for f in findings)
+                            if (n := sum(1 for f in findings if f.severity == sev)))
+    shown = [f.title for f in findings[:EXPOSURE_TITLES]]
+    more = len(findings) - len(shown)
+    listed = "; ".join(shown) + (f"; and {more} more" if more else "")
+    return (f"{checked}: {plural(len(findings), 'rule')} matched ({by_severity}), "
+            f"{'the most severe: ' if more else ''}{listed}. Each is a finding in findings.md "
+            "with its locations.")

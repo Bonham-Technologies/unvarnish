@@ -75,6 +75,7 @@ from unvarnish.phases.compare import (
 )
 from unvarnish.phases.ingest import IngestError, ingest_tool, load_tool_meta
 from unvarnish.scanners import load_scanners
+from unvarnish.scanners.effort import EFFORT_RULES
 from unvarnish.schemas.analysis import ExtractState, UnitExtraction
 from unvarnish.schemas.cost import BATCH_RATE, CostEntry, Usage, priced
 from unvarnish.schemas.delta import DELTA_SCHEMA_VERSION, BaselineSnapshot
@@ -942,6 +943,21 @@ def scanners_list(engagement: Path | None = EngagementOption) -> None:
         rendered = escape(", ".join(f"{k}={v}" for k, v in opts.items())) or "—"
         table.add_row(s.name, str(s.category), rendered)
     console.print(table)
+    for s in load_scanners():
+        rules = getattr(s, "rules", None)
+        if not isinstance(rules, dict):
+            continue
+        # A scanner's rule table (UNVAR-98): severity and the effort band in force.
+        overrides = (cfg.scanners.get(s.name, {}) or {}).get("effort") or {}
+        bands = EFFORT_RULES.get(s.name, {})
+        rule_table = Table(title=f"{s.name} rules")
+        rule_table.add_column("rule id", no_wrap=True)
+        for header in ("rule family", "severity level", "effort band"):
+            rule_table.add_column(header)
+        for rule in rules.values():
+            band = overrides.get(rule.id) or (bands[rule.id][0] if rule.id in bands else "—")
+            rule_table.add_row(rule.id, rule.family, str(rule.severity), str(band))
+        console.print(rule_table)
 
 
 grammars_app = typer.Typer(help="Tree-sitter grammars for code structure.",
