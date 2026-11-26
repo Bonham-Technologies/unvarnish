@@ -50,8 +50,9 @@ def test_render_estimate_counts_only_the_tool_documents_blocks():
     from unvarnish.render.prose import BLOCKS
 
     env = make_env()
-    comparison = set(prose_block_names(env, "comparison.md.j2"))
-    assert comparison and len(BLOCKS) == 5 + len(comparison)  # the old, overstated count
+    engagement = (set(prose_block_names(env, "comparison.md.j2"))
+                  | set(prose_block_names(env, "brief.md.j2")))  # brief: UNVAR-99
+    assert engagement and len(BLOCKS) == 5 + len(engagement)  # the old, overstated count
     assert tool_prose_block_count(env) == 5
 
 

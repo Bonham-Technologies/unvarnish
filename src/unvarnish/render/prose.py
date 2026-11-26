@@ -86,6 +86,12 @@ BLOCKS: dict[str, ProseBlock] = {b.name: b for b in (
         "to keep for each contested capability and why, the gaps and conflicts between the "
         "tools, and the questions to settle before designing. State plainly that this is a "
         "starting point for the consultant's architecture work, not a design."), 450),
+    ProseBlock("portfolio_summary", (
+        "Write a short summary for leadership across all reviewed tools, in two or three short "
+        "paragraphs: how many tools were reviewed and the overall picture, which tools carry "
+        "the most critical and high findings, and what the fix-now part of the action plan "
+        "asks for. State severity counts only for all tools together, exactly as the facts "
+        "give them; name tools without restating their counts. Plain words, no jargon."), 250),
 )}
 
 

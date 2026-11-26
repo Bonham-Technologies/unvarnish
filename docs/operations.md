@@ -459,6 +459,43 @@ scanners:
 The scan reruns. A model finding without a band shows "not estimated"; after upgrading, the
 model phases rerun once to collect bands.
 
+## Leadership brief
+
+`unvarnish compare` also writes `comparison/brief.md` (the `render_brief` phase), a short
+document for leadership that can be handed over without the engineering sections:
+
+- portfolio totals: tools reviewed, files analysed, findings by severity, credential-like
+  values from the secrets scanner (working tree and git history only), credentials exposed to
+  browsers, end-of-life runtimes and frameworks, known-exploited (CISA KEV) dependency
+  advisories, and the effort to fix;
+- one row per tool: severity counts, effort to fix (engineer-days once `report.effort_days`
+  is set, bands otherwise), and the trend since the previous review when a tool has a delta;
+- the ten most severe findings across all tools, with tool and location;
+- an action plan in three buckets.
+
+Every number is counted from each tool's own artifacts (`census.json`,
+`scanner-findings.json`, `findings.json`, `dependencies.json`, `delta.json`) with the same
+rules as its `findings.md`, so a total is the sum of the per-tool documents. A measure that
+was not checked for every tool says how many tools it covers ("1 (1 of 2 tools checked)").
+The one model call is the summary paragraph; with no model configured, air-gapped or not, it
+is the usual "No model-written text for this section" sentence and the rest still renders. A
+one-tool engagement gets a brief that says the comparison sections were skipped. A budget
+stop in `compare` does not stop the brief. Export it with `unvarnish export --doc brief`
+(`exports/brief-engagement-<timestamp>.docx`, `.html`, `.pdf`).
+
+The action-plan buckets are decided by each finding's severity and effort band alone:
+
+| Severity | S | M | L | XL | Not estimated |
+|---|---|---|---|---|---|
+| critical | Fix now | Fix now | Fix now | Fix now | Fix now |
+| high | Fix now | Fix now | Fix before scaling | Fix before scaling | Fix now |
+| medium | Fix before scaling | Fix before scaling | Fix before scaling | Fix before scaling | Fix before scaling |
+| low, info | Accept | Accept | Accept | Accept | Accept |
+
+To change a finding's bucket, change its band (`scanners.<name>.effort` for a scanner rule,
+see above) or its severity; the brief has no settings of its own. Template overrides work as
+for the other documents (`brief.md.j2`).
+
 ## Follow-up reviews (re-audit delta)
 
 1. Keep the previous engagement folder (or at least each tool's `inventory/` and `analysis/`

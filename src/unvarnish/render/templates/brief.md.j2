@@ -1,0 +1,75 @@
+# {{ client or "Engagement" }}: Leadership Brief
+
+{% if consultant %}**Prepared by:** {{ consultant }} · {% endif %}**Generated:** {{ generated_at }} · **Tools:** {% for t in tools %}`{{ t }}`{{ ", " if not loop.last }}{% endfor %}
+
+{{ "" }}
+> Every number in this brief is counted from the per-tool scanner and analysis results; only the
+> summary paragraph is model-written. Each tool's findings document holds the detail behind its
+> counts{% if tools | length > 1 %}, and the comparison document compares the tools for engineers{% endif %}.
+{% if tools | length == 1 %}
+
+Only one tool was reviewed, so the comparison sections (tools compared with each other, shared systems and a consolidation proposal) were skipped.
+{% endif %}
+{% if not_run %}
+
+Not reviewed yet, so not counted: {% for t in not_run %}`{{ t }}`{{ ", " if not loop.last }}{% endfor %}.
+{% endif %}
+{% if scanner_only %}
+
+Scanner findings only (no model analysis): {% for t in scanner_only %}`{{ t }}`{{ ", " if not loop.last }}{% endfor %}.
+{% endif %}
+
+## Summary
+
+{% prose "portfolio_summary" %}{{ "" }}
+
+## Portfolio totals
+
+| Measure | Value |
+|---|---|
+| Tools reviewed | {{ totals.tools }} ({% for t in tools %}`{{ t }}`{{ ", " if not loop.last }}{% endfor %}) |
+| Files analysed | {{ totals.files | fmt_int }} |
+| Findings | {{ totals.findings | fmt_int }}{% if totals.findings %} ({% for sev in severities if totals.by_severity.get(sev) %}{{ totals.by_severity[sev] }} {{ sev }}{{ ", " if not loop.last }}{% endfor %}){% endif %} |
+| Credential-like values (secrets scanner) | {{ totals.secrets_current }} in the working tree, {{ totals.secrets_history }} only in git history |
+| Credentials exposed to browsers | {% if totals.exposed is none %}not checked{% else %}{{ totals.exposed.count }}{% if totals.exposed.checked < totals.exposed.tools %} ({{ totals.exposed.checked }} of {{ totals.exposed.tools }} tools checked){% endif %}{% endif %} |
+| End-of-life runtimes and frameworks | {% if totals.eol_past is none %}not checked{% else %}{{ totals.eol_past.count }} past end of life, {{ totals.eol_near.count }} near it{% if totals.eol_past.checked < totals.eol_past.tools %} ({{ totals.eol_past.checked }} of {{ totals.eol_past.tools }} tools checked){% endif %}{% endif %} |
+| Known-exploited dependency advisories (CISA KEV) | {% if totals.kev is none %}not checked{% else %}{{ totals.kev.count }}{% if totals.kev.checked < totals.kev.tools %} ({{ totals.kev.checked }} of {{ totals.kev.tools }} tools checked){% endif %}{% endif %} |
+| Effort to fix (bands) | {{ totals.effort_bands }} |
+{% if totals.effort_days %}
+| Effort to fix (estimate) | {{ totals.effort_days }} |
+{% endif %}
+
+Effort bands: S up to half a day, M up to two days, L up to a week, XL weeks.{% if not days %} No engineer-day figures were configured for this engagement.{% else %} Engineer-days are an estimate from the bands, not a quote.{% endif %}{{ "" }}
+
+## By tool
+
+| Tool | Files | {% for sev in severities %}{{ sev | capitalize }} | {% endfor %}Effort to fix |{% if trends %} Since the previous review |{% endif %}{{ "" }}
+|---|---:|{% for sev in severities %}---:|{% endfor %}---|{% if trends %}---|{% endif %}{{ "" }}
+{% for r in rows %}
+| `{{ r.tool }}` | {{ r.files | fmt_int }} | {% for sev in severities %}{{ r.by_severity[sev] }} | {% endfor %}{{ r.effort_text }} |{% if trends %} {{ r.trend or "—" }} |{% endif %}{{ "" }}
+{% endfor %}
+| **Total** | {{ totals.files | fmt_int }} | {% for sev in severities %}{{ totals.by_severity.get(sev, 0) }} | {% endfor %}{{ totals.effort_days or totals.effort_bands }} |{% if trends %} |{% endif %}{{ "" }}
+
+## Highest-severity findings
+
+{% if top %}
+The {{ top | length | plural("finding") }} rated most severe across all tools{% if totals.findings > top | length %}, of {{ totals.findings | fmt_int }}{% endif %}.
+
+| # | Severity | Finding | Tool | Location | Effort |
+|---|---|---|---|---|---|
+{% for f in top %}
+| {{ loop.index }} | {{ f.severity }} | {{ f.title | cell }}{% if f.known_exploited %} (known exploited){% endif %} | `{{ f.tool }}` | {{ f.location | code_span if f.location else "whole tool" }} | {{ f.effort }} |
+{% endfor %}
+{% else %}
+No findings.
+{% endif %}
+
+## Action plan
+
+Each finding goes into one bucket by its severity and effort band alone.
+
+| Bucket | Rule | Findings | By tool | Effort to fix |
+|---|---|---:|---|---|
+{% for p in plan %}
+| {{ p.label }} | {{ p.rule }} | {{ p.count }} | {% for t, n in p.by_tool %}`{{ t }}` {{ n }}{{ ", " if not loop.last }}{% else %}—{% endfor %} | {{ p.effort }} |
+{% endfor %}

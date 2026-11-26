@@ -20,7 +20,7 @@ def test_comparison_document_two_tools(engagement, synthetic_repo):
     _two_tools(engagement, synthetic_repo, stub)
     prose_before = stub.count("prose")  # the per-tool documents used the same stub
     results = run_comparison(engagement, backend=stub)
-    assert [r.phase for r in results] == ["compare", "render_comparison"]
+    assert [r.phase for r in results] == ["compare", "render_comparison", "render_brief"]
     assert all(r.status == PhaseStatus.ok for r in results), [r.model_dump() for r in results]
     doc = engagement.comparison_doc.read_text()
     assert doc.startswith("# Acme: Tool Comparison")
@@ -44,7 +44,7 @@ def test_comparison_document_two_tools(engagement, synthetic_repo):
     assert "| export reports | alpha | single data store |" in doc
     state = read_artifact(engagement.comparison_render_state, RenderState).data
     assert set(state.documents) == {"comparison.md"}
-    assert stub.count("prose") - prose_before == 2
+    assert stub.count("prose") - prose_before == 3  # two here, one for brief.md (UNVAR-99)
     again = run_comparison(engagement, backend=stub)
     assert all(r.status == PhaseStatus.skipped for r in again)  # fresh
 
@@ -60,7 +60,7 @@ def test_comparison_document_single_tool_states_skips(engagement, synthetic_repo
     doc = engagement.comparison_doc.read_text()
     assert "Skipped: one tool with a tool model" in doc
     assert "No consolidation proposal" in doc
-    assert stub.count("prose") - prose_before == 1  # tools_reviewed only
+    assert stub.count("prose") - prose_before == 2  # tools_reviewed, and brief.md's block
 
 
 def test_comparison_prose_failure_falls_back(engagement, synthetic_repo):
