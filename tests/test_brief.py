@@ -310,7 +310,8 @@ def test_export_doc_brief_end_to_end(engagement, synthetic_repo):
     assert out.exit_code == 0, out.output
     produced = {p.suffix: p for p in engagement.exports_dir.glob("brief-engagement-*")}
     assert set(produced) == {".docx", ".html", ".pdf"}
-    assert "<table" in produced[".html"].read_text(encoding="utf-8")
+    html = produced[".html"].read_text(encoding="utf-8")
+    assert html.count("<table") == 4  # totals, by tool, top ten, action plan
     assert "Leadership Brief" in produced[".html"].read_text(encoding="utf-8")
     assert produced[".pdf"].read_bytes()[:5] == b"%PDF-"
     with zipfile.ZipFile(produced[".docx"]) as z:
@@ -406,3 +407,16 @@ def test_empty_cells_say_no_findings_not_zero_days():
     assert days_cell({"S": 0, "M": 0, "L": 0, "XL": 0, "none": 0}, days) is None
     assert days_cell({"S": 0, "M": 0, "L": 0, "XL": 0, "none": 2}, days) == (
         "0–0 engineer-days; 2 not estimated")
+
+
+def test_every_table_in_the_brief_starts_after_a_blank_line(engagement, synthetic_repo):
+    """A table glued to the paragraph above it is read as paragraph text by pandoc's gfm
+    reader, so the top-ten table exported as one run-on paragraph (QC on UNVAR-99)."""
+    stub = _compare_stub()
+    ectx = _two_tools(engagement, synthetic_repo, stub, model_for=())
+    assert RenderBriefPhase().run(ectx).status == PhaseStatus.ok
+    lines = engagement.brief_doc.read_text(encoding="utf-8").splitlines()
+    assert any(line.startswith("| # | Severity |") for line in lines)
+    for i, line in enumerate(lines):
+        if line.startswith("|") and i > 0 and not lines[i - 1].startswith("|"):
+            assert lines[i - 1].strip() == "", f"table at line {i + 1} follows {lines[i - 1]!r}"

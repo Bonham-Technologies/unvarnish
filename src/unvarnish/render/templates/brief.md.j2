@@ -53,7 +53,7 @@ Effort bands: S up to half a day, M up to two days, L up to a week, XL weeks.{% 
 ## Highest-severity findings
 
 {% if top %}
-{% if totals.findings > top | length %}The {{ top | length }} most severe of {{ totals.findings | fmt_int }} findings across all tools.{% else %}Every finding across all tools, most severe first.{% endif %}
+{% if totals.findings > top | length %}The {{ top | length }} most severe of {{ totals.findings | fmt_int }} findings across all tools.{% else %}Every finding across all tools, most severe first.{% endif %}{{ "" }}
 
 | # | Severity | Finding | Tool | Location | Effort |
 |---|---|---|---|---|---|
