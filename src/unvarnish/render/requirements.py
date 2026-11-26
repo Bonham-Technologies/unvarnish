@@ -3,6 +3,7 @@ from __future__ import annotations
 from unvarnish.phases.base import ToolContext
 from unvarnish.render.findings import analysis_mode, generated_at, model_gaps
 from unvarnish.render.inputs import RenderInputs
+from unvarnish.render.markdown import code_span
 
 FIELDS_SHOWN = 8  # field names per data class row
 STORES_SHOWN = 6  # stores per data class row
@@ -21,7 +22,8 @@ def _and_more(items: list[str], shown: int) -> str:
 
 
 def _code(items: list[str], shown: int) -> str:
-    return _and_more([f"`{i}`" for i in items], shown)
+    """Names from the client's code as code spans: a backtick in one cannot end its span."""
+    return _and_more([code_span(i) for i in items], shown)
 
 
 def sensitive_context(inp: RenderInputs) -> dict | None:
@@ -36,7 +38,7 @@ def sensitive_context(inp: RenderInputs) -> dict | None:
     for key in sd.classes_found():
         hits = [f for f in sd.fields if f.data_class == key]
         fields = list(dict.fromkeys(f.field for f in hits))
-        stores = list(dict.fromkeys(f"`{f.store}` ({f.store_kind})" for f in hits))
+        stores = list(dict.fromkeys(f"{code_span(f.store)} ({f.store_kind})" for f in hits))
         where = list(dict.fromkeys(f"{f.path}:{f.line}" for f in hits))
         rows.append({"label": sd.classes[key], "fields": _code(fields, FIELDS_SHOWN),
                      "stores": _and_more(stores, STORES_SHOWN),
@@ -55,7 +57,7 @@ def sensitive_context(inp: RenderInputs) -> dict | None:
         items = []
         for store, classes in found.items():
             labels = ", ".join(sd.classes[c] for c in sorted(classes, key=order.index))
-            items.append(f"`{store}` ({labels})")
+            items.append(f"{code_span(store)} ({labels})")
         return _and_more(items, STORES_SHOWN) or "—"
 
     destinations = []
@@ -83,7 +85,9 @@ def sensitive_context(inp: RenderInputs) -> dict | None:
                                  "code": _code(p["paths"], PATHS_SHOWN),
                                  "stores": stores_in(p["paths"]), "flows": "—"})
     more = len(destinations) - DESTINATION_ROWS
+    persistent = sum(1 for f in sd.fields if f.persistent)
     return {"rows": rows, "classes": len(rows), "fields": len(sd.fields),
+            "persistent": persistent, "transient": len(sd.fields) - persistent,
             "structures": sd.structures_read, "files": sd.files_read,
             "overridden": sd.patterns_overridden,
             "destinations": destinations[:DESTINATION_ROWS], "more_destinations": max(0, more),

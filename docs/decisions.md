@@ -1825,7 +1825,10 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   list, and a name ending in a descriptive word (`template`, `check`, `label`, `regex`,
   `format`, `enabled`, ...) is never classified. Bare words that are common outside personal
   data are left out of the bundled set (`name`, `token`, `child`, `children`, `parent`,
-  `location`, `mobile`, `age`, `health`), and per-class `exclude` lists stop `mac_address`
+  `location`, `mobile`, `age`, `health`, and `minor`, which is also money in minor units
+  and a version part; `is_minor`, `minor_flag`, `is_child`, `under_13` count instead), and
+  the section's "Not analysed" list names them, so "none found" is not read as "no personal
+  data". Per-class `exclude` lists stop `mac_address`
   or `server_address` counting as contact details. Only declared structures are read, never
   variables or function parameters. A name may match more than one class
   (`billing_address` is payment and contact details). *Cost if wrong:* a `name` or
@@ -1856,20 +1859,32 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   parsed, tests unless `include_tests`, and the path from store to destination).
   This PR waits for the owner's merge because it adds data-protection wording to a client
   deliverable. *Cost if wrong:* the wording is in `requirements.md.j2`, one template edit.
-- **Data files are never opened (review).** The census counts records and exports (`.csv`,
-  `.jsonl`, `.tsv` and other data extensions, and any text file with no known language) as
-  data; the pass skips them all except `.prisma`, which has no language of its own. That
-  keeps "data files were not opened" true in the section. Only names are recorded from the
-  files that are read (`.sql` included, whose strings are blanked first). *Cost if wrong:*
-  a schema in an unrecognised text format is not read; it is not a data file's job to
-  declare one.
+- **Only source code, SQL and Prisma files are opened (review).** The pass opens a file
+  only when it is in a programming language (SQL included) or is a `.prisma` schema: never
+  data files (`.csv`, `.jsonl` and other data extensions, or text with no known language),
+  configuration (JSON, YAML, XML, TOML, INI, `.env`, HCL), documents or notebooks, whose
+  saved outputs can hold data. In `.sql` files, `COPY ... FROM stdin` rows (to their `\.`
+  line) are blanked first, so an apostrophe in a row cannot invert which text counts as a
+  string, then string literals, then `INSERT`/`REPLACE INTO` statements; only `CREATE TABLE`
+  and `ALTER TABLE ... ADD` are parsed. That keeps the section's "no data values were
+  read" sentence true as written. *Cost if wrong:* a schema or migration kept in YAML or
+  JSON (Liquibase, Hasura) is not read; the section lists it under "Not analysed".
 - **Hostile input costs linear time (review).** The pass reads code the client wrote, so a
   file must not be able to hang a run: the regular expressions bound the gap between a
-  declaration's name and its brace (300 characters) instead of nesting lazy repeats, one
+  declaration's name and its brace (300 characters) instead of nesting lazy repeats, a
+  property match allows at most 8 decorators and 4 modifiers, each matching one way only,
+  and stops at the body's end, one
   file's bodies share a budget of four times its length, Python names are read from the
   syntax tree without `ast.unparse`, and a parser error (syntax, recursion or memory limit)
   costs that file alone, listed as not parsed. *Cost if wrong:* a generic or `extends`
   clause over 300 characters hides that interface.
+- **"Stores or handles", from the inventory (review).** Each field records whether its
+  store persists data (a table, an ORM model, a document schema) or describes it in memory
+  or in transit (a TypeScript type, a Pydantic model, a Zod schema). The lead sentence says
+  "stores", "handles" or "stores or handles" from those counts, never "holds", which would
+  claim storage the code may not do. Names from the client's code go through `code_span`,
+  so a backtick in a name cannot end its span. *Cost if wrong:* a type that mirrors a table
+  counts as handled, not stored; the table's own declaration says stored.
 - **No prose without model inputs (review).** With a model configured but no
   capabilities.json (a budget stop before the tool rollup), requirements.md holds the
   sensitive data section alone; its prose blocks are not shown there, so the render phase

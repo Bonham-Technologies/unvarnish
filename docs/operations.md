@@ -389,6 +389,9 @@ configuration error.
   requirements.md: the data classes field names suggest, where each is declared, and the
   external systems and AI providers the same tool reaches. Without a model, requirements.md
   holds that section alone, and only when a field matched.
+- It opens source code (SQL included) and `.prisma` schemas only, never data files,
+  configuration (JSON, YAML, XML, TOML) or notebooks; in `.sql` files, strings and dump rows
+  (`INSERT`, `COPY ... FROM stdin`) are blanked before parsing.
 - The pattern set is `src/unvarnish/scanners/sensitive_data.yaml`; `unvarnish scanners list`
   shows the set in effect. Change it in engagement.yaml:
 

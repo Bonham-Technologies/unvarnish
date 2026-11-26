@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from unvarnish.analysis.languages import Classification
+from unvarnish.analysis.languages import CONFIG_LANGS, DATA_EXTS, DOC_LANGS, Classification
 from unvarnish.config import DEFAULT_SCANNER_OPTIONS, bundled_sensitive_patterns
 from unvarnish.scanners.base import ScanContext
 from unvarnish.schemas.finding import Category, Finding
@@ -43,6 +43,20 @@ JS_SUFFIXES = {".js", ".jsx", ".mjs", ".cjs"}
 # "not analysed" with their file counts.
 UNREAD_LANGUAGES = {"go", "rust", "java", "kotlin", "ruby", "php", "c_sharp", "swift",
                     "scala", "dart", "elixir", "graphql", "proto", "vue", "svelte"}
+
+
+# Languages whose files are never opened: configuration, documents and notebooks (whose
+# saved outputs can hold data).
+NEVER_OPENED = CONFIG_LANGS | DOC_LANGS | {"jupyter"}
+
+
+def opens(path: str, language: str | None) -> bool:
+    """Whether the pass opens a file: source code (SQL included) and Prisma schemas only,
+    never data files, configuration or documents."""
+    suffix = Path(path).suffix.lower()
+    if suffix == ".prisma":
+        return True
+    return language is not None and language not in NEVER_OPENED and suffix not in DATA_EXTS
 
 
 def bundled_patterns() -> dict[str, Any]:
@@ -222,6 +236,18 @@ SQL_SKIP_RE = re.compile(r"--[^\n]*|/\*.*?(?:\*/|\Z)|'(?:[^']|'')*'?|\$(\w*)\$.*
                          r'|"[^"]*"', re.DOTALL)
 
 
+# The rows of a dump: `COPY ... FROM stdin;` up to its `\.` line (or the end of the file), and
+# INSERT statements once strings are blanked. Blanked before anything else, so an apostrophe in
+# a row (O'Brien) cannot shift which parts of the file count as strings.
+COPY_ROWS_RE = re.compile(r"^[ \t]*COPY\b[^;\n]*\bFROM\s+stdin\b.*?(?:^\\\.[ \t]*$|\Z)",
+                          re.IGNORECASE | re.MULTILINE | re.DOTALL)
+INSERT_RE = re.compile(r"\b(?:INSERT|REPLACE)\s+INTO\b[^;]*", re.IGNORECASE)
+
+
+def _blank_all(match: re.Match[str]) -> str:
+    return re.sub(r"[^\n]", " ", match.group(0))
+
+
 def _blank(match: re.Match[str]) -> str:
     text = match.group(0)
     if text.startswith('"'):
@@ -260,7 +286,11 @@ def _sql_columns(text: str, start: int, budget: _Budget) -> list[tuple[str, int]
 
 
 def _sql_structures(text: str, embedded: bool) -> list[_Struct]:
-    code = text if embedded else SQL_SKIP_RE.sub(_blank, text)
+    if embedded:
+        code = text
+    else:
+        code = COPY_ROWS_RE.sub(_blank_all, text)
+        code = INSERT_RE.sub(_blank_all, SQL_SKIP_RE.sub(_blank, code))
     lines = _Lines(code)
     budget = _Budget(code)
     tables: dict[str, _Struct] = {}
@@ -455,7 +485,7 @@ def _prisma_structures(text: str) -> list[_Struct]:
 JS_SKIP_RE = re.compile(r"//[^\n]*|/\*.*?(?:\*/|\Z)|\"(?:\\.|[^\"\\\n])*\"?"
                         r"|'(?:\\.|[^'\\\n])*'?|`(?:\\.|[^`\\])*`?", re.DOTALL)
 _JS_NAME = r"[A-Za-z_$][\w$]*"
-_BINDING = rf"(?:(?:const|let|var)\s+({_JS_NAME})\s*(?::[^=\n]{{1,{_GAP}}})?=\s*)?"
+_BINDING = rf"(?:(?:const|let|var)\s+({_JS_NAME})\s*(?::[^=\n]{{1,150}})?=\s*)?"
 # (pattern, kind, persistent, nested fields count, TypeScript only)
 JS_OPENERS: list[tuple[re.Pattern[str], str, bool, bool, bool]] = [
     (re.compile(rf"\binterface\s+({_JS_NAME})(?![\w$])[^{{;]{{0,{_GAP}}}\{{"),
@@ -465,17 +495,21 @@ JS_OPENERS: list[tuple[re.Pattern[str], str, bool, bool, bool]] = [
     (re.compile(rf"@Entity\s*\([^)]{{0,{_GAP}}}\)\s*(?:export\s+)?(?:default\s+)?"
                 rf"(?:abstract\s+)?class\s+({_JS_NAME})[^{{]{{0,{_GAP}}}\{{"),
      "TypeORM entity", True, False, True),
-    (re.compile(rf"{_BINDING}\bnew\s+(?:mongoose\.)?Schema\s*(?:<[^>]*>)?\s*\(\s*\{{"),
+    (re.compile(rf"{_BINDING}\bnew\s+(?:mongoose\.)?Schema\s*(?:<[^>]{{0,{_GAP}}}>)?"
+                rf"\s*\(\s*\{{"),
      "Mongoose schema", True, False, False),
     (re.compile(rf"{_BINDING}\bz\.(?:strict)?[oO]bject\s*\(\s*\{{"),
      "Zod schema", False, False, False),
     (re.compile(r"\b(?:pg|mysql|sqlite)Table\s*\(\s*[\"'`]([^\"'`\n]+)[\"'`]\s*,\s*\{"),
      "Drizzle table", True, False, False),
 ]
+# A property: up to 8 decorators (each `@name` with an optional argument list), up to 4
+# modifiers, then the name and a colon. Each part can match in one way only and has a bounded
+# count, so a failed match costs a bounded scan, never one that doubles per decorator.
 JS_FIELD_RE = re.compile(
-    r"""\s*(?:@[\w.]+\s*(?:\([^()]*\))?\s*)*"""
-    r"""(?:(?:readonly|public|private|protected|declare|static|override)\s+)*"""
-    r"""(?:(["'])([^"'\n]{1,100})\1|([A-Za-z_$][\w$]*))\s*[?!]?\s*:""")
+    rf"""\s*(?:@[\w.]+(?:\s*\([^()]{{0,{_GAP}}}\))?\s*){{0,8}}"""
+    r"""(?:(?:readonly|public|private|protected|declare|static|override)\s+){0,4}"""
+    r"""(?:(["'])([^"'\n]{1,100})\1|([A-Za-z_$][\w$]{0,200}))\s*[?!]?\s*:""")
 DEFAULT_STORE = {"Mongoose schema": "schema", "Zod schema": "schema"}
 
 
@@ -497,7 +531,7 @@ def _js_fields(code: str, start: int, nested: bool, budget: _Budget) -> list[tup
         if seg and not c.isspace():
             seg = False
             if paren == 0 and bracket == 0 and (depth == 1 or (nested and depth >= 1)):
-                m = JS_FIELD_RE.match(code, i)
+                m = JS_FIELD_RE.match(code, i, end)
                 if m:
                     group = 2 if m.group(2) else 3
                     out.append((m.group(group), m.start(group)))
@@ -557,7 +591,9 @@ class SensitiveDataScanner:
         raw = ctx.options.get("patterns", DEFAULT_SCANNER_OPTIONS[NAME]["patterns"])
         patterns = compile_patterns(raw)
         include_tests = bool(ctx.options.get("include_tests", False))
-        classes = {Classification.source, Classification.config, Classification.data}
+        # Source code (SQL included) and Prisma schemas only: data files (records, exports)
+        # and configuration (JSON, YAML, XML, TOML, ...) are never opened.
+        classes = {Classification.source, Classification.data}
         if include_tests:
             classes.add(Classification.test)
         out = SensitiveData(tool=ctx.tool, classes=patterns.labels(),
@@ -567,10 +603,7 @@ class SensitiveDataScanner:
         for rec in ctx.census.files:
             if rec.excluded or rec.classification not in classes or rec.bytes > MAX_FILE_BYTES:
                 continue
-            # Data files are records and exports, never opened; a Prisma schema has no
-            # language of its own, so the census counts it as data.
-            if rec.classification == Classification.data \
-                    and Path(rec.path).suffix.lower() != ".prisma":
+            if not opens(rec.path, rec.language):
                 continue
             if rec.classification == Classification.source and rec.language in UNREAD_LANGUAGES:
                 not_read[rec.language] = not_read.get(rec.language, 0) + 1

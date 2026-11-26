@@ -10,7 +10,8 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   `CREATE TABLE` and `ALTER TABLE ... ADD`, Python model and typed classes, Django and
   Alembic migrations, Prisma, TypeScript interfaces and object types, TypeORM entities and
   Mongoose, Zod and Drizzle schemas; Sequelize, Rails and other migration DSLs, GraphQL,
-  OpenAPI and JSON Schema, Go, Java, C# and other languages' types are not read (SQL in their
+  OpenAPI and JSON Schema, schemas and migrations kept in configuration files (Liquibase or
+  Hasura YAML), Go, Java, C# and other languages' types are not read (SQL in their
   strings is). A Python class counts when its base or decorator is recognised in the same
   file (a model whose base class is imported from another module counts only with a
   `__tablename__`). A TypeScript body is followed by counting brackets outside strings, so

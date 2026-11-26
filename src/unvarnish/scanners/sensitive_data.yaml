@@ -204,8 +204,19 @@ classes:
       - device location
   minors:
     label: Minors
+    # Not bare "minor": it is also money in minor units (amount_minor) and a version part
+    # (major, minor, patch).
     terms:
-      - minor
+      - is minor
+      - minor flag
+      - minor status
+      - minor consent
+      - is child
+      - is underage
+      - underage
+      - under 13
+      - under 16
+      - under 18
       - guardian
       - parental consent
       - parent consent

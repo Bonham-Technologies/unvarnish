@@ -689,6 +689,13 @@ HOSTILE = {
     "g.py": "x = '''CREATE TABLE a (''' + '''CREATE TABLE a (''' * 1\n" + "# CREATE TABLE a (\n"
             * 20_000,
     "h.py": "x = a" + ".b()" * 5_000 + "\n",
+    # Exponential before: each decorator doubled the work of a field match that fails.
+    "i.ts": "interface A {\n" + "@x " * 26 + "}",
+    "j.js": "const s = new Schema({\n" + "@x " * 26 + "})",
+    # Quadratic before: every line restarted a field match that ran to the body's end.
+    "k.ts": "interface A {\n" + "@x(\n)\n" * 6_000,
+    "l.ts": "interface A {\n" + "readonly\n" * 20_000,
+    "m.js": "new Schema<" * 60_000,
 }
 
 
@@ -704,14 +711,99 @@ def test_hostile_input_cannot_hang_the_pass(tmp_path, name):
     assert time.perf_counter() - start < 5
 
 
-def test_data_files_are_never_opened(tmp_path):
-    """Exports and records (CSV, JSON Lines, ...) are data, not declarations: the section
-    says no data file was opened, so none is."""
-    sd = _run(tmp_path, {"export.csv": "note\nCREATE TABLE leak (ssn text);\n",
-                         "rows.jsonl": '{"q": "CREATE TABLE leak2 (email text)"}\n',
+def test_data_files_are_never_opened(tmp_path, monkeypatch):
+    """Exports, records and configuration (CSV, JSON Lines, JSON, YAML, XML, TOML) are not
+    declarations: the section says no data or configuration file was opened, so none is."""
+    from unvarnish.scanners import sensitive_data
+
+    opened: list[str] = []
+    real = sensitive_data.SensitiveDataScanner._structures
+
+    def spy(self, root, path, out):
+        opened.append(path)
+        return real(self, root, path, out)
+
+    monkeypatch.setattr(sensitive_data.SensitiveDataScanner, "_structures", spy)
+    leak = "CREATE TABLE leak (ssn text);"
+    sd = _run(tmp_path, {"export.csv": f"note\n{leak}\n",
+                         "rows.jsonl": f'{{"q": "{leak}"}}\n',
+                         "data/customers.json": f'{{"q": "{leak}"}}\n',
+                         "export.xml": f"<q>{leak}</q>\n",
+                         "users.yaml": f"q: '{leak}'\n",
+                         "settings.toml": f"q = '{leak}'\n",
                          "schema.prisma": "model User {\n  email String\n}\n"})
     assert _triples(sd) == {("contact", "User", "email")}
+    assert opened == ["schema.prisma"]
     assert sd.files_read == 1
+
+
+def test_sql_dump_rows_are_skipped(tmp_path):
+    """A `COPY ... FROM stdin` row with an apostrophe (O'Brien) must not flip which parts
+    of the rest of the dump count as strings, and INSERT values are never parsed."""
+    dump = ("COPY public.people (id, surname) FROM stdin;\n"
+            "1\tO'Brien\n"
+            "\\.\n"
+            "CREATE TABLE contacts (id int, email text);\n"
+            "INSERT INTO notes VALUES ('x', 'CREATE TABLE leak (ssn text)');\n"
+            "INSERT INTO notes VALUES (1, 2) ; CREATE TABLE more (phone text);\n")
+    sd = _run(tmp_path, {"db/dump.sql": dump})
+    assert _triples(sd) == {("contact", "contacts", "email"), ("contact", "more", "phone")}
+
+
+@pytest.mark.parametrize("name", ["minor", "minor_units", "minorUnits", "amount_minor",
+                                  "price_minor"])
+def test_money_and_version_minor_are_not_minors(name):
+    p = compile_patterns(bundled_patterns())
+    assert p.classify(name) == []
+
+
+def test_minors_flags_still_count(tmp_path):
+    p = compile_patterns(bundled_patterns())
+    for name in ("is_minor", "isMinor", "minor_flag", "is_child", "guardian"):
+        assert [k for k, _ in p.classify(name)] == ["minors"], name
+    sd = _run(tmp_path, {"v.ts": "interface Version { major: number; minor: number; "
+                                 "patch: number }\n"})
+    assert sd.fields == []
+
+
+def test_names_with_backticks_cannot_break_a_code_span():
+    from unvarnish.render.inputs import RenderInputs
+    from unvarnish.render.requirements import sensitive_context
+    from unvarnish.schemas.sensitive_data import SensitiveField
+
+    sd = SensitiveData(tool="t", classes={"contact": "Contact details"}, fields=[
+        SensitiveField(data_class="contact", field="e`mail", store="a`b", store_kind="x",
+                       persistent=True, path="p`q.ts", line=1, matched="email")])
+    ctx = sensitive_context(RenderInputs(**{**_bare_inputs(), "sensitive_data": sd}))
+    row = ctx["rows"][0]
+    for cell in (row["fields"], row["stores"], row["evidence"]):
+        assert cell.count("`") == 2, cell
+
+
+def _bare_inputs() -> dict:
+    import dataclasses
+
+    from unvarnish.render.inputs import RenderInputs
+
+    required = [f.name for f in dataclasses.fields(RenderInputs)
+                if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING]
+    return dict.fromkeys(required)
+
+
+def test_lead_sentence_says_stores_or_handles(engagement):
+    from unvarnish.phases.render import RenderPhase
+
+    ctx = _engagement_run(engagement, "app", APP_FILES, [*_scan_phases(), RenderPhase()])
+    section = _section(ctx.paths.requirements_doc.read_text(encoding="utf-8"))
+    assert "Field names suggest the tool stores 3 classes of sensitive data" in section
+    assert "the tool holds" not in section
+    assert "`name`, `age`, `token`" in section  # left out of the bundled set, on purpose
+
+    files = {"t.ts": "export interface Signup { email: string; password: string }\n"}
+    ctx = _engagement_run(engagement, "ts", files, [*_scan_phases(), RenderPhase()])
+    section = _section(ctx.paths.requirements_doc.read_text(encoding="utf-8"))
+    assert "Field names suggest the tool handles 2 classes of sensitive data" in section
+    assert "types and schemas for data in memory or in transit" in section
 
 
 def test_a_file_that_breaks_a_parser_costs_that_file_alone(tmp_path, monkeypatch):
