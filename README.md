@@ -197,6 +197,13 @@ Tools that were run without a model appear in the risk table and are flagged. Wi
 matrix and proposal are skipped and the document says so. The proposal is labelled a starting
 point for your own architecture work.
 
+It also writes `comparison/brief.md`, a leadership brief that can be handed over without the
+engineering sections: portfolio totals, one line per tool (severity counts, effort to fix,
+trend since the previous review), the ten most severe findings across tools, and an action plan
+in three buckets (fix now, fix before scaling, accept) decided by severity and effort band.
+Every number is counted from the per-tool results; only the summary paragraph is
+model-written. See `docs/operations.md` for the bucket rule.
+
 ## Asking questions
 
     unvarnish ask "Which tool talks to Stripe, and from where?"
@@ -217,13 +224,14 @@ through the secrets redactor before they reach the console or disk.
     unvarnish export                         # every rendered document, docx + html + pdf
     unvarnish export --format docx expense-bot
     unvarnish export --format html --doc findings --doc comparison
+    unvarnish export --doc brief             # the leadership brief, docx + html + pdf
     unvarnish export --format docx --template brand.docx
 
 Needs `pandoc` and Graphviz `dot` on PATH, plus `weasyprint` for PDF; if any is missing the
 command says how to install each and exits 2. PDFs are tagged (PDF/UA-1) for screen readers
 with weasyprint 66 or later; with an older one, such as Debian's or Ubuntu's, they are written
 untagged and the command warns. Files land in `exports/<doc>-<tool>-<timestamp>.<ext>`
-(`comparison-engagement-...` for the comparison). Diagrams are rendered to SVG (PNG for DOCX)
+(`comparison-engagement-...` for the comparison, `brief-engagement-...` for the brief). Diagrams are rendered to SVG (PNG for DOCX)
 with Graphviz from the same model that produced the Mermaid in the Markdown. Branding: set
 `report.branding.reference_docx` (a Word reference document) and `report.branding.html_css` in
 `engagement.yaml`, or pass `--template`; the bundled neutral reference and stylesheet are the

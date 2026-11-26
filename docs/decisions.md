@@ -1796,6 +1796,47 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   text version bump: the new scanner name already changes every scan's inputs hash.
   *Cost if wrong:* an Opengrep upgrade keeps an older scan until `--force`.
 
+## Leadership brief (UNVAR-99)
+
+- **A separate `comparison/brief.md`, not a section of comparison.md (owner's choice, option
+  A).** Leadership can be handed it without the engineering sections. It is rendered by its own
+  engagement phase, `render_brief`, after `render_comparison`. *Cost if wrong:* one more file
+  in `comparison/` and one more `--doc` value to know about.
+- **Numbers from each tool's artifacts, not from comparison.json.** The brief needs the
+  findings themselves (the ten most severe, the buckets), which comparison.json does not hold,
+  so it reads `census.json`, `scanner-findings.json`, `findings.json`, `dependencies.json` and
+  `delta.json` per tool and counts them with the same helpers as `findings.md` and the risk
+  table (`merged_findings`, `risk_row`, `eol_counts`, `effort_counts`). It therefore renders
+  even when compare's model calls failed or stopped for budget (`runs_after_stop`); a compare
+  that fails outright still skips it. *Cost if wrong:* if the two documents' inputs drift (a
+  tool rerun between compare and a later brief), the brief is the fresher one; both rerun on
+  the next `compare`.
+- **Action-plan buckets from severity and effort band only.** Critical: fix now, whatever
+  the effort (a large job is a reason to start, not to wait). High: fix now at S or M, fix
+  before scaling at L or XL. A high finding with no band is fix now: an unknown effort is not
+  evidence of a large job, and the stricter bucket is the safer default. Medium: fix before
+  scaling, whatever the effort. Low and info: accept (on record, or fix when the code is next
+  changed). No setting changes the rule; a consultant moves a finding by changing its band or
+  severity. *Cost if wrong:* a critical XL item sits in "fix now" beside quick fixes, and the
+  fix-now engineer-days can be large; the per-bucket effort column shows that.
+- **"Credential-like values" are the secrets scanner's findings**, split into working tree and
+  git history only, matching the "Secrets" row of `findings.md`; browser-exposed credentials
+  (client_exposure) are a separate row because one value can be counted by both scanners.
+  *Cost if wrong:* a reader adds the two rows and over-counts; the rows are labelled apart.
+- **The ten most severe findings in a fixed order:** severity, known exploited and EPSS,
+  scanner before model (as `findings.md`), then the tools' order in `engagement.yaml`,
+  path, line and title, so the same findings always give the same ten whatever order the
+  artifacts list them in. *Cost if wrong:* at equal severity the first-listed tool fills
+  the ten first; the per-tool row still shows every tool's counts.
+- **A measure not checked for every tool is summed over the checked tools and says so**
+  ("1 (1 of 2 tools checked)"), never filled in as zero. *Cost if wrong:* none known.
+- **One new prose block, `portfolio_summary`, with no `PROSE_PROMPT_VERSION` bump.** The
+  system prompt and the existing blocks are unchanged, so the existing documents' prose would
+  come out the same; bumping would re-render every tool's prose. The block asks for
+  severity counts only for all tools together, so the existing severity-count check holds
+  against the totals. *Cost if wrong:* none for cached text; the brief's own hash covers the
+  template.
+
 ## Deployment exposure scanner (UNVAR-98)
 
 - **Own offline rules, YAML and regex, no new dependency (owner's choice, option A).** Compose

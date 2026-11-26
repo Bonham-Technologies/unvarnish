@@ -30,6 +30,7 @@ from unvarnish.model.registry import NoModelConfigured, resolve_backend, resolve
 from unvarnish.phases.base import PhaseResult, PhaseRunner, PhaseStatus
 from unvarnish.phases.modelrun import call_structured
 from unvarnish.phases.render import override_dirs
+from unvarnish.render.brief import build_brief_context
 from unvarnish.render.comparison import build_comparison_context
 from unvarnish.render.markdown import (
     make_env,
@@ -362,8 +363,76 @@ class RenderComparisonPhase:
                            failures=[f"{f.unit_id}: {f.error}" for f in prose.failures])
 
 
+class RenderBriefPhase(RenderComparisonPhase):
+    """comparison/brief.md, the leadership brief (UNVAR-99). Its numbers come from each
+    tool's own artifacts, not from comparison.json, so it renders whatever compare's model
+    calls did; a budget stop upstream still lets it run (the scanner counts are complete)."""
+
+    name = "render_brief"
+    TEMPLATE = "brief.md.j2"
+    runs_after_stop = True
+
+    def _inputs(self, eng: Engagement) -> list[Path]:
+        out: list[Path] = []
+        for tool in eng.tool_names():
+            p = eng.tool_paths(tool)
+            out += [p.census, p.metrics, p.git, p.dependencies, p.scanner_findings,
+                    p.model_findings, p.delta]
+        return out
+
+    def inputs_hash(self, ectx: EngagementContext) -> str:
+        eng = ectx.engagement
+        ref = resolve_model_ref(eng.config, self.name)
+        model_part = f"{ref.backend}|{ref.model}|{ref.effort or ''}" if ref else "no-model"
+        return hash_inputs([hash_files(self._inputs(eng)), ",".join(eng.tool_names()),
+                            template_source_hash(self._env(eng), self.TEMPLATE),
+                            eng.config.client or "", eng.config.consultant or "",
+                            eng.config.report.tone, PROSE_PROMPT_VERSION, model_part,
+                            *effort_days_part(eng.config)])
+
+    def outputs(self, ectx: EngagementContext) -> list[Path]:
+        return [ectx.engagement.brief_render_state, ectx.engagement.brief_doc]
+
+    def run(self, ectx: EngagementContext) -> PhaseResult:
+        eng = ectx.engagement
+        loaded = {t: load_tool_inputs(eng, t) for t in eng.tool_names()}
+        inputs = [i for i in loaded.values() if i is not None]
+        if not inputs:
+            return PhaseResult(phase=self.name, status=PhaseStatus.failed, not_ready=True,
+                               message="no tool has been analysed yet; run `unvarnish run` first")
+        env = self._env(eng)
+        backend = self._resolve(eng)
+        ref = resolve_model_ref(eng.config, self.name)
+        context = build_brief_context(eng, inputs, [t for t, i in loaded.items() if i is None])
+        facts = {n: context["prose_facts"].get(n, {})
+                 for n in prose_block_names(env, self.TEMPLATE)}
+        prose = generate_prose(backend, facts, tone=eng.config.report.tone,
+                               effort=ref.effort if ref else None, budget=ectx.budget)
+        doc = render_document(env, self.TEMPLATE, {**context, "prose": prose.text})
+        eng.comparison_dir.mkdir(parents=True, exist_ok=True)
+        eng.brief_doc.write_text(doc, encoding="utf-8")
+        for f in prose.failures:  # generate_prose stamps "render"; this phase owns them
+            f.phase = self.name
+        merge_engagement_failures(eng, self.name, prose.failures)
+        write_artifact(eng.brief_render_state,
+                       RenderState(tool=ENGAGEMENT_TOOL, documents={
+                           eng.brief_doc.name: hashlib.sha256(doc.encode()).hexdigest()}),
+                       produced_by=self.name,
+                       inputs_hash="" if prose.stopped_for_budget else self.inputs_hash(ectx))
+        if prose.usage.total() and backend is not None:
+            record_cost(eng, CostEntry(tool=ENGAGEMENT_TOOL, phase=self.name,
+                                       backend=backend.name, model=backend.model,
+                                       usage=prose.usage, at=datetime.now(UTC)))
+        msg = f"wrote {eng.brief_doc.name}"
+        if prose.usage.total():
+            msg += f" ({prose.usage.total():,} tokens of prose)"
+        status = PhaseStatus.stopped if prose.stopped_for_budget else PhaseStatus.ok
+        return PhaseResult(phase=self.name, status=status, message=msg,
+                           failures=[f"{f.unit_id}: {f.error}" for f in prose.failures])
+
+
 def comparison_phases(backend: Backend | None = None) -> list:
-    return [ComparePhase(backend), RenderComparisonPhase(backend)]
+    return [ComparePhase(backend), RenderComparisonPhase(backend), RenderBriefPhase(backend)]
 
 
 def run_comparison(eng: Engagement, *, force: bool = False, backend: Backend | None = None,

@@ -1,0 +1,1 @@
+- `unvarnish compare` writes `comparison/brief.md`, a leadership brief across every tool (portfolio totals, one line per tool, the ten most severe findings, an action plan in three buckets from severity and effort band), exported with `export --doc brief`. (UNVAR-99)
