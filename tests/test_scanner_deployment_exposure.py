@@ -1083,3 +1083,32 @@ def test_unclosed_blocks_and_long_dockerfiles_stay_linear(tmp_path: Path):
     findings, _ = _scan(tmp_path, files)
     assert time.monotonic() - start < 5
     assert "dockerfile_root_user" in _by_rule(findings)
+
+
+def test_a_token_in_the_url_user_part_is_masked(tmp_path: Path):
+    t, u = _rand("oauth"), _rand("blankpw")
+    findings, notes = _scan(tmp_path, {"Dockerfile": (
+        "FROM a\nUSER b\n"
+        f"ADD https://{t}:x-oauth-basic@github.com/o/r/archive/x.tgz /opt/\n"
+        f"ADD https://{u}:@host.test/x.tgz /opt/\n")})
+    (add,) = findings
+    assert len(add.evidence) == 2
+    assert all("://…[redacted]@" in e.excerpt for e in add.evidence)
+    blob = _blob(findings, notes)
+    assert t not in blob and u not in blob and "x-oauth-basic" not in blob
+
+
+def test_many_secrets_on_one_line_stay_linear(tmp_path: Path):
+    import time
+
+    n = 40000
+    values = [_rand(f"many{i}", 12) for i in range(n)]
+    env = ", ".join(f"K{i}_TOKEN: {v}" for i, v in enumerate(values))
+    compose = "services:\n  a: {ports: ['80:80'], environment: {" + env + "}}\n"
+    start = time.monotonic()
+    findings, notes = _scan(tmp_path, {"compose.yaml": compose})
+    assert time.monotonic() - start < 15
+    rules = _by_rule(findings)
+    assert "count:40000" in rules["compose_literal_password"].tags
+    blob = _blob(findings, notes)
+    assert not any(v in blob for v in values[:50])

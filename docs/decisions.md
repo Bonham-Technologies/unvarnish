@@ -1834,8 +1834,9 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   multi-pair `ENV` can hold several, and the text before one key is another's value. Values
   after any name `is_secret_name` accepts (`DB_PASS`, `AUTH_KEY`), a one-line Kubernetes
   `{name: X_PASSWORD, value: ...}` entry and a URL's user part (`https://<token>@host`) are
-  masked too, as are a URL's whole user information up to the last `@` before the host
-  (`redis://:pw@h`, `postgres://u:p@ss@h`), the value of a secret-named command-line flag
+  masked too, as are a URL's whole user information, user and password, up to the last `@`
+  before the host (`redis://:pw@h`, `postgres://u:p@ss@h`, `https://<token>:x-oauth-basic@h`,
+  where the user is the token), the value of a secret-named command-line flag
   (`--password x`), a one-line env entry in either order, and `#` (also straight after a
   closing quote), `//` and `/*` comments. A secret-named `ENV`/`ARG` whose value holds a `$`
   (`ENV DB_PASSWORD Pa$$word`) is cut after its key like a literal. Values under 8
@@ -1845,8 +1846,9 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   redactor: a password `postgres` on a service named `postgres` leaves the service's name
   in the note, while the value stays masked in the excerpt. *Cost if wrong:* an excerpt
   shows less than the line; a value that is also used as a name appears as that name.
-- **Hostile input is bounded, not trusted.** A line is cut to 800 characters before the
-  masking regexes run (after known values are replaced on the whole line); `ENV`/`ARG`
+- **Hostile input is bounded, not trusted.** An excerpt is made from the line's first 800
+  characters, the cut moved past any known value that crosses it, and only the values found
+  there are replaced, so a line holding thousands of values stays linear; `ENV`/`ARG`
   arguments over 64 KiB are split on whitespace instead of by `shlex`; YAML merge keys read
   each anchor once, and a file whose aliases and merge keys need more than 200,000 node
   visits is reported as not parsed. Dockerfile stages are looked up by name and an

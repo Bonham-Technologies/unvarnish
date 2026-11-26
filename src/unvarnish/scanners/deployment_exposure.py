@@ -13,6 +13,7 @@ The rules are data (`RULES`): severity, category, title and wording per rule, ef
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import shlex
@@ -310,9 +311,9 @@ def strip_comment(line: str) -> str:
 
 
 def _url_auth(m: re.Match[str]) -> str:
-    user, sep, _ = m.group(2).partition(":")
-    keep = user + sep if sep and user and "@" not in user else ""
-    return f"{m.group(1)}{keep}{REDACTED}@"
+    """The whole user information goes: the user part can be the token itself
+    (`https://<token>:x-oauth-basic@`, `https://<token>:@`, `https://<token>@`)."""
+    return f"{m.group(1)}{REDACTED}@"
 
 
 def url_passwords(text: str) -> Iterator[str]:
@@ -323,6 +324,7 @@ def url_passwords(text: str) -> Iterator[str]:
             yield pw
 
 
+@functools.lru_cache(maxsize=1024)
 def _raw_regex(raw: str) -> re.Pattern[str]:
     return re.compile(r"(?<![A-Za-z0-9_])" + re.escape(raw) + r"(?![A-Za-z0-9_])")
 
@@ -359,12 +361,34 @@ def _mask_named(text: str) -> str:
     return text
 
 
+def _window(line: str, raws: list[str]) -> str | None:
+    """The start of `line` the excerpt is made from: `MAX_REDACT_INPUT` characters, moved
+    past any value that crosses the cut so no value is shown in part, or None when values
+    keep crossing it. Each value is searched only near the start, so a line holding many
+    values costs time in proportion to their number, not to their number times its length."""
+    cut = min(len(line), MAX_REDACT_INPUT)
+    for extend in (True, True, True, False, False, False):
+        moved = False
+        for r in raws:
+            if cut >= len(line):
+                return line
+            i = line.rfind(r, 0, cut + len(r) - 1)  # the last occurrence starting before cut
+            if i >= 0 and i + len(r) > cut:
+                cut, moved = (i + len(r)) if extend else i, True
+        if not moved:
+            return line[:cut]
+    return None
+
+
 def redact_excerpt(line: str, raws: Iterable[str] = ()) -> str:
     """A line fit for a report: every known raw value replaced, credentials in URLs and
     after secret-named keys and flags masked, comments dropped; `[line redacted]` if a raw
     survives."""
     raws = [r for r in raws if r]
-    out = strip_comment(replace_raws(line, raws)[:MAX_REDACT_INPUT]).strip()
+    window = _window(line, raws)
+    if window is None:
+        return "[line redacted]"
+    out = strip_comment(replace_raws(window, [r for r in raws if r in window])).strip()
     out = URL_AUTH_RE.sub(_url_auth, out)
     out = ASSIGN_SECRET_RE.sub(
         lambda m: m.group(1) + (m.group(2) if m.group(2).startswith("…[redacted")
