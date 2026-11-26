@@ -4,6 +4,24 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
 
 ## Open
 
+- [UNVAR-98] `deployment_exposure` judges files one at a time: a Compose port bound through
+  an `.env` file (`${BIND_ADDR}:5432:5432` with no default) is treated as unknown and not
+  reported, a Compose `extends` or override file is not merged with its base, a Dockerfile
+  whose final stage starts from an image (not a stage) that already runs as non-root is
+  reported as root unless the image name or tag says `nonroot` or `rootless`, and a
+  Kubernetes LimitRange anywhere in the tool silences every missing-limits result. Terraform
+  is read by line scanning, not an HCL parser: modules, variables and `for_each` values are
+  not resolved, so an ingress from a variable CIDR is missed and a port set by a variable
+  counts as all ports; `.tf.json`, AWS network ACLs, `publicly_accessible` databases and
+  CloudFormation or Pulumi files are not read. A literal password in a Compose file named
+  `*.example.yml` is still reported. Kubernetes manifests in `.json` files are not read
+  (JSON inside a `.yaml` file is). A credential the scanner does not itself report (a
+  Kubernetes env value in block style, a non-secret name) that shares a line with a finding
+  is masked only when the secrets redactor, a secret-named key or flag recognises it. A URL
+  password containing an unencoded `/` is neither reported nor masked.
+  PyYAML parses about 0.5 MB a second, so a multi-megabyte manifest with `apiVersion` and
+  `kind` costs seconds per file.
+
 - [UNVAR-91] The `ai_usage` checks follow data within one file, by assignment: request input
   passed through a function parameter, or a prompt built in one file and sent from another,
   is missed (a FastAPI or Gradio handler's parameters are not request input to it). A value

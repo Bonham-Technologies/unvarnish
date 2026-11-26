@@ -32,6 +32,10 @@ DEFAULT_SCANNER_OPTIONS: dict[str, dict[str, Any]] = {
     # Opengrep with a local rules directory only (UNVAR-89); empty: not checked.
     "sast": {"rules": "", "max_evidence": 25},
     "ai_usage": {"max_evidence": 25, "include_tests": False},
+    # Compose, Dockerfile, Kubernetes and Terraform rules, offline (UNVAR-98).
+    "deployment_exposure": {"compose": True, "dockerfile": True, "kubernetes": True,
+                            "terraform": True, "ignore_rules": [], "max_evidence": 25,
+                            "include_tests": False},
 }
 
 

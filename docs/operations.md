@@ -383,6 +383,24 @@ configuration error.
 - Test code and vendored directories are skipped; set `scanners.ai_usage.include_tests: true`
   to include tests.
 
+## Deployment exposure
+
+- `deployment_exposure` reads Compose files (`compose.yaml`, `docker-compose*.yml`),
+  Dockerfiles and Containerfiles, YAML holding Kubernetes objects (judged by `apiVersion` and
+  `kind`) and `.tf` files, offline. Each family can be turned off
+  (`scanners.deployment_exposure.terraform: false`), and single rules dropped with
+  `ignore_rules: [k8s_latest_image]`; an unknown rule name fails the scanner, which the
+  findings document lists under "Not analysed". `unvarnish scanners list` prints the rule
+  table with each rule's severity and effort band.
+- A tool with no deployment files gets one "not checked" note and no findings; architecture.md
+  says so in "Deployment exposure" under section 6. Helm templates and other files that are not
+  plain YAML are named in a note as not parsed: render the chart (`helm template`) into the
+  source and rerun to check it.
+- Test fixtures are skipped (`include_tests: true` reads them). Files under `build/` and other
+  build-output directories are read, because many projects keep Dockerfiles there.
+- Secrets are shown as `KEY=…[redacted N chars]` with a fingerprint; to see the value, open
+  the cited line. The secrets scanner may report the same value as a credential.
+
 ## Private repositories over SSH
 
 - git never prompts during a run. Unvarnish appends `-o BatchMode=yes` to your

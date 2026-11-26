@@ -1836,3 +1836,69 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   severity counts only for all tools together, so the existing severity-count check holds
   against the totals. *Cost if wrong:* none for cached text; the brief's own hash covers the
   template.
+
+## Deployment exposure scanner (UNVAR-98)
+
+- **Own offline rules, YAML and regex, no new dependency (owner's choice, option A).** Compose
+  and Kubernetes are read with PyYAML's node tree (`yaml.compose_all` with the safe loader),
+  which keeps line numbers and never constructs objects; merge keys (`<<: *anchor`) are
+  resolved by hand. Dockerfiles and Terraform are line-scanned: HCL with a small brace and
+  string tracker that skips comments and heredoc bodies. *Cost if wrong:* HCL that only a
+  real parser reads (variables, modules, generated JSON) is missed; a dependency such as
+  `python-hcl2` or a checkov/trivy binary would cover more at the price of an install.
+- **Severity is a table in the scanner (`RULES`), listed by `unvarnish scanners list`.**
+  Database port on all interfaces, privileged containers, the Docker socket, literal
+  passwords, secrets baked into an image, open ingress and public storage are high; other
+  published ports, host networking, root users, `ADD <url>`, password fallbacks, secret build
+  arguments and missing limits are medium; `latest` images are low. Severity is not
+  configurable; effort bands are (`scanners.deployment_exposure.effort`). Each rule has a
+  category (security; public storage is data handling, missing limits reliability, floating
+  images dependency). A CWE id per rule (UNVAR-95) is one more field on `Rule`. *Cost if
+  wrong:* a consultant who disagrees with a severity edits the finding in the report.
+- **One finding per rule, grouped with `group:<rule>` and `count:<n>` tags**, so the re-audit
+  delta matches it by rule and reports a changed count, as for sast. *Cost if wrong:* one
+  rule with many places is one long finding, which is the intent.
+- **Avoiding false positives:** a port bound to a loopback or a single address, or to an
+  address set by a variable without a default, is not reported; a published port is a
+  database port by its container port or by the image name. Only the final Dockerfile stage
+  is judged, and a stage built `FROM` an earlier stage inherits its `USER`. `ADD
+  --checksum=` is accepted. Secret names exclude `_FILE`, `_PATH`, `_URL`, `_NAME`, `_TTL`
+  and switches such as `MYSQL_ALLOW_EMPTY_PASSWORD`. Terraform ingress limited to ports 80
+  and 443 is not reported, egress never is, and a bucket policy with `Principal: "*"` and a
+  `Condition` is not reported. *Cost if wrong:* a database published on an unusual port from
+  an unknown image is reported as an ordinary port (medium, not high).
+- **Strict redaction.** A secret's excerpt is cut after its key (`KEY=…[redacted N chars]`)
+  rather than searched and replaced, so an escaped or multi-line value cannot survive; every
+  other excerpt drops comments, masks URL passwords and values after secret-named keys, and
+  runs through the secrets redactor. Every credential value the scanner finds in a file is
+  redacted from every excerpt of that file, not only its own: a flow-style Compose line or a
+  multi-pair `ENV` can hold several, and the text before one key is another's value. Values
+  after any name `is_secret_name` accepts (`DB_PASS`, `AUTH_KEY`), a one-line Kubernetes
+  `{name: X_PASSWORD, value: ...}` entry and a URL's user part (`https://<token>@host`) are
+  masked too, as are a URL's whole user information, user and password, up to the last `@`
+  before the host (`redis://:pw@h`, `postgres://u:p@ss@h`, `https://<token>:x-oauth-basic@h`,
+  where the user is the token), the value of a secret-named command-line flag
+  (`--password x`), a one-line env entry in either order, and `#` (also straight after a
+  closing quote), `//` and `/*` comments. A secret-named `ENV`/`ARG` whose value holds a `$`
+  (`ENV DB_PASSWORD Pa$$word`) is cut after its key like a literal. Values under 8
+  characters are replaced only where they stand as a whole word, so a password `a` does not
+  turn every excerpt into `[line redacted]`. Notes are built from names (service, key,
+  container, resource) and are not searched for the file's values, only by the pattern
+  redactor: a password `postgres` on a service named `postgres` leaves the service's name
+  in the note, while the value stays masked in the excerpt. *Cost if wrong:* an excerpt
+  shows less than the line; a value that is also used as a name appears as that name.
+- **Hostile input is bounded, not trusted.** An excerpt is made from the line's first 800
+  characters, the cut moved past any known value that crosses it, and only the values found
+  there are replaced, so a line holding thousands of values stays linear; `ENV`/`ARG`
+  arguments over 64 KiB are split on whitespace instead of by `shlex`; YAML merge keys read
+  each anchor once, and a file whose aliases and merge keys need more than 200,000 node
+  visits is reported as not parsed. Dockerfile stages are looked up by name and an
+  instruction's lines indexed once. In Terraform, a `resource`, `data`, `module`, `variable`
+  or `output` header in column 0 closes whatever an unbalanced brace left open, only a
+  top-level `resource` block is checked as a resource (so bodies never overlap), and port
+  numbers over six digits are not ports. *Cost if wrong:* a giant generated manifest is
+  noted as unparsed rather than checked; an indented `resource` block is not checked.
+- **What was checked is recorded in the scan artifact (`coverage`, files per family)** so
+  architecture.md can say which deployment files were read without reading the source again.
+  No scanner text version bump: the new scanner name already changes every scan's inputs
+  hash, and its options are hashed with every other scanner's.

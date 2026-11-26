@@ -99,6 +99,27 @@ EFFORT_RULES: dict[str, dict[str, tuple[Effort, str]]] = {
         "rule": (M, "fix each flagged place and add a test that exercises it"),
         "suppression": (S, "review each suppression entry"),
     },
+    "deployment_exposure": {
+        "compose_database_port": (S, "drop the port mapping or bind it to localhost"),
+        "compose_public_port": (S, "bind the port to localhost behind a proxy"),
+        "compose_privileged": (M, "grant only the capabilities the service needs"),
+        "compose_host_network": (M, "move the service to a bridge network"),
+        "compose_docker_socket": (M, "remove the mount or put a socket proxy in front"),
+        "compose_literal_password": (S, "rotate the credential and read it from a secret"),
+        "compose_password_default": (S, "remove the fallback so a missing value stops the "
+                                         "start"),
+        "dockerfile_root_user": (S, "add an unprivileged user to the final stage"),
+        "dockerfile_add_url": (S, "pin the download with a checksum"),
+        "dockerfile_secret_literal": (S, "rotate the secret and pass it at run time"),
+        "dockerfile_secret_build_arg": (M, "move the secret to a build secret mount"),
+        "k8s_host_network": (M, "expose the pod through a Service instead"),
+        "k8s_privileged": (M, "grant only the capabilities the container needs"),
+        "k8s_no_limits": (S, "set memory and CPU limits per container"),
+        "k8s_latest_image": (S, "pin each image to a version or digest"),
+        "tf_open_ingress": (M, "restrict the source ranges to known networks"),
+        "tf_public_storage": (M, "make the storage private and serve files through signed "
+                                 "URLs"),
+    },
 }
 
 
