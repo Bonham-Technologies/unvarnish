@@ -257,3 +257,95 @@ def test_eol_refresh_instructions_create_the_mounted_folder_first(doc: str):
     text = (ROOT / doc).read_text(encoding="utf-8")
     assert '-v "$PWD/eol:/eol"' in text
     assert text.index("mkdir -p eol") < text.index('-v "$PWD/eol:/eol"')
+
+
+# ---------------------------------------------------------------- exploit data bundle (UNVAR-101)
+
+
+def _exploit_run_step() -> str:
+    """The Dockerfile's RUN step that builds the exploit data bundle, continuations joined."""
+    text = (ROOT / "Dockerfile").read_text(encoding="utf-8").replace("\\\n", " ")
+    steps = [line for line in text.splitlines()
+             if line.startswith("RUN ") and "EXPLOIT_DATA" in line]
+    assert len(steps) == 1, steps
+    return steps[0].removeprefix("RUN ")
+
+
+def test_dockerfile_bundles_exploit_data_beside_the_end_of_life_data():
+    text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "ARG EXPLOIT_DATA=fetch" in text
+    step = _exploit_run_step()
+    # Into the end-of-life folder, where a run looks when UNVARNISH_VULNDATA_DIR is unset.
+    assert 'unvarnish vulndata refresh --dir "$UNVARNISH_EOL_DIR"' in step
+    assert "ENV UNVARNISH_VULNDATA_DIR" not in text
+    assert text.index("ENV UNVARNISH_EOL_DIR=/opt/eol") < text.index("vulndata refresh")
+
+
+def _run_exploit_step(tmp_path: Path, exploit_data: str, stub: str
+                      ) -> tuple[subprocess.CompletedProcess, Path]:
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    fake = bindir / "unvarnish"
+    fake.write_text(f"#!/bin/sh\n{stub}\n", encoding="utf-8")
+    fake.chmod(0o755)
+    data = tmp_path / "opt" / "eol"
+    data.mkdir(parents=True)
+    env = {"PATH": f"{bindir}:/usr/bin:/bin", "EXPLOIT_DATA": exploit_data,
+           "UNVARNISH_EOL_DIR": str(data)}
+    result = subprocess.run(["sh", "-c", _exploit_run_step()], env=env, capture_output=True,
+                            text=True, timeout=30)
+    return result, data
+
+
+@pytest.mark.parametrize("exploit_data", ["fetch", "skip", "Fetch", ""])
+def test_dockerfile_exploit_step_fetches_skips_or_fails(tmp_path: Path, exploit_data: str):
+    ok = 'mkdir -p "$4" && echo bundle > "$4/vulndata.gz"'  # vulndata refresh --dir <dir>
+    result, data = _run_exploit_step(tmp_path, exploit_data, ok)
+    if exploit_data == "fetch":
+        assert result.returncode == 0, result.stderr
+        assert (data / "vulndata.gz").is_file()
+    elif exploit_data == "skip":
+        assert result.returncode == 0, result.stderr
+        assert not (data / "vulndata.gz").exists()
+    else:  # a typo never ships an image silently without the bundle
+        assert result.returncode != 0
+        assert "EXPLOIT_DATA must be fetch or skip" in result.stderr
+
+
+def test_dockerfile_exploit_step_fails_the_build_when_the_fetch_fails(tmp_path: Path):
+    result, data = _run_exploit_step(tmp_path, "fetch", "echo 'error: KEV: 503' >&2; exit 1")
+    assert result.returncode != 0
+    assert not (data / "vulndata.gz").exists()
+
+
+def test_ci_checks_the_bundles_and_builds_without_them():
+    import yaml
+
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    steps = ci["jobs"]["docker"]["steps"]
+    script = "\n".join(step.get("run", "") for step in steps)
+    # The built image holds both bundles, and the job prints their dates.
+    assert "unvarnish.analysis.vulndata import bundle_date" in script
+    assert "exploit data dated" in script and "end-of-life data dated" in script
+    assert "no exploit data bundle" in script  # the run's notes have no "not checked"
+    # The skip build args still build, and that image has neither bundle.
+    assert re.search(r"docker build\b.*--build-arg EOL_DATA=skip.*--build-arg "
+                     r"EXPLOIT_DATA=skip", script)
+    assert "unvarnish doctor --json" in script or " doctor --json" in script
+
+
+def test_site_kit_bundles_exploit_data_and_prints_every_date():
+    script = (ROOT / "scripts" / "site-kit.sh").read_text(encoding="utf-8")
+    assert "--build-arg EXPLOIT_DATA=fetch" in script
+    for line in ("advisory database dated", "end-of-life data dated", "exploit data dated"):
+        assert line in script, line
+    assert "unvarnish.analysis.vulndata import bundle_date" in script
+    runbook = (ROOT / "docs" / "site-kit.md").read_text(encoding="utf-8")
+    assert "vulndata refresh" in runbook and "unvarnish doctor" in runbook
+
+
+def test_operations_has_a_before_you_travel_checklist():
+    text = (ROOT / "docs" / "operations.md").read_text(encoding="utf-8")
+    assert "## Before you travel" in text
+    section = text.split("## Before you travel", 1)[1].split("\n## ", 1)[0]
+    assert "unvarnish doctor" in section

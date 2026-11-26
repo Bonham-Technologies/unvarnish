@@ -1,0 +1,1 @@
+- `unvarnish doctor` checks, offline, the grammars, end-of-life, exploit and OSV data and the tools a run needs, with each date, age and refresh command (`--json`, `--probe-backend`); the Docker image and site kit now bundle the exploit data (`EXPLOIT_DATA=skip` builds without it) and the site-kit check prints every bundle's date (UNVAR-101)

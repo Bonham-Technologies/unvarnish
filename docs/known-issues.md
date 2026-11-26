@@ -86,10 +86,19 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   that names an `engine` (JRuby, TruffleRuby) is skipped, as `.ruby-version`'s `jruby-` is;
   `gems.rb`,
   `Pipfile.lock`, `.node-version` and Poetry's `[tool.poetry.group.*]` are not read.
-- [UNVAR-90] The Docker image and the site kit do not carry the exploit data bundle yet, so
-  their runs say "exploit data: not checked" unless a bundle written by `vulndata refresh` is
-  mounted (`docs/operations.md`, Exploit data). Bundling it is a separate change to the
-  Dockerfile and `scripts/site-kit.sh`.
+- [UNVAR-101] The image's exploit data bundle is as old as the image, like its end-of-life
+  bundle (UNVAR-44, below), and at the 30-day default limit it reads as old a month after the
+  build: `unvarnish doctor` shows its age, and the site kit is rebuilt before each engagement.
+  A mount over `/opt/eol` replaces both bundles at once, so a folder holding only a refreshed
+  `endoflife.json` leaves runs with no exploit data; `doctor` shows it absent.
+- [UNVAR-101] `unvarnish doctor` counts the offline OSV databases present when any ecosystem
+  has one; it does not check that the engagement's own ecosystems are among them (the run's
+  "<ecosystem> not checked" note does). It looks under `osv-scalibr/` and `osv-scanner/` in
+  the database folder; an osv-scanner release that moves its cache elsewhere shows as absent.
+  Without a `DATE` file (written only by the image build) a database's date is its file time.
+- [UNVAR-101] `doctor`'s "needed" follows the engagement's configuration, not its code: every
+  grammar is needed whatever languages the tools use, and pandoc, Graphviz and weasyprint are
+  needed because the default `export` writes DOCX, HTML and PDF.
 - [UNVAR-90] An advisory without a CVE alias (some GHSA-only or ecosystem advisories) cannot
   be matched to KEV or EPSS and shows "no EPSS score". As with end-of-life data, today's date
   is not in the scan's inputs hash, so a bundle that passes `max_data_age_days` between two
@@ -348,6 +357,7 @@ Fixed in the known-issues burn-down (see the CHANGELOG for details):
 - `--template` treats any non-`.docx` as CSS: only `.css`; anything else is an error.
 - Exporting one tool exports the comparison: only when no tools are named or `--doc comparison`.
 - Dependencies reinstall on every source change; `VOLUME` hides a missing `-v`: dependency layer before source; no `VOLUME`; warn when `/engagement` is not a mount.
+- The image and site kit had no exploit data bundle, so their runs said "exploit data: not checked" (UNVAR-90): the image now fetches it beside the end-of-life bundle (`EXPLOIT_DATA=skip` builds without it), and the site-kit check prints its date (UNVAR-101).
 - Windows paths in osv output: backslashes normalised before relativising.
 
 Fixed earlier:

@@ -94,6 +94,16 @@ def grammar_languages() -> list[str]:
     return sorted({pack_name(i) for i in ids - NO_GRAMMAR})
 
 
+def grammar_status() -> tuple[str, list[str], int]:
+    """(the pack's cache folder, grammars not on disk, grammars Unvarnish uses), read from
+    disk only: nothing is downloaded."""
+    import tree_sitter_language_pack as pack
+
+    names = grammar_languages()
+    have = set(pack.downloaded_languages())
+    return str(pack.cache_dir()), [n for n in names if n not in have], len(names)
+
+
 # Grammars that failed to load in this process: our language id -> why. Shared by the threads
 # of a parallel run, so each missing grammar is warned about once.
 _unavailable: dict[str, str] = {}

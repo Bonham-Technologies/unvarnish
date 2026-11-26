@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path, PureWindowsPath
@@ -14,6 +16,11 @@ from unvarnish.util.env import env_flag
 
 OSV_DEFAULT_ARGS = ["scan", "source", "--format", "json", "--recursive"]
 DISABLE_ENV = "UNVARNISH_DISABLE_OSV"
+# osv-scanner's offline databases: <folder>/<subfolder>/<ecosystem>/all.zip. The image sets
+# the folder and seeds osv-scalibr/; osv-scanner's own downloads may use either subfolder.
+LOCAL_DB_ENV = "OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY"
+LOCAL_DB_SUBDIRS = ("osv-scalibr", "osv-scanner")
+DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 TEXT_SEVERITY = {"CRITICAL": "critical", "HIGH": "high", "MODERATE": "medium",
                  "MEDIUM": "medium", "LOW": "low"}
 RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -53,16 +60,51 @@ def _cause(stderr: str) -> str:
     return (meaningful or lines or ["?"])[0]
 
 
-def database_date_note() -> str | None:
-    """The date the image's offline database was downloaded, when the site kit recorded it."""
-    root = os.environ.get("OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY")
-    if not root:
-        return None
+def local_db_dir() -> Path:
+    """Where osv-scanner keeps its offline databases: $OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY
+    when set (the image sets it), else the user cache folder, osv-scanner's own default."""
+    configured = os.environ.get(LOCAL_DB_ENV)
+    if configured:
+        return Path(configured)
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches"
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    return Path(xdg) if xdg else Path.home() / ".cache"
+
+
+def local_db_files(root: Path | None = None) -> list[Path]:
+    """Every ecosystem database (`all.zip`) under the folder, sorted."""
+    root = root or local_db_dir()
+    return sorted(f for sub in LOCAL_DB_SUBDIRS for f in (root / sub).glob("*/all.zip")
+                  if f.is_file())
+
+
+def local_db_ecosystems(root: Path | None = None) -> list[str]:
+    """The ecosystems that have an offline database, sorted, each once."""
+    return sorted({f.parent.name for f in local_db_files(root)})
+
+
+def database_date(root: Path | None = None) -> str | None:
+    """The date the site kit recorded in DATE beside the databases (YYYY-MM-DD), or None."""
     try:
-        date = (Path(root) / "DATE").read_text(encoding="utf-8").strip()
+        date = ((root or local_db_dir()) / "DATE").read_text(encoding="utf-8").strip()
     except OSError:
         return None
-    return f"offline database dated {date}" if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) else None
+    if not DATE_RE.fullmatch(date):
+        return None
+    try:  # the pattern lets 2026-02-30 through
+        datetime.date.fromisoformat(date)
+    except ValueError:
+        return None
+    return date
+
+
+def database_date_note() -> str | None:
+    """The date the image's offline database was downloaded, when the site kit recorded it."""
+    if not os.environ.get(LOCAL_DB_ENV):
+        return None
+    date = database_date()
+    return f"offline database dated {date}" if date else None
 
 
 def unchecked_note(report: dict, stderr: str) -> str | None:

@@ -32,6 +32,7 @@ macOS run it natively; on Windows use the Docker image, since native Windows is 
     unvarnish grammars fetch         # once, while online: the tree-sitter grammars
     unvarnish eol refresh            # while online: end-of-life dates from endoflife.date
     unvarnish vulndata refresh       # while online: CISA KEV and EPSS exploit data
+    unvarnish doctor                 # offline: which data and tools are here, and how old
 
 Or build the Docker image from a clone (see [Docker](#docker) for running it):
 
@@ -43,7 +44,10 @@ on first use; `grammars fetch` gets them ahead of time, so a later run needs no 
 them. A run that can't load one says so in the findings document. `eol refresh` does the same
 for the end-of-life dates the `end_of_life` scanner reads; rerun it before each engagement.
 `vulndata refresh` does the same for the exploit data that marks dependency advisories known
-exploited (CISA KEV, raised to critical) and orders them by EPSS.
+exploited (CISA KEV, raised to critical) and orders them by EPSS. `doctor` lists every data
+set and tool a run uses, with its date or version and the command that refreshes or installs
+it, and exits 1 when something the engagement needs is missing; it never touches the network
+unless `--probe-backend` asks it to check the model servers answer.
 
 ## Use
 
@@ -291,9 +295,10 @@ Tools added with `--link` point at host paths the container cannot see; use `--r
 `--files` for engagements that will run in Docker. Inside the container the user-level config
 is `/engagement/.unvarnish/config.yaml`, not the laptop's `~/.config/unvarnish`.
 
-The image bundles Python, the tree-sitter grammars, git, pandoc, Graphviz, weasyprint 70, and
-endoflife.date's end-of-life dates, fetched at build time (`--build-arg EOL_DATA=skip` builds
-without them; runs then report end of life as "not checked").
+The image bundles Python, the tree-sitter grammars, git, pandoc, Graphviz, weasyprint 70,
+endoflife.date's end-of-life dates and the CISA KEV and EPSS exploit data, fetched at build
+time (`--build-arg EOL_DATA=skip` or `--build-arg EXPLOIT_DATA=skip` builds without one; runs
+then report it as "not checked"). `docker run --rm unvarnish doctor` shows what an image holds.
 `docker save unvarnish | gzip > unvarnish.tar.gz` moves it to an air-gapped site. Keys are
 passed as environment variables; nothing is baked into the image or the engagement.
 

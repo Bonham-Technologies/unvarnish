@@ -977,15 +977,11 @@ def grammars_fetch(
 @grammars_app.command("status")
 def grammars_status() -> None:
     """Show which grammars are on disk, without downloading anything."""
-    import tree_sitter_language_pack as pack
-
     from unvarnish.analysis import treesitter
 
-    names = treesitter.grammar_languages()
-    have = set(pack.downloaded_languages())
-    missing = [n for n in names if n not in have]
-    console.print(f"{len(names) - len(missing)} of {len(names)} grammars in "
-                  f"{escape(str(pack.cache_dir()))}", soft_wrap=True)
+    where, missing, total = treesitter.grammar_status()
+    console.print(f"{total - len(missing)} of {total} grammars in {escape(where)}",
+                  soft_wrap=True)
     if missing:
         console.print(f"missing: {escape(', '.join(missing))}; run `unvarnish grammars fetch`",
                       soft_wrap=True)
@@ -1081,6 +1077,91 @@ def vulndata_refresh(
     console.print(f"{len(bundle.kev)} known exploited CVEs and {bundle.epss_scores} EPSS "
                   f"scores, data dated {bundle.fetched.isoformat()}, in {escape(str(path))}",
                   soft_wrap=True)
+
+
+@app.command()
+def doctor(
+    engagement: Path | None = typer.Option(
+        None, "--engagement", "-e",
+        help="Engagement directory (default: search upward from cwd; outside one, a new "
+             "engagement's defaults)."),
+    as_json: bool = typer.Option(False, "--json", help="Print the checks as JSON."),
+    probe_backend: bool = typer.Option(
+        False, "--probe-backend",
+        help="Also check each model backend in use answers over the network (no key sent, "
+             "no tokens spent)."),
+) -> None:
+    """Check the offline data and tools a run needs, their age, and how to refresh each,
+    without touching the network. Exits 1 when anything the engagement needs is missing."""
+    from unvarnish import doctor as checks
+    from unvarnish.schemas.doctor import DoctorReport
+
+    if engagement is not None:
+        eng: Engagement | None = _load_engagement(engagement)
+    else:
+        try:
+            eng = Engagement.find(Path.cwd())
+        except NotAnEngagement:
+            eng = None
+        except ConfigError as exc:
+            _print_errors(exc.problems)
+            raise typer.Exit(code=2) from exc
+        except UnsupportedSchemaVersion as exc:
+            err_console.print(f"[red]error:[/red] {escape(str(exc))}", soft_wrap=True)
+            raise typer.Exit(code=2) from exc
+    cfg = eng.config if eng is not None else EngagementConfig()
+    today = datetime.now(UTC).date()
+    rows = checks.run_checks(cfg, today=today)
+    backends = checks.probe_backends(cfg) if probe_backend else None
+    ready = all(r.ready for r in rows) and all(b.reachable for b in backends or [])
+    report = DoctorReport(engagement=str(eng.root) if eng is not None else None,
+                          checked=today, checks=rows, backends=backends, ready=ready)
+    if as_json:
+        typer.echo(report.model_dump_json(indent=2))
+        raise typer.Exit(code=0 if ready else 1)
+
+    colour = {"present": "green", "stale": "yellow"}
+    # A command is folded, never cut short with an ellipsis: it is there to be copied.
+    table = Table(*(Column(header, min_width=max(len(word) for word in header.split()),
+                           overflow="fold")
+                    for header in ("data or tool", "status", "date or version",
+                                   "needed for", "refresh or install")))
+    for r in rows:
+        style = colour.get(r.status, "red" if r.needed else "yellow")
+        when = r.version or ""
+        if r.date:
+            when = f"{r.date}, {plural(r.age_days or 0, 'day')} old (limit {r.max_age_days})"
+        needed = escape(r.needed_for) if r.needed else f"[dim]{escape(r.needed_for)}[/dim]"
+        show_refresh = r.kind == "data" or r.status not in ("present", "stale")
+        table.add_row(escape(r.name), f"[{style}]{escape(r.status)}[/{style}]",
+                      escape(when), needed,
+                      escape(r.refresh) if show_refresh else "")
+    console.print(table)
+    for r in rows:
+        for line in (r.detail if r.status != "present" else None, r.note):
+            if line:
+                console.print(f"{escape(r.name)}: {escape(line)}", soft_wrap=True,
+                              highlight=False)
+    for b in backends or []:
+        state = "[green]reachable[/green]" if b.reachable else "[red]unreachable[/red]"
+        console.print(f"backend {escape(b.backend)} ({escape(b.url) or 'no URL'}): {state}, "
+                      f"{escape(b.detail)}", soft_wrap=True, highlight=False)
+    if backends == []:
+        console.print("No model configured: no backend to probe.", highlight=False)
+    if eng is None:
+        console.print("No engagement here: checked against a new engagement's defaults "
+                      "(-e <folder> checks one).", highlight=False, soft_wrap=True)
+    else:
+        console.print(f"Checked against {escape(str(eng.root))}.", highlight=False,
+                      soft_wrap=True)
+    if ready:
+        console.print("[green]Ready[/green]: everything needed is here.", highlight=False)
+        return
+    missing = [r.name for r in rows if not r.ready]
+    missing += [f"backend {b.backend}" for b in backends or [] if not b.reachable]
+    console.print(f"[red]Not ready[/red]: {escape(', '.join(missing))}.", highlight=False,
+                  soft_wrap=True)
+    raise typer.Exit(code=1)
 
 
 config_app = typer.Typer(help="Configuration commands.", no_args_is_help=True)

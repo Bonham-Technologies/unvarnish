@@ -27,6 +27,32 @@ Practical notes for running Unvarnish on an engagement, from the live runs so fa
    folder and add that with `--files` when those files matter. LFS set up in the operator's
    global config still works for clones and `--branch` checkouts.
 
+## Before you travel
+
+Run this on a connected machine before leaving for a site, ideally the day before, with the
+engagement folder you will take (or the image you will carry):
+
+1. `unvarnish doctor -e <engagement>` (in the image:
+   `docker run --rm --network none -v "$E:/engagement" unvarnish doctor`). It reads only local
+   files and `<tool> --version`, never the network, and prints one row each for the tree-sitter
+   grammars, the end-of-life bundle, the exploit data bundle, the offline OSV databases, pandoc,
+   Graphviz, weasyprint, git, gitleaks and osv-scanner: present, stale, partial, absent,
+   unreadable or too old, each data set's date and age against its `max_data_age_days`
+   (end-of-life 90 days; exploit data and OSV databases 30, from
+   `scanners.dependencies.max_data_age_days`), and the exact command that refreshes or
+   installs it. It exits 1 when anything the engagement needs is missing; stale data is shown
+   but does not fail it, since a run still uses it with a note. Outside an engagement it
+   checks against a new engagement's defaults (`unvarnish init`), so a laptop with no
+   weasyprint fails on PDF export even if you only want HTML. `--json` prints the same as JSON.
+2. Run every refresh command the table shows for an absent or stale row, then `doctor` again
+   until it says "Ready". For the image, rebuild the site kit (`scripts/site-kit.sh`, which runs
+   `doctor` in its image check) rather than patching data into it.
+3. If the site's model server is reachable from where you are now, `unvarnish doctor -e
+   <engagement> --probe-backend` sends one unauthenticated request to each backend the
+   engagement's models name (no key, no tokens: any HTTP answer, a 401 included, counts as
+   reachable; user info or a query in a `base_url` is dropped, never sent). `unvarnish config check` then tests the key and the model itself.
+4. Pack the kit, the engagement folder and this runbook (`docs/site-kit.md`).
+
 ## Keys
 
 - Keys come only from the environment variable named in `api_key_env` or the OS keychain
@@ -244,10 +270,15 @@ configuration error.
   the KEV catalog version, the EPSS model version and score date, `attribution` and `kev`, CVE
   to date added); each other line is `CVE-YYYY-NNNN,epss,percentile`. A run streams the
   scores and keeps only the CVEs its advisories name.
-- The Docker image and the site kit do not bundle this data yet; until they do, write a
-  bundle with `vulndata refresh --dir <folder>` on a connected machine and mount or copy that
-  folder, as for end-of-life data below, then set `UNVARNISH_VULNDATA_DIR` to it (or put the
-  file in the `/opt/eol` mount).
+- The Docker image holds a bundle in `/opt/eol/vulndata.gz`, beside the end-of-life bundle,
+  fetched when the image was built (UNVAR-101): `docker build` needs both feeds for that step
+  and fails, naming the feed, if either still fails after the retries. Build without it with
+  `docker build --build-arg EXPLOIT_DATA=skip -t unvarnish .`; runs then report exploit data
+  as "not checked". Any other `EXPLOIT_DATA` value fails the build. `scripts/site-kit.sh`
+  prints the bundle's date in its image check.
+- To give an existing image newer data, refresh both bundles into one folder and mount it over
+  `/opt/eol`, as for end-of-life data below: a mount over `/opt/eol` hides both of the image's
+  bundles, so it must hold both (`unvarnish doctor` in that container shows which it sees).
 
 ## End-of-life data
 
@@ -285,10 +316,12 @@ configuration error.
   over `/opt/eol` (create the folder first, or Docker creates it owned by root and the
   refresh cannot write to it):
   `mkdir -p eol && docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/eol:/eol" unvarnish eol refresh --dir /eol`,
-  then add `-v "$PWD/eol:/opt/eol:ro"` to each run. The site kit runbook
+  and the same with `vulndata refresh --dir /eol` (the mount hides the image's exploit data
+  too), then add `-v "$PWD/eol:/opt/eol:ro"` to each run. The site kit runbook
   (`docs/site-kit.md`, section 6) has the same steps for an air-gapped site.
 - Docker's layer cache can keep an older bundle when nothing before that step changed;
-  `scripts/site-kit.sh` prints the bundle's date, and `docker build --no-cache` fetches anew.
+  `scripts/site-kit.sh` prints every bundle's date and runs `unvarnish doctor`, and
+  `docker build --no-cache` fetches anew.
 
 ## gitleaks
 
