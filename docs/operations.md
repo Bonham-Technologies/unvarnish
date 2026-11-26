@@ -50,7 +50,7 @@ engagement folder you will take (or the image you will carry):
 3. If the site's model server is reachable from where you are now, `unvarnish doctor -e
    <engagement> --probe-backend` sends one unauthenticated request to each backend the
    engagement's models name (no key, no tokens: any HTTP answer, a 401 included, counts as
-   reachable). `unvarnish config check` then tests the key and the model itself.
+   reachable; user info or a query in a `base_url` is dropped, never sent). `unvarnish config check` then tests the key and the model itself.
 4. Pack the kit, the engagement folder and this runbook (`docs/site-kit.md`).
 
 ## Keys

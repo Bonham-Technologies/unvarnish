@@ -8,6 +8,7 @@ can never disagree about where a bundle lives."""
 
 from __future__ import annotations
 
+import http.client
 import os
 import re
 import shutil
@@ -242,15 +243,21 @@ def probe_backends(config: EngagementConfig, timeout: float = PROBE_TIMEOUT
             out.append(BackendCheck(backend=name, url="", reachable=False,
                                     detail="no such backend, or no base_url"))
             continue
+        # Requested as shown: user info in a base_url is a credential, never sent (nor is a
+        # query string, which can carry one too).
         shown = display_url(url)
-        req = urllib.request.Request(url, headers={"User-Agent": f"unvarnish/{__version__}"})
+        if not shown.startswith(("http://", "https://")):
+            out.append(BackendCheck(backend=name, url="", reachable=False,
+                                    detail=f"not an http or https URL: {shown}"))
+            continue
+        req = urllib.request.Request(shown, headers={"User-Agent": f"unvarnish/{__version__}"})
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 detail = f"HTTP {resp.status}"
             reachable = True
         except urllib.error.HTTPError as exc:
             reachable, detail = True, f"HTTP {exc.code}"
-        except (urllib.error.URLError, OSError, ValueError) as exc:
+        except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as exc:
             reason = getattr(exc, "reason", exc)
             reachable, detail = False, f"{type(exc).__name__}: {reason}"[:200]
         out.append(BackendCheck(backend=name, url=shown, reachable=reachable, detail=detail))

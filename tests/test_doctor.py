@@ -412,3 +412,38 @@ def test_probe_backend_counts_any_http_answer_as_reachable(env: FakeEnv, tmp_pat
 def test_probe_backend_without_a_model_says_so(env: FakeEnv):
     code, report = _doctor("--probe-backend")
     assert code == 0 and report["backends"] == []
+
+
+def test_probe_backend_never_sends_user_info_from_the_url(env: FakeEnv, tmp_path: Path,
+                                                          monkeypatch: pytest.MonkeyPatch):
+    backends = {"local": {"type": "openai_compatible",
+                          "base_url": "http://op:s3cret-pw@llm.example:8000/v1"}}
+    eng = _engagement(tmp_path, backends=backends, models=MODELS)
+    seen: list[tuple[str, dict]] = []
+
+    def answer(req, timeout=None):
+        seen.append((req.full_url, dict(req.header_items())))
+        raise urllib.error.HTTPError(req.full_url, 401, "Unauthorized", None, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", answer)
+    code, report = _doctor("-e", str(eng), "--probe-backend")
+    assert code == 0, report
+    assert [u for u, _ in seen] == ["http://llm.example:8000/v1/models"]
+    assert not {k.lower() for k in seen[0][1]} & {"authorization", "x-api-key"}
+    assert "s3cret" not in json.dumps(report)
+
+
+def test_probe_backend_survives_a_malformed_http_answer(env: FakeEnv, tmp_path: Path,
+                                                        monkeypatch: pytest.MonkeyPatch):
+    import http.client
+
+    eng = _engagement(tmp_path, backends=BACKENDS, models=MODELS)
+
+    def answer(req, timeout=None):
+        raise http.client.BadStatusLine("garbage")
+
+    monkeypatch.setattr(urllib.request, "urlopen", answer)
+    code, report = _doctor("-e", str(eng), "--probe-backend")
+    assert code == 1 and report["ready"] is False
+    [probe] = report["backends"]
+    assert probe["reachable"] is False and "BadStatusLine" in probe["detail"]
