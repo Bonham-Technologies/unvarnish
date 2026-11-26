@@ -1795,3 +1795,41 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   rules or installing Opengrep rescans; the Opengrep version is not included. No scanner
   text version bump: the new scanner name already changes every scan's inputs hash.
   *Cost if wrong:* an Opengrep upgrade keeps an older scan until `--force`.
+
+## Offline readiness check and bundled exploit data (UNVAR-101)
+
+- **One `doctor` command, plus exploit data in the image and site kit (owner's choice,
+  option A).** Each data set is located by the module a run reads it with (`analysis.eol`,
+  `analysis.vulndata`, `analysis.advisories`, `analysis.treesitter`) and each tool by the same
+  `which` and version checks `export` uses, so the check cannot disagree with a run about where
+  a bundle lives or which pandoc is too old. *Cost if wrong:* none known.
+- **Exit 1 only when something needed is absent, partial, unreadable or too old; stale data
+  passes.** A run uses old data with a note, so stale is a warning in the table, not a failure;
+  `docs/operations.md` ("Before you travel") tells the operator to refresh every stale row.
+  Exit 2 is kept for an unreadable engagement, as elsewhere. *Cost if wrong:* a script that
+  gates on the exit code ships a month-old kit; it can read `--json` and test `status`.
+- **Outside an engagement, `doctor` judges against a new engagement's defaults** rather than
+  refusing or passing everything: a laptop check before `init` is the common case, and the
+  defaults are what `init` writes. An explicit `-e` that is not an engagement is an error (2).
+  *Cost if wrong:* a machine meant only for HTML export fails on a missing weasyprint; `--json`
+  shows that row alone failed.
+- **The offline OSV databases are held to the exploit data's age limit**
+  (`scanners.dependencies.max_data_age_days`, default 30) in `doctor` only: they are the same
+  scanner's advisory data and have no limit of their own, and a run does not note their age.
+  *Cost if wrong:* `doctor` calls a deliberately old database stale; raise the limit.
+- **`--probe-backend` is a plain unauthenticated GET of each backend's models listing**
+  (`<base_url>/models`, or Anthropic's `/v1/models`), counting any HTTP answer, a 401
+  included, as reachable. It answers "can this machine reach the server" without a key,
+  without tokens and without the cost ledger; `config check` remains the test of the key and
+  the model. Without the flag nothing opens a socket (a test makes every connect raise).
+  *Cost if wrong:* a proxy that answers for an unreachable host reads as reachable;
+  `config check` still fails then.
+- **The image writes `vulndata.gz` into `/opt/eol` and sets no `UNVARNISH_VULNDATA_DIR`**, so
+  the folder a run reads by default holds both bundles and the existing `-v ...:/opt/eol`
+  refresh covers both. The build step mirrors the end-of-life one: `EXPLOIT_DATA=fetch` (the
+  default) fails the build when a feed fails, `skip` builds without it, anything else fails.
+  CI's docker job prints both bundles' dates, runs `doctor --json` in the image, and builds
+  once more with both skip arguments. *Cost if wrong:* about 3 MB per image and two more
+  downloads per build; a CISA or FIRST outage fails the image build, as an endoflife.date
+  outage already does (build with `EXPLOIT_DATA=skip` meanwhile).
+

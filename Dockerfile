@@ -70,6 +70,18 @@ RUN case "$EOL_DATA" in \
         *) echo "error: EOL_DATA must be fetch or skip, not '$EOL_DATA'" >&2; exit 1 ;; \
     esac && chmod -R a+rX "$UNVARNISH_EOL_DIR"
 
+# Exploit data for dependency advisories (CISA KEV and EPSS): the bundle `unvarnish vulndata
+# refresh` writes, beside the end-of-life bundle, where a run looks when UNVARNISH_VULNDATA_DIR
+# is unset, so one mount over /opt/eol refreshes both (UNVAR-101). EXPLOIT_DATA=fetch, the
+# default, fails the build when either feed cannot be downloaded (refresh writes nothing then);
+# EXPLOIT_DATA=skip builds without it, and runs report exploit data as "not checked".
+ARG EXPLOIT_DATA=fetch
+RUN case "$EXPLOIT_DATA" in \
+        fetch) unvarnish vulndata refresh --dir "$UNVARNISH_EOL_DIR" ;; \
+        skip) mkdir -p "$UNVARNISH_EOL_DIR" ;; \
+        *) echo "error: EXPLOIT_DATA must be fetch or skip, not '$EXPLOIT_DATA'" >&2; exit 1 ;; \
+    esac && chmod -R a+rX "$UNVARNISH_EOL_DIR"
+
 # No volume declaration: it would silently hide a missing -v; the CLI warns instead.
 WORKDIR /engagement
 ENTRYPOINT ["unvarnish"]

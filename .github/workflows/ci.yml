@@ -96,8 +96,35 @@ jobs:
           # tools and the scan's notes directly: these are what Dependabot bumps.
           docker run --rm --network none --entrypoint gitleaks unvarnish:ci version
           docker run --rm --network none --entrypoint osv-scanner unvarnish:ci --version
-          jq -e '.data.skipped == [] and ([.data.notes[] | select(test("not installed|no end-of-life data bundle"))] | length == 0)' \
+          jq -e '.data.skipped == [] and ([.data.notes[] | select(test("not installed|no end-of-life data bundle|no exploit data bundle"))] | length == 0)' \
             "$E/tools/smoke/inventory/scanner-findings.json"
+      - name: Check the image's data bundles and print their dates
+        if: steps.image.outputs.build == 'true'
+        run: |
+          set -eu
+          py() { docker run --rm --network none --entrypoint python unvarnish:ci -c "$1"; }
+          eol=$(py 'from unvarnish.analysis.eol import bundle_date; print(bundle_date() or "")')
+          exploit=$(py 'from unvarnish.analysis.vulndata import bundle_date; print(bundle_date() or "")')
+          test -n "$eol" || { echo "no readable end-of-life bundle in the image" >&2; exit 1; }
+          test -n "$exploit" || { echo "no readable exploit data bundle in the image" >&2; exit 1; }
+          echo "end-of-life data dated $eol"
+          echo "exploit data dated $exploit"
+          # doctor exits 1 here (this image has no offline OSV databases), but never 2, and
+          # every other data set and tool must be present.
+          docker run --rm --network none unvarnish:ci doctor --json > "$RUNNER_TEMP/doctor.json" \
+            || test $? -eq 1
+          jq -e '[.checks[] | select(.name != "OSV databases" and .status != "present")] | length == 0' \
+            "$RUNNER_TEMP/doctor.json"
+      - name: Build the image without the data bundles
+        if: steps.image.outputs.build == 'true'
+        run: |
+          set -eu
+          docker build --progress plain --build-arg EOL_DATA=skip --build-arg EXPLOIT_DATA=skip \
+            -t unvarnish:ci-skip .
+          docker run --rm --network none unvarnish:ci-skip doctor --json > "$RUNNER_TEMP/skip.json" \
+            || test $? -eq 1
+          jq -e '[.checks[] | select(.name == "end-of-life data" or .name == "exploit data") | .status] == ["absent", "absent"]' \
+            "$RUNNER_TEMP/skip.json"
 
   # Aggregate job: the single required check. List EVERY other job in `needs`.
   # A skipped job is allowed (some jobs run on pull requests only); a failed

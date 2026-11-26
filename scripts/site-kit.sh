@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Build the air-gapped site kit: an Unvarnish image with every common ecosystem's offline
-# advisory database and the end-of-life data bundle, saved as a tarball with checksums, a runbook, and an example on-prem
-# engagement config. Run on a machine with internet access; carry dist/site-kit-<version>/
-# to the client site.
+# advisory database, the end-of-life data bundle and the exploit data bundle (CISA KEV and
+# EPSS), saved as a tarball with checksums, a runbook, and an example on-prem engagement
+# config. Run on a machine with internet access; carry dist/site-kit-<version>/ to the client
+# site.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -12,8 +13,10 @@ OUT="dist/site-kit-$VERSION"
 IMAGE="unvarnish:$VERSION"
 
 mkdir -p "$OUT"
-echo "Building $IMAGE with end-of-life data and offline advisories for: $ECOSYSTEMS"
+echo "Building $IMAGE with end-of-life data, exploit data and offline advisories for:" \
+    "$ECOSYSTEMS"
 docker build --build-arg OSV_ECOSYSTEMS="$ECOSYSTEMS" --build-arg EOL_DATA=fetch \
+    --build-arg EXPLOIT_DATA=fetch \
     --label "org.opencontainers.image.version=$VERSION" \
     --label "org.opencontainers.image.revision=$(git rev-parse --short HEAD)" \
     -t "$IMAGE" .
@@ -27,7 +30,11 @@ docker run --rm --network none --entrypoint sh "$IMAGE" -c '
     test -s /opt/osv/DATE && echo "advisory database dated $(cat /opt/osv/DATE)" &&
     eol=$(python -c "from unvarnish.analysis.eol import bundle_date; print(bundle_date() or \"\")") &&
     if [ -n "$eol" ]; then echo "end-of-life data dated $eol"; else
-        echo "error: no readable end-of-life bundle in $UNVARNISH_EOL_DIR" >&2; exit 1; fi'
+        echo "error: no readable end-of-life bundle in $UNVARNISH_EOL_DIR" >&2; exit 1; fi &&
+    exploit=$(python -c "from unvarnish.analysis.vulndata import bundle_date; print(bundle_date() or \"\")") &&
+    if [ -n "$exploit" ]; then echo "exploit data dated $exploit"; else
+        echo "error: no readable exploit data bundle in $UNVARNISH_EOL_DIR" >&2; exit 1; fi &&
+    unvarnish doctor'
 
 echo "Saving the image"
 docker save "$IMAGE" | gzip > "$OUT/unvarnish-$VERSION.tar.gz"
