@@ -1829,7 +1829,18 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
 - **Strict redaction.** A secret's excerpt is cut after its key (`KEY=…[redacted N chars]`)
   rather than searched and replaced, so an escaped or multi-line value cannot survive; every
   other excerpt drops comments, masks URL passwords and values after secret-named keys, and
-  runs through the secrets redactor. *Cost if wrong:* an excerpt shows less than the line.
+  runs through the secrets redactor. Every credential value the scanner finds in a file is
+  redacted from every excerpt of that file, not only its own: a flow-style Compose line or a
+  multi-pair `ENV` can hold several, and the text before one key is another's value. Values
+  after any name `is_secret_name` accepts (`DB_PASS`, `AUTH_KEY`), a one-line Kubernetes
+  `{name: X_PASSWORD, value: ...}` entry and a URL's user part (`https://<token>@host`) are
+  masked too. *Cost if wrong:* an excerpt shows less than the line.
+- **Hostile input is bounded, not trusted.** A line is cut to 800 characters before the
+  masking regexes run (after known values are replaced on the whole line); `ENV`/`ARG`
+  arguments over 64 KiB are split on whitespace instead of by `shlex`; YAML merge keys read
+  each anchor once, and a file whose aliases and merge keys need more than 200,000 node
+  visits is reported as not parsed. *Cost if wrong:* a giant generated manifest is noted as
+  unparsed rather than checked.
 - **What was checked is recorded in the scan artifact (`coverage`, files per family)** so
   architecture.md can say which deployment files were read without reading the source again.
   No scanner text version bump: the new scanner name already changes every scan's inputs

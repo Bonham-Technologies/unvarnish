@@ -130,6 +130,9 @@ def deployment_exposure(inp: RenderInputs) -> str:
         return (f"Not checked: the {DEPLOYMENT} scanner {why}, so the Compose, Dockerfile, "
                 "Kubernetes and Terraform files were not read.")
     counts = scan.coverage.get(DEPLOYMENT, {})
+    if not counts:  # the scanner ran with every family turned off
+        return (f"Not checked: every file family is turned off in scanners.{DEPLOYMENT}, so "
+                "the Compose, Dockerfile, Kubernetes and Terraform files were not read.")
     files = [plural(n, *FAMILY_NOUNS[f]) for f in FAMILIES if (n := counts.get(f, 0))]
     if not files:
         return ("No deployment files (Compose, Dockerfile, Kubernetes manifests, Terraform) "

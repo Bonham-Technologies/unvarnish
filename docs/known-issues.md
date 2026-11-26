@@ -14,7 +14,11 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   not resolved, so an ingress from a variable CIDR is missed and a port set by a variable
   counts as all ports; `.tf.json`, AWS network ACLs, `publicly_accessible` databases and
   CloudFormation or Pulumi files are not read. A literal password in a Compose file named
-  `*.example.yml` is still reported.
+  `*.example.yml` is still reported. A credential the scanner does not itself report
+  (a Kubernetes env value in block style, a non-secret name) that shares a line with a
+  finding is masked only when the secrets redactor or a secret-named key recognises it.
+  PyYAML parses about 0.5 MB a second, so a multi-megabyte manifest with `apiVersion` and
+  `kind` costs seconds per file.
 
 - [UNVAR-91] The `ai_usage` checks follow data within one file, by assignment: request input
   passed through a function parameter, or a prompt built in one file and sent from another,

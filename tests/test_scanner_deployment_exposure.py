@@ -881,3 +881,83 @@ def test_architecture_says_what_was_checked_when_nothing_matched(engagement):
     arch = ctx.paths.architecture_doc.read_text(encoding="utf-8")
     assert ("**Deployment exposure.** The deployment files (4 Dockerfiles) were checked "
             "offline: no port published on all interfaces") in arch
+
+
+# --- review fixes: redaction across one line, and hostile input -------------------------------
+
+def test_no_secret_leaks_from_a_line_holding_several(tmp_path: Path):
+    a, b, c, d, e, g = (_rand(s) for s in ("a", "b", "c", "d", "e", "g"))
+    files = {
+        # Flow style: two credentials and a published port on one line.
+        "docker-compose.yml": (
+            "services:\n"
+            f"  db: {{image: postgres, ports: ['5432:5432'], "
+            f"environment: {{DB_PASS: {a}, API_TOKEN: {b}}}}}\n"),
+        # Two ENV pairs on one line; a secret name the generic pattern misses, with a `$`.
+        "Dockerfile": (f"FROM alpine\nUSER app\nENV DB_PASS={c} API_TOKEN={d}\n"
+                       f"ENV AUTH_KEY=${{AUTH_KEY:-{e}}}\n"
+                       f"ADD https://{g}@github.com/o/r/archive/x.tgz /opt/\n"),
+        # A one-line container with a secret env value next to a flagged image.
+        "k.yaml": ("apiVersion: v1\nkind: Pod\nmetadata: {name: p}\nspec:\n"
+                   f"  containers: [{{name: a, image: x:latest, "
+                   f"env: [{{name: DB_PASSWORD, value: {_rand('k')}}}]}}]\n"),
+    }
+    findings, notes = _scan(tmp_path, files)
+    rules = _by_rule(findings)
+    assert {"compose_database_port", "compose_literal_password", "dockerfile_secret_literal",
+            "dockerfile_secret_build_arg", "dockerfile_add_url",
+            "k8s_latest_image"} <= set(rules)
+    blob = json.dumps([f.model_dump(mode="json") for f in findings]) + "\n".join(notes)
+    for raw in (a, b, c, d, e, g, _rand("k")):
+        assert raw not in blob
+
+
+def test_alias_and_merge_key_bombs_finish_quickly(tmp_path: Path):
+    import time
+
+    bomb = ["x-l0: &l0 {privileged: true}"]
+    for i in range(1, 8):
+        bomb.append(f"x-l{i}: &l{i}\n  <<: [" + ", ".join([f"*l{i - 1}"] * 9) + "]")
+    bomb.append("services:\n  a:\n    <<: *l7\n    image: x\n")
+    big = "x-big: &big\n" + "".join(f"  k{i}: v\n" for i in range(3000))
+    many = big + "services:\n" + "".join(f"  s{i}:\n    <<: *big\n" for i in range(3000))
+    start = time.monotonic()
+    findings, notes = _scan(tmp_path, {"docker-compose.yml": "\n".join(bomb) + "\n",
+                                       "compose.yaml": many})
+    assert time.monotonic() - start < 10
+    assert "compose_privileged" in _by_rule(findings)  # each anchor is read once
+    assert any("could not be parsed" in n and "compose.yaml" in n for n in notes)
+
+
+def test_long_lines_and_blank_runs_stay_fast(tmp_path: Path):
+    import time
+
+    token = _rand("long")
+    files = {
+        "notes.yaml": "\n" * 200_000 + "a: 1\n",  # no apiVersion: never parsed
+        "Dockerfile": f"FROM a\nUSER b\nENV X_TOKEN={token}{'a' * 300_000}\n",
+        "compose.yaml": "services:\n  a: {ports: ['80:80'], x: " + "a" * 300_000 + "}\n",
+    }
+    start = time.monotonic()
+    findings, _ = _scan(tmp_path, files)
+    assert time.monotonic() - start < 10
+    rules = _by_rule(findings)
+    assert {"dockerfile_secret_literal", "compose_public_port"} <= set(rules)
+    assert all(len(e.excerpt or "") <= 200 for f in findings for e in f.evidence)
+    assert token not in json.dumps([f.model_dump(mode="json") for f in findings])
+
+
+def test_counts_and_sizes_are_not_secrets(tmp_path: Path):
+    findings, _ = _scan(tmp_path, {"Dockerfile": (
+        "FROM a\nUSER b\nENV TOKEN_LIMIT=1000 PASSWORD_HASH_ROUNDS=12 SECRET_SIZE=32\n")})
+    assert "dockerfile_secret_literal" not in _by_rule(findings)
+
+
+def test_architecture_says_not_checked_when_every_family_is_off():
+    from types import SimpleNamespace
+
+    from unvarnish.render.architecture import deployment_exposure
+
+    scan = ScannerFindings(tool="t", scanners_run=[NAME], coverage={NAME: {}})
+    assert deployment_exposure(SimpleNamespace(scan=scan)).startswith(
+        "Not checked: every file family is turned off")

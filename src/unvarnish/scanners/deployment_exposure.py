@@ -17,6 +17,7 @@ import json
 import re
 import shlex
 from collections.abc import Iterable, Iterator
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
@@ -42,6 +43,10 @@ FAMILY_NOUNS: dict[str, tuple[str, str]] = {
     "terraform": ("Terraform file", "Terraform files"),
 }
 MAX_EXCERPT = 200
+# A line is cut to this before the masking regexes run, after every known raw value is
+# replaced on the whole line: a minified or one-line file must not make redaction slow.
+MAX_REDACT_INPUT = 4 * MAX_EXCERPT
+MAX_SHLEX = 65_536  # longer ENV or ARG arguments are split on whitespace
 NOTE_EXAMPLES = 5
 REDACTED = "…[redacted]"
 
@@ -189,8 +194,8 @@ def _option(ctx: ScanContext, key: str) -> Any:
 # --- file selection -----------------------------------------------------------------------------
 
 COMPOSE_NAME_RE = re.compile(r"^(?:docker-)?compose(?:[.-][\w.-]+)?\.ya?ml$")
-K8S_HINT_RE = re.compile(r"(?m)^\s*apiVersion\s*:")
-K8S_KIND_RE = re.compile(r"(?m)^\s*kind\s*:")
+K8S_HINT_RE = re.compile(r"(?m)^[ \t]*apiVersion[ \t]*:")
+K8S_KIND_RE = re.compile(r"(?m)^[ \t]*kind[ \t]*:")
 SKIPPED_CLASSES = {Classification.binary, Classification.vendored, Classification.docs}
 
 
@@ -243,7 +248,8 @@ KEY_QUALIFIERS = {"API", "PRIVATE", "ACCESS", "SECRET", "AUTH", "ENCRYPTION", "S
 NOT_SECRET_LAST = {"FILE", "PATH", "DIR", "URL", "URI", "HOST", "PORT", "USER", "USERNAME",
                    "NAME", "ID", "TYPE", "LENGTH", "MIN", "MAX", "TTL", "EXPIRY", "EXPIRES",
                    "EXPIRATION", "TIMEOUT", "LIFETIME", "AGE", "HEADER", "ALGORITHM",
-                   "ENABLED", "DISABLED", "REQUIRED", "PREFIX", "FIELD", "PARAM", "POLICY"}
+                   "ENABLED", "DISABLED", "REQUIRED", "PREFIX", "FIELD", "PARAM", "POLICY",
+                   "LIMIT", "COUNT", "SIZE", "ROUNDS", "LEN"}
 NOT_SECRET_ANY = {"ALLOW", "EMPTY", "RANDOM", "GENERATE", "SKIP"}
 SWITCH_VALUES = {"true", "false", "yes", "no", "on", "off", "null", "none", "~"}
 
@@ -261,9 +267,17 @@ def is_secret_name(name: str) -> bool:
 
 
 ASSIGN_SECRET_RE = re.compile(
-    r"(?i)([\w.\-]*(?:passw(?:or)?d|passphrase|secret|token|api_?key|private_?key"
-    r"|access_?key|credential)[\w.\-]*[\"']?\s*[:=]\s*)(\S.*)$")
-URL_USERINFO_RE = re.compile(r"([a-z][\w+.-]*://[^:/@\s]+:)([^@\s/]+)(@)", re.I)
+    r"(?i)((?<![\w.\-])[\w.\-]*(?:passw(?:or)?d|passphrase|secret|token|api_?key"
+    r"|private_?key|access_?key|credential)[\w.\-]*[\"']?\s*[:=]\s*)(\S.*)$")
+# Any `name: value` or `name=value`, judged by `is_secret_name` (DB_PASS, AUTH_KEY, ...).
+NAME_ASSIGN_RE = re.compile(r"(?<![\w.\-])([A-Za-z_][\w.\-]*)[\"']?\s*[:=]\s*(?=\S)")
+# A Kubernetes env entry written on one line: `{name: DB_PASSWORD, value: ...}`.
+K8S_ENV_PAIR_RE = re.compile(
+    r"(?i)[\"']?name[\"']?\s*:\s*[\"']?([A-Za-z_][\w.\-]*)[\"']?\s*,\s*"
+    r"[\"']?value[\"']?\s*:\s*(?=\S)")
+URL_USERINFO_RE = re.compile(r"((?<![\w+.-])[a-z][\w+.-]*://[^:/@\s]+:)([^@\s/]+)(@)", re.I)
+# A URL whose user part alone is a credential (`https://<token>@host`).
+URL_USER_ONLY_RE = re.compile(r"((?<![\w+.-])[a-z][\w+.-]*://)([^:/@\s]+)(@)", re.I)
 
 
 def strip_comment(line: str) -> str:
@@ -283,29 +297,43 @@ def strip_comment(line: str) -> str:
     return line
 
 
+def _mask_named(text: str) -> str:
+    """The text cut after the first secret-named assignment whose value is not already a
+    redaction marker, and after a one-line Kubernetes env entry with a secret name."""
+    for regex in (K8S_ENV_PAIR_RE, NAME_ASSIGN_RE):
+        for m in regex.finditer(text):
+            if is_secret_name(m.group(1)) and not text[m.end():].startswith("…[redacted"):
+                text = text[:m.end()] + REDACTED
+                break
+    return text
+
+
 def redact_excerpt(line: str, raws: Iterable[str] = ()) -> str:
     """A line fit for a report: every known raw value replaced, credentials in URLs and
     after secret-named keys masked, comments dropped; `[line redacted]` if a raw survives."""
     raws = [r for r in raws if r]
-    out = strip_comment(line).strip()
+    out = line
     for raw in sorted(set(raws), key=len, reverse=True):
         out = out.replace(raw, f"…[redacted {len(raw)} chars]")
+    out = strip_comment(out[:MAX_REDACT_INPUT]).strip()
     out = URL_USERINFO_RE.sub(lambda m: f"{m.group(1)}{REDACTED}{m.group(3)}", out)
+    out = URL_USER_ONLY_RE.sub(lambda m: f"{m.group(1)}{REDACTED}{m.group(3)}", out)
     out = ASSIGN_SECRET_RE.sub(
         lambda m: m.group(1) + (m.group(2) if m.group(2).startswith("…[redacted")
                                 else REDACTED), out)
-    out = redact_text(out)[:MAX_EXCERPT]
+    out = redact_text(_mask_named(out))[:MAX_EXCERPT]
     return "[line redacted]" if any(r in out for r in raws) else out
 
 
-def cut_after(line: str, key: str, raw: str) -> str:
-    """The line up to `key` and its separator, then a redaction marker: never the value."""
+def cut_after(line: str, key: str, raw: str, raws: Iterable[str] = ()) -> str:
+    """The line up to `key` and its separator, then a redaction marker: never the value.
+    `raws` are the other values to redact from what comes before the key."""
     i = line.find(key)
     if i < 0:
         return "[line redacted]"
     m = re.match(r"[\"']?\s*[:= ]\s*[\"']?", line[i + len(key):])
     head = line[:i + len(key)] + (m.group(0) if m else "")
-    return redact_excerpt(head + f"…[redacted {len(raw)} chars]", [raw])
+    return redact_excerpt(head + f"…[redacted {len(raw)} chars]", [raw, *raws])
 
 
 INTERP_RE = re.compile(r"\$\{([A-Za-z_]\w*)(?:(:?[-?+])([^}]*))?\}|\$([A-Za-z_]\w*)")
@@ -329,10 +357,34 @@ def load_yaml(text: str) -> list[yaml.Node] | None:
         return None
 
 
-def items(node: yaml.Node | None, depth: int = 0) -> list[tuple[str, yaml.Node]]:
-    """A mapping's pairs with merge keys (`<<: *anchor`) resolved, its own keys first."""
+class YamlTooComplex(Exception):
+    """A file whose aliases and merge keys would take more work than `YAML_WORK_BUDGET`."""
+
+
+# Node visits allowed per file. Aliases are shared nodes, so merge keys that repeat an
+# anchor (`<<: [*a, *a, ...]`, nested) or many services merging one large anchor would
+# otherwise cost exponential or quadratic time on a file of a few hundred bytes.
+YAML_WORK_BUDGET = 200_000
+_budget: ContextVar[list[int] | None] = ContextVar("deployment_exposure_budget", default=None)
+
+
+def _spend(n: int) -> None:
+    left = _budget.get()
+    if left is not None:
+        left[0] -= n
+        if left[0] < 0:
+            raise YamlTooComplex
+
+
+def items(node: yaml.Node | None, depth: int = 0,
+          seen: set[int] | None = None) -> list[tuple[str, yaml.Node]]:
+    """A mapping's pairs with merge keys (`<<: *anchor`) resolved, its own keys first. Each
+    merge source is read once, however often aliases repeat it."""
     if not isinstance(node, yaml.MappingNode) or depth > 8:
         return []
+    seen = set() if seen is None else seen
+    seen.add(id(node))
+    _spend(len(node.value) + 1)
     own: list[tuple[str, yaml.Node]] = []
     merged: list[tuple[str, yaml.Node]] = []
     for k, v in node.value:
@@ -340,7 +392,8 @@ def items(node: yaml.Node | None, depth: int = 0) -> list[tuple[str, yaml.Node]]
             continue
         if k.value == "<<" and k.style is None:
             for src in (v.value if isinstance(v, yaml.SequenceNode) else [v]):
-                merged.extend(items(src, depth + 1))
+                if id(src) not in seen:
+                    merged.extend(items(src, depth + 1, seen))
         else:
             own.append((k.value, v))
     keys = {k for k, _ in own}
@@ -354,7 +407,10 @@ def get(node: yaml.Node | None, *path: str) -> yaml.Node | None:
 
 
 def seq(node: yaml.Node | None) -> list[yaml.Node]:
-    return list(node.value) if isinstance(node, yaml.SequenceNode) else []
+    if not isinstance(node, yaml.SequenceNode):
+        return []
+    _spend(len(node.value) + 1)
+    return list(node.value)
 
 
 def scalar(node: yaml.Node | None) -> str | None:
@@ -375,14 +431,21 @@ def line_of(node: yaml.Node) -> int:
 class _Hit:
     path: str
     line: int
-    excerpt: str
+    text: str  # the raw line: redacted only in `evidence`, against every value in the file
+    key: str | None = None
+    raw: str | None = None
     notes: list[str] = field(default_factory=list)
     fingerprint: str | None = None
 
-    def evidence(self) -> Evidence:
-        note = "; ".join(dict.fromkeys(self.notes)) or None
+    def evidence(self, raws: Iterable[str]) -> Evidence:
+        """The hit's evidence, with every credential value found in its file redacted, not
+        only its own: one line can hold several (`{DB_PASS: a, API_TOKEN: b}`)."""
+        raws = list(raws)
+        excerpt = (cut_after(self.text, self.key, self.raw, raws) if self.raw and self.key
+                   else redact_excerpt(self.text, raws))
+        note = "; ".join(dict.fromkeys(redact_excerpt(n, raws) for n in self.notes)) or None
         return Evidence(path=self.path, line_start=self.line, line_end=self.line,
-                        excerpt=self.excerpt or None, note=note, fingerprint=self.fingerprint)
+                        excerpt=excerpt or None, note=note, fingerprint=self.fingerprint)
 
 
 DB_PORTS = {1433, 1521, 2379, 3306, 5432, 5984, 6379, 7474, 7687, 8086, 8123, 8529, 9042,
@@ -453,6 +516,7 @@ class DeploymentExposureScanner:
                              "rules: " + ", ".join(RULES))
         self._ctx = ctx
         self._hits: dict[str, dict[tuple[str, int, str | None], _Hit]] = {r: {} for r in RULES}
+        self._raws: dict[str, set[str]] = {}  # every credential value found, per file
         self._limit_range = False
         enabled = [f for f in FAMILIES if _option(ctx, f)]
         disabled = [f for f in FAMILIES if f not in enabled]
@@ -471,7 +535,13 @@ class DeploymentExposureScanner:
                                                    and K8S_KIND_RE.search(text)):
                     continue
                 seen_any = True
-                ok = getattr(self, f"_{family}")(path, text, text.split("\n"))
+                token = _budget.set([YAML_WORK_BUDGET])
+                try:
+                    ok = getattr(self, f"_{family}")(path, text, text.split("\n"))
+                except (YamlTooComplex, RecursionError):
+                    ok = False
+                finally:
+                    _budget.reset(token)
                 if ok:
                     checked += 1
                 else:
@@ -490,7 +560,8 @@ class DeploymentExposureScanner:
             n = len(unparsable)
             self.notes.append(f"{NAME}: {plural(n, 'file')} could not be parsed and "
                               f"{'was' if n == 1 else 'were'} not checked (a template, such "
-                              f"as a Helm chart, is not plain YAML): {shown}{more}")
+                              f"as a Helm chart, is not plain YAML; nor is YAML nested too "
+                              f"deep or whose aliases expand too far): {shown}{more}")
         if self._limit_range:
             self._hits["k8s_no_limits"] = {}  # a LimitRange gives containers default limits
         return [self._finding(RULES[rid], list(hits.values()))
@@ -499,15 +570,15 @@ class DeploymentExposureScanner:
     def _hit(self, rule: str, path: str, line: int, text: str, note: str | None = None,
              raw: str | None = None, key: str | None = None) -> None:
         fp = fingerprint(raw) if raw else None
+        if raw:
+            self._raws.setdefault(path, set()).add(raw)
         slot = (path, line, fp)
         if slot not in self._hits[rule]:
-            excerpt = (cut_after(text, key, raw) if raw and key
-                       else redact_excerpt(text, [raw] if raw else []))
-            self._hits[rule][slot] = _Hit(path=path, line=line, excerpt=excerpt,
+            self._hits[rule][slot] = _Hit(path=path, line=line, text=text, key=key, raw=raw,
                                           fingerprint=fp)
         hit = self._hits[rule][slot]
         if note:
-            hit.notes.append(redact_excerpt(note, [raw] if raw else []))
+            hit.notes.append(note)
         if fp:
             hit.notes.append(f"fingerprint {fp}")
 
@@ -524,7 +595,8 @@ class DeploymentExposureScanner:
             summary=(f"{rule.what} ({plural(n, 'place')} in {plural(files, 'file')})."
                      f"{redacted}{shown}"),
             impact=rule.impact, remediation=rule.remediation,
-            evidence=[h.evidence() for h in hits[:cap]], source=Source.scanner,
+            evidence=[h.evidence(self._raws.get(h.path, ())) for h in hits[:cap]],
+            source=Source.scanner,
             scanner=NAME,
             tags=[f"group:{rule.id}", f"count:{n}", f"deployment:{rule.family}"],
             **rule_effort(self._ctx, NAME, rule.id))
@@ -643,6 +715,9 @@ class DeploymentExposureScanner:
             return
         if word == "ARG" or "=" in first[0]:
             try:
+                # shlex slows down sharply on long input; an ENV of that size is not real.
+                if len(args) > MAX_SHLEX:
+                    raise ValueError
                 tokens = shlex.split(args, posix=True)
             except ValueError:
                 tokens = args.split()
