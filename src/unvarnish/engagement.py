@@ -145,6 +145,15 @@ class Engagement:
         return self.comparison_dir / "comparison.md"
 
     @property
+    def brief_doc(self) -> Path:
+        """The leadership brief across every tool (UNVAR-99)."""
+        return self.comparison_dir / "brief.md"
+
+    @property
+    def brief_render_state(self) -> Path:
+        return self.comparison_dir / "brief-state.json"
+
+    @property
     def comparison_render_state(self) -> Path:
         return self.comparison_dir / "render-state.json"
 
