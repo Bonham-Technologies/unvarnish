@@ -347,3 +347,62 @@ def test_brief_totals_sum_end_of_life_known_exploited_and_exposure(engagement, s
     assert ("| Known-exploited dependency advisories (CISA KEV) | 1 (1 of 2 tools checked) |"
             in doc)
     assert ctx["prose_facts"]["portfolio_summary"]["end_of_life_runtimes"] == 3
+
+
+# --- review fixes: freshness, the whole pipeline without a model, ties, empty cells ---------
+
+def test_brief_reruns_when_a_tool_artifact_changes(engagement, synthetic_repo):
+    stub = _compare_stub()
+    _two_tools(engagement, synthetic_repo, stub, model_for=("alpha",))
+    run_comparison(engagement, backend=stub)
+    p = engagement.tool_paths("beta").scanner_findings
+    scan = read_artifact(p, ScannerFindings).data
+    scan.findings.append(Finding(
+        tool="beta", category="security", severity="critical", title="Brand new critical",
+        summary="s", impact="i", remediation="r", source="scanner", scanner="hygiene",
+        evidence=[Evidence(path="x.py", line_start=3)]))
+    write_artifact(p, scan, produced_by="scan", inputs_hash="")
+    results = run_comparison(engagement, backend=stub)
+    assert results[2].phase == "render_brief" and results[2].status == PhaseStatus.ok
+    doc = engagement.brief_doc.read_text(encoding="utf-8")
+    assert "| 1 | critical | Brand new critical | `beta` | `x.py:3` |" in doc
+    assert all(r.status == PhaseStatus.skipped for r in run_comparison(engagement, backend=stub))
+
+
+def test_compare_without_a_model_still_writes_the_brief(engagement, synthetic_repo):
+    """Acceptance criterion 5 through the whole engagement pipeline, not the phase alone."""
+    _two_tools(engagement, synthetic_repo, _compare_stub(), model_for=())
+    results = run_comparison(engagement)  # no backend injected, none configured
+    assert [(r.phase, r.status) for r in results] == [
+        ("compare", PhaseStatus.ok), ("render_comparison", PhaseStatus.ok),
+        ("render_brief", PhaseStatus.ok)]
+    assert FALLBACK.format(reason="no model configured") in engagement.brief_doc.read_text(
+        encoding="utf-8")
+
+
+def test_top_findings_order_ignores_artifact_order(engagement, synthetic_repo):
+    from unvarnish.phases.compare import load_tool_inputs
+    from unvarnish.render.brief import build_brief_context
+
+    _two_tools(engagement, synthetic_repo, _compare_stub(), model_for=())
+    alpha, beta = (load_tool_inputs(engagement, t) for t in ("alpha", "beta"))
+    ties = [Finding(tool="alpha", category="security", severity="critical", title=t,
+                    summary="s", impact="i", remediation="r", source="scanner",
+                    scanner="hygiene", evidence=[Evidence(path="same.py", line_start=1)])
+            for t in ("B tie", "A tie")]
+    alpha.scan.findings += ties
+    first = build_brief_context(engagement, [alpha, beta], [])["top"]
+    alpha.scan.findings[-2:] = ties[::-1]
+    second = build_brief_context(engagement, [alpha, beta], [])["top"]
+    assert [t["title"] for t in first[:2]] == ["A tie", "B tie"]
+    assert first == second
+
+
+def test_empty_cells_say_no_findings_not_zero_days():
+    from unvarnish.config import EffortDays
+    from unvarnish.render.brief import days_cell
+
+    days = EffortDays(S=0.5, M=2, L=5, XL=15)
+    assert days_cell({"S": 0, "M": 0, "L": 0, "XL": 0, "none": 0}, days) is None
+    assert days_cell({"S": 0, "M": 0, "L": 0, "XL": 0, "none": 2}, days) == (
+        "0–0 engineer-days; 2 not estimated")

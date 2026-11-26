@@ -1823,6 +1823,11 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   git history only, matching the "Secrets" row of `findings.md`; browser-exposed credentials
   (client_exposure) are a separate row because one value can be counted by both scanners.
   *Cost if wrong:* a reader adds the two rows and over-counts; the rows are labelled apart.
+- **The ten most severe findings in a fixed order:** severity, known exploited and EPSS,
+  scanner before model (as `findings.md`), then the tools' order in `engagement.yaml`,
+  path, line and title, so the same findings always give the same ten whatever order the
+  artifacts list them in. *Cost if wrong:* at equal severity the first-listed tool fills
+  the ten first; the per-tool row still shows every tool's counts.
 - **A measure not checked for every tool is summed over the checked tools and says so**
   ("1 (1 of 2 tools checked)"), never filled in as zero. *Cost if wrong:* none known.
 - **One new prose block, `portfolio_summary`, with no `PROSE_PROMPT_VERSION` bump.** The

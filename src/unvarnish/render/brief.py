@@ -15,7 +15,7 @@ from unvarnish.analysis.comparison import risk_row
 from unvarnish.analysis.effort import (
     NOT_ESTIMATED,
     day_range,
-     effort_counts,
+    effort_counts,
     effort_text,
     fmt_days,
 )
@@ -66,8 +66,9 @@ def action_bucket(severity: Severity, effort: Effort | None) -> str:
 
 
 def days_cell(counts: dict[str, int], days: EffortDays | None) -> str | None:
-    """"2.5–9 engineer-days; 3 not estimated" for a table cell; None without a day mapping."""
-    if days is None:
+    """"2.5–9 engineer-days; 3 not estimated" for a table cell; None without a day mapping or
+    without findings, so the cell falls back to effort_text's "no findings", not "0–0"."""
+    if days is None or not sum(counts.values()):
         return None
     low, high = day_range(counts, days)
     text = f"{fmt_days(low)}–{fmt_days(high)} engineer-days"
@@ -160,7 +161,8 @@ def build_brief_context(eng: Engagement, inputs: list[ToolInputs], not_run: list
 
     pooled.sort(key=lambda t: (SEVERITY_ORDER[t[2].severity], exploit_rank(t[2]),
                                0 if t[2].source == Source.scanner else 1, t[0],
-                               t[2].evidence[0].path, t[2].evidence[0].line_start or 0))
+                               t[2].evidence[0].path, t[2].evidence[0].line_start or 0,
+                               t[2].title))
     top = [{"severity": f.severity.value, "title": f.title, "tool": tool,
             "location": _location(f),
             "effort": f.effort.value if f.effort else "not estimated",

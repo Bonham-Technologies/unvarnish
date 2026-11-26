@@ -444,8 +444,8 @@ report:
 
 All four bands are required and must not shrink from S to XL. The range is an estimate (the
 documents say so): the low end counts each finding at the band below's figure, the high end
-at its own. Setting or changing it reruns `render`, `compare` and `render_comparison`; only
-the consolidation call is repeated. Remove it to drop the day figures; the bands stay.
+at its own. Setting or changing it reruns `render`, `compare`, `render_comparison` and
+`render_brief`; only the consolidation call is repeated. Remove it to drop the day figures; the bands stay.
 
 To change a scanner rule's band, name the rule (shown in each finding's effort note, for
 example `scanner rule hygiene.no_tests`) under the scanner:
@@ -470,7 +470,9 @@ document for leadership that can be handed over without the engineering sections
   advisories, and the effort to fix;
 - one row per tool: severity counts, effort to fix (engineer-days once `report.effort_days`
   is set, bands otherwise), and the trend since the previous review when a tool has a delta;
-- the ten most severe findings across all tools, with tool and location;
+- the ten most severe findings across all tools, with tool and location, in a fixed order:
+  severity, then known exploited and EPSS, scanner findings before model findings, then
+  the tools' order in `engagement.yaml`, path, line and title;
 - an action plan in three buckets.
 
 Every number is counted from each tool's own artifacts (`census.json`,
