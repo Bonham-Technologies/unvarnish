@@ -19,10 +19,10 @@ def test_render_comparison_failures_do_not_accumulate(engagement, synthetic_repo
     bad = _compare_stub(prose=BackendError("400"))
     _two_tools(engagement, synthetic_repo, bad)
     run_comparison(engagement, backend=bad)
-    items = _failures(engagement)
+    items = [f for f in _failures(engagement) if f.phase != "render_brief"]  # UNVAR-99's
     assert len(items) == 2 and all(f.phase == "render_comparison" for f in items)
     run_comparison(engagement, backend=bad, force=True)
-    assert len(_failures(engagement)) == 2  # replaced, not appended
+    assert len(_failures(engagement)) == 3  # replaced, not appended (2 + the brief's one)
     good = _compare_stub()
     run_comparison(engagement, backend=good, force=True)
     assert _failures(engagement) == []  # a later success clears the phase's records
