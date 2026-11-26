@@ -231,28 +231,63 @@ NOT_COLUMNS = {"CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK", "INDEX", "
                "EXCLUDE", "LIKE", "FULLTEXT", "SPATIAL", "PERIOD"}
 COLUMN_NAME_RE = re.compile(r"[\s\"'`\[+]*([A-Za-z_][\w$]*)")
 # Comments, string literals and dollar-quoted bodies are blanked in .sql files; a double-quoted
-# identifier is kept.
-SQL_SKIP_RE = re.compile(r"--[^\n]*|/\*.*?(?:\*/|\Z)|'(?:[^']|'')*'?|\$(\w*)\$.*?(?:\$\1\$|\Z)"
-                         r'|"[^"]*"', re.DOTALL)
+# identifier is kept. A quote inside a string is doubled in standard SQL ('it''s') and
+# escaped with a backslash in MySQL and Postgres E'' strings ('O\'Brien'); a standard string
+# may also end in a backslash ('C:\'). The file is read both ways; a reading that leaves a
+# string open at the end of the file is the wrong one. When neither or both readings close
+# every string, the text is blanked wherever either puts a string: a misread then hides a
+# declaration, never exposes a value.
+_SQL_SKIP = (r"--[^\n]*|/\*.*?(?:\*/|\Z)|{string}"
+             r"|\$(?P<tag>\w*)\$.*?(?:\$(?P=tag)\$|\Z)"
+             r'|"[^"]*"')
+SQL_SKIP_RES = (
+    re.compile(_SQL_SKIP.format(string=r"'(?:[^']|'')*(?P<close>')?"), re.DOTALL),
+    re.compile(_SQL_SKIP.format(string=r"'(?:[^'\\]|''|\\.)*(?P<close>')?"), re.DOTALL),
+)
 
 
 # The rows of a dump: `COPY ... FROM stdin;` up to its `\.` line (or the end of the file), and
 # INSERT statements once strings are blanked. Blanked before anything else, so an apostrophe in
 # a row (O'Brien) cannot shift which parts of the file count as strings.
-COPY_ROWS_RE = re.compile(r"^[ \t]*COPY\b[^;\n]*\bFROM\s+stdin\b.*?(?:^\\\.[ \t]*$|\Z)",
+# psql's `\copy ... from stdin` reads its rows the same way.
+COPY_ROWS_RE = re.compile(r"^[ \t]*\\?COPY\b[^;\n]*\bFROM\s+stdin\b.*?(?:^\\\.[ \t]*$|\Z)",
                           re.IGNORECASE | re.MULTILINE | re.DOTALL)
-INSERT_RE = re.compile(r"\b(?:INSERT|REPLACE)\s+INTO\b[^;]*", re.IGNORECASE)
+# A double-quoted value (MySQL) is opaque, so a `;` in it does not end the statement early.
+INSERT_RE = re.compile(r"\b(?:INSERT|REPLACE)\s+INTO\b(?:[^;\"]|\"[^\"]*(?:\"|\Z))*",
+                       re.IGNORECASE)
 
 
 def _blank_all(match: re.Match[str]) -> str:
     return re.sub(r"[^\n]", " ", match.group(0))
 
 
-def _blank(match: re.Match[str]) -> str:
-    text = match.group(0)
-    if text.startswith('"'):
-        return text
-    return re.sub(r"[^\n]", " ", text)
+def _blank_strings(text: str) -> str:
+    """Comments, strings and dollar-quoted bodies blanked as either reading of quotes finds
+    them (SQL_SKIP_RES); line breaks and double-quoted identifiers are kept."""
+    readings: list[tuple[list[tuple[int, int]], bool]] = []
+    for rx in SQL_SKIP_RES:
+        found, closed = [], True
+        for m in rx.finditer(text):
+            if m.group(0).startswith('"'):
+                continue
+            found.append(m.span())
+            if m.group(0).startswith("'") and m.group("close") is None:
+                closed = False
+        readings.append((found, closed))
+    good = [found for found, closed in readings if closed]
+    chosen = good if len(good) == 1 else [found for found, _ in readings]
+    spans = sorted(span for found in chosen for span in found)
+    out: list[str] = []
+    pos = 0
+    for start, end in spans:
+        if end <= pos:
+            continue
+        if start > pos:
+            out.append(text[pos:start])
+        out.append(re.sub(r"[^\n]", " ", text[max(start, pos):end]))
+        pos = end
+    out.append(text[pos:])
+    return "".join(out)
 
 
 def _unquote(name: str) -> str:
@@ -290,7 +325,7 @@ def _sql_structures(text: str, embedded: bool) -> list[_Struct]:
         code = text
     else:
         code = COPY_ROWS_RE.sub(_blank_all, text)
-        code = INSERT_RE.sub(_blank_all, SQL_SKIP_RE.sub(_blank, code))
+        code = INSERT_RE.sub(_blank_all, _blank_strings(code))
     lines = _Lines(code)
     budget = _Budget(code)
     tables: dict[str, _Struct] = {}
@@ -493,7 +528,7 @@ JS_OPENERS: list[tuple[re.Pattern[str], str, bool, bool, bool]] = [
     (re.compile(rf"\btype\s+({_JS_NAME})(?:\s*<[^=;{{]{{0,{_GAP}}}>)?\s*=\s*\{{"),
      "TypeScript type", False, True, True),
     (re.compile(rf"@Entity\s*\([^)]{{0,{_GAP}}}\)\s*(?:export\s+)?(?:default\s+)?"
-                rf"(?:abstract\s+)?class\s+({_JS_NAME})[^{{]{{0,{_GAP}}}\{{"),
+                rf"(?:abstract\s+)?class\s+({_JS_NAME})(?![\w$])[^{{]{{0,{_GAP}}}\{{"),
      "TypeORM entity", True, False, True),
     (re.compile(rf"{_BINDING}\bnew\s+(?:mongoose\.)?Schema\s*(?:<[^>]{{0,{_GAP}}}>)?"
                 rf"\s*\(\s*\{{"),
@@ -504,12 +539,14 @@ JS_OPENERS: list[tuple[re.Pattern[str], str, bool, bool, bool]] = [
      "Drizzle table", True, False, False),
 ]
 # A property: up to 8 decorators (each `@name` with an optional argument list), up to 4
-# modifiers, then the name and a colon. Each part can match in one way only and has a bounded
-# count, so a failed match costs a bounded scan, never one that doubles per decorator.
+# modifiers, then the name and a colon. Each part can match in one way only: a decorator or a
+# name is never cut short (the lookaheads) and is length-capped, and no two whitespace runs
+# meet, so a failed match costs a bounded scan, never one that doubles per decorator or
+# retries the name at every character it could give back.
 JS_FIELD_RE = re.compile(
-    rf"""\s*(?:@[\w.]+(?:\s*\([^()]{{0,{_GAP}}}\))?\s*){{0,8}}"""
+    rf"""\s*(?:@[\w.]{{1,100}}(?![\w.])(?:\s*\([^()]{{0,{_GAP}}}\))?\s*){{0,8}}"""
     r"""(?:(?:readonly|public|private|protected|declare|static|override)\s+){0,4}"""
-    r"""(?:(["'])([^"'\n]{1,100})\1|([A-Za-z_$][\w$]{0,200}))\s*[?!]?\s*:""")
+    r"""(?:(["'])([^"'\n]{1,100})\1|([A-Za-z_$][\w$]{0,200})(?![\w$]))\s*(?:[?!]\s*)?:""")
 DEFAULT_STORE = {"Mongoose schema": "schema", "Zod schema": "schema"}
 
 

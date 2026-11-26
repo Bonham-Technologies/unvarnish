@@ -1865,15 +1865,21 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   configuration (JSON, YAML, XML, TOML, INI, `.env`, HCL), documents or notebooks, whose
   saved outputs can hold data. In `.sql` files, `COPY ... FROM stdin` rows (to their `\.`
   line) are blanked first, so an apostrophe in a row cannot invert which text counts as a
-  string, then string literals, then `INSERT`/`REPLACE INTO` statements; only `CREATE TABLE`
+  string (psql's `\copy ... from stdin` too), then string literals, then
+  `INSERT`/`REPLACE INTO` statements (a double-quoted value with a `;` does not end one
+  early). String literals are read two ways, standard (`'it''s'`, a string may end in `\`)
+  and backslash-escaped (MySQL, Postgres `E''`: `'O\'Brien'`); a reading that leaves a
+  string open at the end of the file is dropped, and when neither or both close every
+  string, text either reading puts in a string is blanked. Only `CREATE TABLE`
   and `ALTER TABLE ... ADD` are parsed. That keeps the section's "no data values were
   read" sentence true as written. *Cost if wrong:* a schema or migration kept in YAML or
   JSON (Liquibase, Hasura) is not read; the section lists it under "Not analysed".
 - **Hostile input costs linear time (review).** The pass reads code the client wrote, so a
   file must not be able to hang a run: the regular expressions bound the gap between a
   declaration's name and its brace (300 characters) instead of nesting lazy repeats, a
-  property match allows at most 8 decorators and 4 modifiers, each matching one way only,
-  and stops at the body's end, one
+  property match allows at most 8 decorators and 4 modifiers, each matching one way only
+  (a decorator or name is length-capped and never cut short, and no two whitespace runs
+  meet), and stops at the body's end, one
   file's bodies share a budget of four times its length, Python names are read from the
   syntax tree without `ast.unparse`, and a parser error (syntax, recursion or memory limit)
   costs that file alone, listed as not parsed. *Cost if wrong:* a generic or `extends`

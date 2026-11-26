@@ -696,6 +696,24 @@ HOSTILE = {
     "k.ts": "interface A {\n" + "@x(\n)\n" * 6_000,
     "l.ts": "interface A {\n" + "readonly\n" * 20_000,
     "m.js": "new Schema<" * 60_000,
+    # Long decorators: each line retried the name at every give-back point of 8 decorators.
+    "n.ts": ("interface A {\n" + ("@" + "a" * 500 + "\n") * 20) * 8,
+}
+
+# Inputs whose cost must grow linearly with their size: builder of n repetitions, and an n
+# large enough that the timing is not noise. Before the fixes each grew 12x or more from n
+# to 4n.
+GROWTH = {
+    # n = 16: past the per-file scan budget's floor, where overlapping unclosed bodies stop
+    # growing; below it they grow quadratically up to that fixed bound.
+    "decorators": (lambda n: ("interface A {\n" + ("@" + "a" * 500 + "\n") * 20) * n, 16),
+    "space before colon": (lambda n: "interface A {\n x" + " " * n, 50_000),
+    "unclosed interfaces": (lambda n: "interface A {" * n, 4_000),
+    "unclosed tables": (lambda n: "CREATE TABLE a (" * n, 4_000),
+    "typed bindings": (lambda n: ("const a: " + "x" * 50) * n, 2_000),
+    "generic extends": (lambda n: "interface X<a> extends b" + "> extends c" * n, 20_000),
+    "long entity name": (lambda n: "@Entity() class " + "a" * n, 200_000),
+    "mysql strings": (lambda n: "INSERT INTO t VALUES ('O\\'Brien', 'a');\n" * n, 5_000),
 }
 
 
@@ -709,6 +727,55 @@ def test_hostile_input_cannot_hang_the_pass(tmp_path, name):
     start = time.perf_counter()
     _run(tmp_path, {name: HOSTILE[name]})
     assert time.perf_counter() - start < 5
+
+
+@pytest.mark.parametrize("name", sorted(GROWTH))
+def test_hostile_input_costs_linear_time(name):
+    """n and 4n repetitions: linear work grows about 4x, quadratic about 16x. A wall-clock
+    bound on a large input fails on slow CI runners (UNVAR-97); the ratio does not. The best
+    of three timings at each size keeps one stalled measurement from deciding it."""
+    import time
+
+    from unvarnish.scanners import sensitive_data
+
+    build, n = GROWTH[name]
+
+    def cost(size: int) -> float:
+        text = build(size)
+        best = float("inf")
+        for _ in range(3):
+            started = time.perf_counter()
+            sensitive_data._js_structures(text, typescript=True)
+            sensitive_data._sql_structures(text, embedded=False)
+            best = min(best, time.perf_counter() - started)
+        return best
+
+    small, large = cost(n), cost(4 * n)
+    assert large / small < 9, f"n: {small:.3f} s, 4n: {large:.3f} s"
+
+
+def test_long_decorators_cost_about_what_plain_fields_cost():
+    """Linear is not enough: a 500-character decorator per line cost 190 times what the same
+    bytes of plain fields cost, so a 5 MB file took about 20 minutes. Compared with a benign
+    input of the same size, so a slow runner slows both."""
+    import time
+
+    from unvarnish.scanners import sensitive_data
+
+    hostile = ("interface A {\n" + ("@" + "a" * 500 + "\n") * 20) * 4
+    benign = ("interface A {\n" + ("  f" + "a" * 497 + ": string;\n") * 20) * 4
+
+    def cost(text: str) -> float:
+        best = float("inf")
+        for _ in range(3):
+            started = time.perf_counter()
+            sensitive_data._js_structures(text, typescript=True)
+            best = min(best, time.perf_counter() - started)
+        return best
+
+    assert abs(len(hostile) - len(benign)) < len(benign) // 50
+    plain, decorated = cost(benign), cost(hostile)
+    assert decorated / plain < 20, f"plain: {plain:.3f} s, decorated: {decorated:.3f} s"
 
 
 def test_data_files_are_never_opened(tmp_path, monkeypatch):
@@ -735,6 +802,34 @@ def test_data_files_are_never_opened(tmp_path, monkeypatch):
     assert _triples(sd) == {("contact", "User", "email")}
     assert opened == ["schema.prisma"]
     assert sd.files_read == 1
+
+
+@pytest.mark.parametrize("dump, expected", [
+    # MySQL escapes a quote with a backslash: the row must not swallow the next table.
+    ("CREATE TABLE `users` (`id` int, `email` text);\n"
+     "INSERT INTO `users` VALUES (1,'O\\'Brien','ok'),(2,'a','b');\n"
+     "CREATE TABLE `later` (`passport` text, `ssn` text);\n",
+     {("contact", "users", "email"), ("government_id", "later", "passport"),
+      ("government_id", "later", "ssn")}),
+    # ... nor expose a value as a declaration.
+    ("INSERT INTO u VALUES (1,'O\\'Brien','x; CREATE TABLE z (password_hunter2 text)');\n",
+     set()),
+    # A double-quoted MySQL value with a semicolon does not end the INSERT early.
+    ('INSERT INTO u VALUES (1, "x; CREATE TABLE z (password_x text)");\n', set()),
+    # psql's \\copy reads rows from stdin like COPY.
+    ("\\copy k FROM stdin with csv\n1,CREATE TABLE k2 (ssn_y text);\n\\.\n"
+     "CREATE TABLE k (phone text);\n", {("contact", "k", "phone")}),
+    # Standard '' doubling, and a Postgres E'' string, still close where they should.
+    ("CREATE TABLE a (note text DEFAULT 'it''s', email text);\n"
+     "CREATE TABLE b (x text DEFAULT E'O\\'Brien', phone text);\n",
+     {("contact", "a", "email"), ("contact", "b", "phone")}),
+    # A standard string ending in a backslash: read either way, the value stays blank.
+    ("INSERT INTO p VALUES ('C:\\', 'CREATE TABLE z (ssn_v text)');\n"
+     "CREATE TABLE q (email text);\n", {("contact", "q", "email")}),
+])
+def test_sql_strings_in_either_dialect_never_expose_a_value(tmp_path, dump, expected):
+    sd = _run(tmp_path, {"dump.sql": dump})
+    assert _triples(sd) == expected
 
 
 def test_sql_dump_rows_are_skipped(tmp_path):
