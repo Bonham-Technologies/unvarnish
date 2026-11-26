@@ -28,7 +28,8 @@ from unvarnish.schemas.diagrams import DiagramSet
 from unvarnish.schemas.inventory import Dependencies
 
 log = logging.getLogger("unvarnish.export")
-DOC_NAMES = ("architecture", "findings", "requirements", "comparison")
+DOC_NAMES = ("architecture", "findings", "requirements", "comparison", "brief")
+ENGAGEMENT_DOCS = ("comparison", "brief")  # one per engagement, not per tool
 FORMATS = ("docx", "html", "pdf")  # the documents; `--format all` and the default
 DATA_FORMATS = ("sarif", "csv")  # each tool's findings as data; opt-in, no pandoc
 SBOM_FORMATS = ("cyclonedx",)  # each tool's dependencies as an SBOM; opt-in, no pandoc
@@ -112,19 +113,21 @@ def resolve_branding(eng: Engagement, template: Path | None,
 
 
 def _sources(eng: Engagement, docs: Sequence[str], tools: Sequence[str]
-             ) -> list[tuple[str, str, Path, Path]]:
+             ) -> list[tuple[str, str, Path, Path | None]]:
     """(doc, tool, markdown path, diagrams path) for every requested document."""
-    out: list[tuple[str, str, Path, Path]] = []
+    out: list[tuple[str, str, Path, Path | None]] = []
     for tool in tools:
         p = eng.tool_paths(tool)
         for doc in docs:
-            if doc == "comparison":
+            if doc in ENGAGEMENT_DOCS:
                 continue
             md = {"architecture": p.architecture_doc, "findings": p.findings_doc,
                   "requirements": p.requirements_doc}[doc]
             out.append((doc, tool, md, p.diagrams))
     if "comparison" in docs:
         out.append(("comparison", ENGAGEMENT, eng.comparison_doc, eng.comparison_diagrams))
+    if "brief" in docs:  # the brief has no diagrams
+        out.append(("brief", ENGAGEMENT, eng.brief_doc, None))
     return out
 
 
@@ -138,8 +141,8 @@ def _unique(path: Path) -> Path:
     return candidate
 
 
-def _diagrams(path: Path) -> dict[str, Diagram]:
-    if not path.exists():
+def _diagrams(path: Path | None) -> dict[str, Diagram]:
+    if path is None or not path.exists():
         return {}
     try:
         return read_artifact(path, DiagramSet).data.diagrams
@@ -176,9 +179,9 @@ def export_engagement(eng: Engagement, *, formats: Sequence[str], docs: Sequence
             log.debug("%s", reason)
             report.warnings.append(reason)
             pdf_tagged = False
-    # Naming tools exports their documents; the engagement comparison only when asked for.
+    # Naming tools exports their documents; the comparison and the brief only when asked for.
     docs = list(docs or (DOC_NAMES if tools is None else
-                         [d for d in DOC_NAMES if d != "comparison"]))
+                         [d for d in DOC_NAMES if d not in ENGAGEMENT_DOCS]))
     tools = list(tools or eng.tool_names())
     stamp = timestamp or datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     eng.exports_dir.mkdir(parents=True, exist_ok=True)

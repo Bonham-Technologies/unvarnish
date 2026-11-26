@@ -17,8 +17,9 @@ fresh work and resume after a stop. Deterministic scanners (secrets, gitleaks, o
 advisories, hardcoded infrastructure, hygiene, oversized files, bus factor, bulk commits) run
 first; model phases extract each code unit with structured output, roll units up to files and
 the tool, and verify high findings against the cited lines. Engagement phases (`compare`,
-`render_comparison`) build the cross-tool comparison. `ask` answers questions over the
-analysis with cited sources; `export` converts Markdown to DOCX, HTML, and PDF.
+`render_comparison`, `render_brief`) build the cross-tool comparison and the leadership
+brief. `ask` answers questions over the analysis with cited sources; `export` converts
+Markdown to DOCX, HTML, and PDF.
 
 ## Layout
 
