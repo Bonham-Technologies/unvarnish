@@ -334,6 +334,16 @@ def test_osv_date_falls_back_to_the_newest_database(env: FakeEnv):
     assert _rows(report)["OSV databases"]["date"] == "2026-01-02"
 
 
+def test_osv_date_that_is_not_a_real_date_falls_back_instead_of_crashing(env: FakeEnv):
+    """QC on UNVAR-101: a DATE like 2026-02-30 passed the pattern and crashed doctor."""
+    (env.osv_dir / "DATE").write_text("2026-02-30\n", encoding="utf-8")
+    stamp = datetime(2026, 1, 2, 12, tzinfo=UTC).timestamp()
+    for z in env.osv_dir.rglob("all.zip"):
+        os.utime(z, (stamp, stamp))
+    _, report = _doctor()
+    assert _rows(report)["OSV databases"]["date"] == "2026-01-02"
+
+
 def test_osv_database_folder_defaults_to_the_user_cache(monkeypatch: pytest.MonkeyPatch,
                                                          tmp_path: Path):
     monkeypatch.delenv(advisories.LOCAL_DB_ENV, raising=False)

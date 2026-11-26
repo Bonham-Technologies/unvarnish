@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import re
@@ -89,7 +90,13 @@ def database_date(root: Path | None = None) -> str | None:
         date = ((root or local_db_dir()) / "DATE").read_text(encoding="utf-8").strip()
     except OSError:
         return None
-    return date if DATE_RE.fullmatch(date) else None
+    if not DATE_RE.fullmatch(date):
+        return None
+    try:  # the pattern lets 2026-02-30 through
+        datetime.date.fromisoformat(date)
+    except ValueError:
+        return None
+    return date
 
 
 def database_date_note() -> str | None:
