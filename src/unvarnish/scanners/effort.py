@@ -83,6 +83,8 @@ EFFORT_RULES: dict[str, dict[str, tuple[Effort, str]]] = {
         "unbounded_calls": (S, "set a token limit and a timeout on each call"),
         "agent_tools": (M, "narrow each tool's permissions and confirm destructive actions"),
     },
+    # An inventory of field names that suggest sensitive data, never findings (UNVAR-100).
+    "sensitive_data": {},
     "end_of_life": {
         "past": (L, "move to a supported release, retest and update every place it is pinned"),
         "near": (L, "plan the move to a supported release before support ends"),

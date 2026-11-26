@@ -1795,3 +1795,64 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   rules or installing Opengrep rescans; the Opengrep version is not included. No scanner
   text version bump: the new scanner name already changes every scan's inputs hash.
   *Cost if wrong:* an Opengrep upgrade keeps an older scan until `--force`.
+
+## Sensitive data by field name (UNVAR-100)
+
+- **Deterministic name patterns only (owner's choice, option A).** The data inventory in
+  requirements.md is model-written and has no sensitivity classes or map of where data
+  goes. A pass over declared structures (SQL `CREATE TABLE` and `ALTER TABLE ... ADD`, in
+  `.sql` files and in SQL strings in any source file; Django, SQLAlchemy, SQLModel,
+  Pydantic, dataclass, attrs, TypedDict, NamedTuple and MongoEngine classes, read with
+  Python's `ast`; Django and Alembic migrations; Prisma models; TypeScript interfaces and
+  object types, TypeORM entities; Mongoose, Zod and Drizzle schemas) matches each field
+  name against a pattern set. *Cost if wrong:* a name that says nothing (`notes`, `data`)
+  hides what it holds, and a structure declared in another form is not read; the section
+  says both under "Not analysed".
+- **A registered scanner whose output is an inventory, not an analysis step.** The ticket
+  wants it in `unvarnish scanners list` and configured under `scanners.sensitive_data`, and
+  the scan phase already writes a scanner's inventory beside the findings (UNVAR-91's
+  `ScanContext.inventory`). The scan phase now has a table of inventory scanners
+  (`INVENTORIES`: ai_usage, sensitive_data), so `inventory/sensitive-data.json` is one of its
+  outputs, is written with its inputs hash and is deleted when the scanner does not run or
+  fails (the document then says "Not checked"). The scanner returns no findings and has no
+  effort rules: a field holding personal data is not a defect. *Cost if wrong:* if the
+  owner wants findings (say, card numbers stored in the clear), they are a later rule over
+  the same inventory; an analysis step would have needed its own config key and listing.
+- **Words, not substrings.** A name is split into words at `_`, `-`, digits and camelCase
+  humps, and a pattern matches when its words appear next to each other in order (the last
+  one may be plural, and all of them may be joined, so `firstname` matches "first name").
+  `user_agent`, `email_template`, `health_check` and `minor_version` are in the `ignore`
+  list, and a name ending in a descriptive word (`template`, `check`, `label`, `regex`,
+  `format`, `enabled`, ...) is never classified. Bare words that are common outside personal
+  data are left out of the bundled set (`name`, `token`, `child`, `children`, `parent`,
+  `location`, `mobile`, `age`, `health`), and per-class `exclude` lists stop `mac_address`
+  or `server_address` counting as contact details. Only declared structures are read, never
+  variables or function parameters. A name may match more than one class
+  (`billing_address` is payment and contact details). *Cost if wrong:* a `name` or
+  `children` column holding personal data is missed until the consultant adds a pattern.
+- **The pattern set is data in the package and an ordinary scanner option.**
+  `src/unvarnish/scanners/sensitive_data.yaml` is loaded into the default value of
+  `scanners.sensitive_data.patterns`, so engagement.yaml merges into it with the same deep
+  merge as every option (a mapping merges key by key, a list replaces its list), its
+  change reruns the scan through the scan's options hash, and `config check` and the
+  scanner itself reject a malformed override naming the key. `scanners list` shows the
+  number of classes in the option column and the full set in effect below the table, not a
+  dump of the mapping in one cell. *Cost if wrong:* a consultant who wants to drop one term
+  from a bundled class restates that class's terms.
+- **The destinations table is a join, never a trace.** Rows are the tool model's outbound
+  external systems (`outbound` or `both`; inbound systems are not destinations) and the
+  ai_usage scanner's providers. Two columns join them to the stores: the stores declared
+  in a file the destination's code is in (tool model modules, AI service paths), and the
+  tool model's data flows whose target is the destination's name. Without a model the
+  section still renders from the scan, with the AI providers alone and a sentence saying
+  external systems are not included; without a model requirements.md is written only when
+  the scan found a field, so a tool with nothing to report still gets findings.md alone.
+  *Cost if wrong:* a store and a destination in different files show no link even when
+  data flows between them; the table says it is not a trace of which field goes where.
+- **Wording.** The section says field names "suggest" a class, that classification is by
+  name alone, that no data values were read, that it is not a legal or regulatory
+  classification, and what was not analysed (uninformative names, other declaration forms,
+  languages whose structures are not read with their file counts, Python files that could
+  not be parsed, tests unless `include_tests`, and the path from store to destination).
+  This PR waits for the owner's merge because it adds data-protection wording to a client
+  deliverable. *Cost if wrong:* the wording is in `requirements.md.j2`, one template edit.

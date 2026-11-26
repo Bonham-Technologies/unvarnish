@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import copy
+import functools
 import logging
 import os
+from importlib import resources
 from pathlib import Path
 from typing import Any, Literal
 
@@ -10,6 +12,19 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 log = logging.getLogger("unvarnish.config")
+
+
+@functools.cache
+def _bundled_sensitive_patterns() -> dict[str, Any]:
+    text = (resources.files("unvarnish").joinpath("scanners", "sensitive_data.yaml")
+            .read_text(encoding="utf-8"))
+    return yaml.safe_load(text)
+
+
+def bundled_sensitive_patterns() -> dict[str, Any]:
+    """The sensitive_data scanner's bundled pattern set (UNVAR-100), a fresh copy."""
+    return copy.deepcopy(_bundled_sensitive_patterns())
+
 
 DEFAULT_SCANNER_OPTIONS: dict[str, dict[str, Any]] = {
     "oversized_files": {"file_lines": 1500, "function_lines": 150, "html_script_lines": 500},
@@ -32,6 +47,8 @@ DEFAULT_SCANNER_OPTIONS: dict[str, dict[str, Any]] = {
     # Opengrep with a local rules directory only (UNVAR-89); empty: not checked.
     "sast": {"rules": "", "max_evidence": 25},
     "ai_usage": {"max_evidence": 25, "include_tests": False},
+    # Field-name patterns (UNVAR-100): engagement.yaml merges into the bundled set.
+    "sensitive_data": {"patterns": bundled_sensitive_patterns(), "include_tests": False},
 }
 
 
@@ -389,6 +406,14 @@ def scanner_option_problems(scanners: dict[str, Any]) -> list[tuple[str, str]]:
                 dotted = f"scanners.{scanner}.{key}"
                 out.append((dotted, f"{dotted}: expected {what} "
                                     f"(got {shown_value(options[key])})"))
+    options = scanners.get("sensitive_data")
+    if isinstance(options, dict) and "patterns" in options:
+        from unvarnish.scanners.sensitive_data import pattern_problems  # import cycle
+
+        problems = pattern_problems(options["patterns"])
+        if problems:
+            dotted = "scanners.sensitive_data.patterns"
+            out.append((dotted, f"{dotted}: " + "; ".join(problems)))
     return out
 
 

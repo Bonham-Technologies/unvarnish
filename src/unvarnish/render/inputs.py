@@ -15,6 +15,7 @@ from unvarnish.schemas.git import GitStats
 from unvarnish.schemas.inventory import Census, Dependencies, Metrics
 from unvarnish.schemas.rollup import ModulesIndex
 from unvarnish.schemas.scan import ScannerFindings
+from unvarnish.schemas.sensitive_data import SensitiveData
 from unvarnish.schemas.toolmodel import RequirementsInventory, ToolModel
 from unvarnish.schemas.verify import ModelFindings
 
@@ -36,6 +37,8 @@ class RenderInputs:
     model_findings: ModelFindings | None = None
     failures: Failures | None = None
     ai_usage: AIUsage | None = None  # None when the ai_usage scanner did not run (UNVAR-91)
+    # None when the sensitive_data scanner did not run (UNVAR-100)
+    sensitive_data: SensitiveData | None = None
     delta: Delta | None = None  # set by the render phase when there is a baseline (UNVAR-40)
 
 
@@ -65,4 +68,5 @@ def load_render_inputs(ctx: ToolContext) -> RenderInputs:
         model_findings=_optional(p.model_findings, ModelFindings),
         failures=_optional(p.failures, Failures),
         ai_usage=_optional(p.ai_usage, AIUsage),
+        sensitive_data=_optional(p.sensitive_data, SensitiveData),
     )

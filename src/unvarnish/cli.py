@@ -937,11 +937,46 @@ def scanners_list(engagement: Path | None = EngagementOption) -> None:
         err_console.print(f"[red]error:[/red] {escape(str(exc))}", soft_wrap=True)
         raise typer.Exit(code=2) from exc
     table = Table("scanner", "category", "options")
+    names = []
     for s in load_scanners():
+        names.append(s.name)
         opts = cfg.scanners.get(s.name, {})
-        rendered = escape(", ".join(f"{k}={v}" for k, v in opts.items())) or "—"
+        rendered = escape(", ".join(f"{k}={_option_text(s.name, k, v)}"
+                                    for k, v in opts.items())) or "—"
         table.add_row(s.name, str(s.category), rendered)
     console.print(table)
+    patterns = cfg.scanners.get("sensitive_data", {}).get("patterns")
+    if "sensitive_data" in names and isinstance(patterns, dict):
+        _print_sensitive_patterns(patterns)
+
+
+def _option_text(scanner: str, key: str, value: object) -> str:
+    """A scanner option as `scanners list` shows it in its table cell."""
+    if scanner == "sensitive_data" and key == "patterns" and isinstance(value, dict):
+        classes = value.get("classes")
+        n = len(classes) if isinstance(classes, dict) else 0
+        return f"{n} data classes (listed below)"
+    return str(value)
+
+
+def _print_sensitive_patterns(patterns: dict) -> None:
+    """The sensitive_data pattern set in effect (UNVAR-100): bundled, merged with any
+    `scanners.sensitive_data.patterns` override."""
+    def words(value: object) -> str:
+        return ", ".join(str(v) for v in value) if isinstance(value, list) else str(value)
+
+    table = Table("data class", "class label", "field-name patterns", "not counted",
+                  title="sensitive_data patterns")
+    classes = patterns.get("classes")
+    for key, spec in (classes.items() if isinstance(classes, dict) else []):
+        spec = spec if isinstance(spec, dict) else {}
+        table.add_row(escape(str(key)), escape(str(spec.get("label") or key)),
+                      escape(words(spec.get("terms", []))),
+                      escape(words(spec.get("exclude", []))) or "—")
+    console.print(table)
+    console.print(f"Never classified: {escape(words(patterns.get('ignore', [])))}; or a name "
+                  f"ending in: {escape(words(patterns.get('ignore_suffixes', [])))}.",
+                  soft_wrap=True, highlight=False)
 
 
 grammars_app = typer.Typer(help="Tree-sitter grammars for code structure.",

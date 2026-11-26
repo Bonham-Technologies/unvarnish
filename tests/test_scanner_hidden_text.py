@@ -269,7 +269,7 @@ def test_prompts_are_escaped_at_the_shared_structured_call():
 
 def test_scanner_is_registered_and_scans_rerun():
     assert "hidden_text" in [s.name for s in builtin_scanners()]
-    assert SCANNER_TEXT_VERSION == "2026-11-25.1"
+    assert SCANNER_TEXT_VERSION == "2026-11-26.2"
 
 
 # --- criterion 6: extract's prompt payload ----------------------------------------------------
