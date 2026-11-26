@@ -194,8 +194,9 @@ def _option(ctx: ScanContext, key: str) -> Any:
 # --- file selection -----------------------------------------------------------------------------
 
 COMPOSE_NAME_RE = re.compile(r"^(?:docker-)?compose(?:[.-][\w.-]+)?\.ya?ml$")
-K8S_HINT_RE = re.compile(r"(?m)^[ \t]*apiVersion[ \t]*:")
-K8S_KIND_RE = re.compile(r"(?m)^[ \t]*kind[ \t]*:")
+# YAML or JSON (`"apiVersion": ...`); no leading `\s*`, which is quadratic on blank runs.
+K8S_HINT_RE = re.compile(r"(?<![\w-])[\"']?apiVersion[\"']?[ \t]*:")
+K8S_KIND_RE = re.compile(r"(?<![\w-])[\"']?kind[\"']?[ \t]*:")
 SKIPPED_CLASSES = {Classification.binary, Classification.vendored, Classification.docs}
 
 
@@ -275,32 +276,82 @@ NAME_ASSIGN_RE = re.compile(r"(?<![\w.\-])([A-Za-z_][\w.\-]*)[\"']?\s*[:=]\s*(?=
 K8S_ENV_PAIR_RE = re.compile(
     r"(?i)[\"']?name[\"']?\s*:\s*[\"']?([A-Za-z_][\w.\-]*)[\"']?\s*,\s*"
     r"[\"']?value[\"']?\s*:\s*(?=\S)")
-URL_USERINFO_RE = re.compile(r"((?<![\w+.-])[a-z][\w+.-]*://[^:/@\s]+:)([^@\s/]+)(@)", re.I)
-# A URL whose user part alone is a credential (`https://<token>@host`).
-URL_USER_ONLY_RE = re.compile(r"((?<![\w+.-])[a-z][\w+.-]*://)([^:/@\s]+)(@)", re.I)
+# The same entry with the value first: `{value: ..., name: DB_PASSWORD}`.
+K8S_ENV_VALUE_FIRST_RE = re.compile(
+    r"(?i)([\"']?value[\"']?\s*:\s*)(\"[^\"]*\"|'[^']*'|[^,}\]]*)"
+    r"(\s*,\s*[\"']?name[\"']?\s*:\s*[\"']?([A-Za-z_][\w.\-]*))")
+# A command-line flag and its value: `--password hunter2`, `'--password', 'hunter2'`.
+FLAG_RE = re.compile(r"(?<![\w-])--?([A-Za-z][\w\-]*)(?:[\"']?\s*,\s*[\"']?|\s+|=)(?=\S)")
+# A URL's user information, up to the last `@` before the host: `redis://:pw@h`,
+# `postgres://u:p@ss@h`, `https://<token>@h`.
+URL_AUTH_RE = re.compile(r"((?<![\w+.-])[a-z][\w+.-]*://)([^/\s]*)@", re.I)
+# Values this short are replaced only between non-word characters, so a weak password such
+# as `a` or `postgres` does not blank every word that contains it.
+SHORT_RAW = 8
 
 
 def strip_comment(line: str) -> str:
-    """The line without a trailing ` #` or ` //` comment outside quotes: comments are not
-    evidence, and one can hold anything."""
+    """The line without a trailing ` #`, ` //` or ` /*` comment outside quotes: comments are
+    not evidence, and one can hold anything. A `#` straight after a closing quote counts."""
     quote = None
     for i, ch in enumerate(line):
         if quote:
             if ch == quote and line[i - 1] != "\\":
                 quote = None
-        elif ch in "\"'":
+            continue
+        after = i == 0 or line[i - 1].isspace()
+        if ch in "\"'":
             quote = ch
-        elif ch == "#" and (i == 0 or line[i - 1].isspace()):
+        elif ch == "#" and (after or line[i - 1] in "\"'"):
             return line[:i].rstrip()
-        elif ch == "/" and line[i:i + 2] == "//" and (i == 0 or line[i - 1].isspace()):
+        elif ch == "/" and line[i:i + 2] in ("//", "/*") and after:
             return line[:i].rstrip()
     return line
 
 
+def _url_auth(m: re.Match[str]) -> str:
+    user, sep, _ = m.group(2).partition(":")
+    keep = user + sep if sep and user and "@" not in user else ""
+    return f"{m.group(1)}{keep}{REDACTED}@"
+
+
+def url_passwords(text: str) -> Iterator[str]:
+    """The password of each URL in `text` with `user:password@` (user may be empty)."""
+    for m in URL_AUTH_RE.finditer(text):
+        _, sep, pw = m.group(2).partition(":")
+        if sep and pw and "$" not in pw:
+            yield pw
+
+
+def _raw_regex(raw: str) -> re.Pattern[str]:
+    return re.compile(r"(?<![A-Za-z0-9_])" + re.escape(raw) + r"(?![A-Za-z0-9_])")
+
+
+def replace_raws(text: str, raws: Iterable[str]) -> str:
+    """`text` with each value replaced by a marker: a long one wherever it occurs, a short
+    one (under `SHORT_RAW`) where it stands as a whole word."""
+    for raw in sorted({r for r in raws if r}, key=len, reverse=True):
+        marker = f"…[redacted {len(raw)} chars]"
+        if len(raw) >= SHORT_RAW:
+            text = text.replace(raw, marker)
+        elif raw in text:
+            text = _raw_regex(raw).sub(marker, text)
+    return text
+
+
+def raw_survives(text: str, raws: Iterable[str]) -> bool:
+    return any(r in text if len(r) >= SHORT_RAW else r in text and _raw_regex(r).search(text)
+               for r in raws if r)
+
+
 def _mask_named(text: str) -> str:
-    """The text cut after the first secret-named assignment whose value is not already a
-    redaction marker, and after a one-line Kubernetes env entry with a secret name."""
-    for regex in (K8S_ENV_PAIR_RE, NAME_ASSIGN_RE):
+    """The text with the value of a secret-named one-line Kubernetes env entry (either
+    order) masked, then cut after the first secret-named assignment or command-line flag
+    whose value is not already a redaction marker."""
+    text = K8S_ENV_VALUE_FIRST_RE.sub(
+        lambda m: m.group(1) + (REDACTED if is_secret_name(m.group(4)) else m.group(2))
+        + m.group(3), text)
+    for regex in (K8S_ENV_PAIR_RE, NAME_ASSIGN_RE, FLAG_RE):
         for m in regex.finditer(text):
             if is_secret_name(m.group(1)) and not text[m.end():].startswith("…[redacted"):
                 text = text[:m.end()] + REDACTED
@@ -310,30 +361,28 @@ def _mask_named(text: str) -> str:
 
 def redact_excerpt(line: str, raws: Iterable[str] = ()) -> str:
     """A line fit for a report: every known raw value replaced, credentials in URLs and
-    after secret-named keys masked, comments dropped; `[line redacted]` if a raw survives."""
+    after secret-named keys and flags masked, comments dropped; `[line redacted]` if a raw
+    survives."""
     raws = [r for r in raws if r]
-    out = line
-    for raw in sorted(set(raws), key=len, reverse=True):
-        out = out.replace(raw, f"…[redacted {len(raw)} chars]")
-    out = strip_comment(out[:MAX_REDACT_INPUT]).strip()
-    out = URL_USERINFO_RE.sub(lambda m: f"{m.group(1)}{REDACTED}{m.group(3)}", out)
-    out = URL_USER_ONLY_RE.sub(lambda m: f"{m.group(1)}{REDACTED}{m.group(3)}", out)
+    out = strip_comment(replace_raws(line, raws)[:MAX_REDACT_INPUT]).strip()
+    out = URL_AUTH_RE.sub(_url_auth, out)
     out = ASSIGN_SECRET_RE.sub(
         lambda m: m.group(1) + (m.group(2) if m.group(2).startswith("…[redacted")
                                 else REDACTED), out)
     out = redact_text(_mask_named(out))[:MAX_EXCERPT]
-    return "[line redacted]" if any(r in out for r in raws) else out
+    return "[line redacted]" if raw_survives(out, raws) else out
 
 
-def cut_after(line: str, key: str, raw: str, raws: Iterable[str] = ()) -> str:
+def cut_after(line: str, key: str, raw: str | None, raws: Iterable[str] = ()) -> str:
     """The line up to `key` and its separator, then a redaction marker: never the value.
     `raws` are the other values to redact from what comes before the key."""
     i = line.find(key)
     if i < 0:
         return "[line redacted]"
-    m = re.match(r"[\"']?\s*[:= ]\s*[\"']?", line[i + len(key):])
+    m = re.match(r"[\"']?[ \t]*[:=\s][ \t]*[\"']?", line[i + len(key):])
     head = line[:i + len(key)] + (m.group(0) if m else "")
-    return redact_excerpt(head + f"…[redacted {len(raw)} chars]", [raw, *raws])
+    marker = f"…[redacted {len(raw)} chars]" if raw else REDACTED
+    return redact_excerpt(head + marker, [r for r in (raw, *raws) if r])
 
 
 INTERP_RE = re.compile(r"\$\{([A-Za-z_]\w*)(?:(:?[-?+])([^}]*))?\}|\$([A-Za-z_]\w*)")
@@ -441,9 +490,12 @@ class _Hit:
         """The hit's evidence, with every credential value found in its file redacted, not
         only its own: one line can hold several (`{DB_PASS: a, API_TOKEN: b}`)."""
         raws = list(raws)
-        excerpt = (cut_after(self.text, self.key, self.raw, raws) if self.raw and self.key
+        excerpt = (cut_after(self.text, self.key, self.raw, raws) if self.key
                    else redact_excerpt(self.text, raws))
-        note = "; ".join(dict.fromkeys(redact_excerpt(n, raws) for n in self.notes)) or None
+        # Notes are built from names (service, key, container, resource), never values, so
+        # they are not searched for the file's values: a weak password that is also a
+        # service's name (`postgres`) would blank it. They still pass the pattern redactor.
+        note = "; ".join(dict.fromkeys(redact_excerpt(n) for n in self.notes)) or None
         return Evidence(path=self.path, line_start=self.line, line_end=self.line,
                         excerpt=excerpt or None, note=note, fingerprint=self.fingerprint)
 
@@ -475,7 +527,7 @@ def _image_name(image: str) -> str:
 
 
 def _first_port(text: str) -> int | None:
-    m = re.match(r"\s*(\d+)", text)
+    m = re.match(r"\s*(\d{1,6})(?!\d)", text)
     return int(m.group(1)) if m else None
 
 
@@ -670,17 +722,21 @@ class DeploymentExposureScanner:
 
     def _dockerfile(self, path: str, text: str, lines: list[str]) -> bool:
         stages: list[dict[str, Any]] = []
+        aliases: dict[str, dict[str, Any]] = {}  # the latest stage of each `AS` name
         for start, span, instr in _instructions(lines):
-            word, _, args = instr.strip().partition(" ")
-            word, args = word.upper(), args.strip()
+            parts = instr.split(None, 1)  # a tab after the instruction is whitespace too
+            word = parts[0].upper() if parts else ""
+            args = parts[1].strip() if len(parts) > 1 else ""
             if word == "FROM":
                 tokens = [t for t in args.split() if not t.startswith("--")]
                 base = tokens[0] if tokens else ""
                 alias = tokens[2].lower() if len(tokens) >= 3 and tokens[1].lower() == "as" \
                     else None
-                parent = next((s for s in reversed(stages) if s["alias"] == base.lower()), None)
+                parent = aliases.get(base.lower())
                 stages.append({"alias": alias, "base": base, "line": start, "user": None,
                                "parent": parent})
+                if alias:
+                    aliases[alias] = stages[-1]
             elif word == "USER" and stages:
                 stages[-1]["user"] = (args.split()[0] if args else "", start)
             elif word == "ADD":
@@ -726,15 +782,31 @@ class DeploymentExposureScanner:
                 pairs.append((k, v if sep else None))
         else:  # legacy `ENV KEY value with spaces`
             pairs.append((first[0], first[1].strip() if len(first) > 1 else ""))
+        index: dict[str, int] | None = None
+
+        def line_of_key(key: str) -> int:
+            """The first line of the instruction naming `key`, from one pass over it."""
+            nonlocal index
+            if len(span) == 1:
+                return span[0]
+            if index is None:
+                index = {}
+                for i in span:
+                    for name in re.findall(r"[\w.\-]+", lines[i - 1]):
+                        index.setdefault(name, i)
+            return index.get(key, span[0])
+
         for key, value in pairs:
-            n = next((i for i in span if key in lines[i - 1]), span[0])
-            line = lines[n - 1]
             if value is None or "$" in value:
                 if is_secret_name(key):
-                    self._hit("dockerfile_secret_build_arg", path, n, line, f"{word} {key}")
+                    n = line_of_key(key)
+                    # The value (`Pa$$word`, `${X:-fallback}`) may hold a literal: cut it.
+                    self._hit("dockerfile_secret_build_arg", path, n, lines[n - 1],
+                              f"{word} {key}", key=key if value else None)
                 continue
             for kind, raw in _secret_values(key, value, defaults=False):
-                self._hit("dockerfile_secret_literal", path, n, line, f"{word} {key}",
+                n = line_of_key(key)
+                self._hit("dockerfile_secret_literal", path, n, lines[n - 1], f"{word} {key}",
                           raw=raw, key=key if kind == "literal" else None)
 
     def _final_user(self, path: str, lines: list[str], stage: dict[str, Any]) -> None:
@@ -871,10 +943,8 @@ def _secret_values(key: str, value: str, *,
     """("literal" | "default" | "url", raw) for each credential in an environment value: the
     value of a secret-named key, a `${VAR:-fallback}`'s fallback, or a password in a URL."""
     value = value.strip()
-    for m in URL_USERINFO_RE.finditer(value):
-        pw = m.group(2)
-        if "$" not in pw:
-            yield "url", pw
+    for pw in url_passwords(value):
+        yield "url", pw
     if not is_secret_name(key) or not value or value.lower() in SWITCH_VALUES:
         return
     if "$" in value:
@@ -884,7 +954,7 @@ def _secret_values(key: str, value: str, *,
                 if m.group(2) in (":-", "-") and fallback and "$" not in fallback:
                     yield "default", fallback
         return
-    if not URL_USERINFO_RE.search(value):
+    if not any(url_passwords(value)):
         yield "literal", value
 
 
@@ -942,9 +1012,12 @@ class _Block:
     end: int = 0
     attrs: dict[str, tuple[str, int]] = field(default_factory=dict)
     children: list[_Block] = field(default_factory=list)
+    top: bool = True  # not inside another block: only a top-level `resource` is a resource
+    ports: list[str] | None = field(default=None, repr=False)  # `_ports`, computed once
 
     def resource_type(self) -> str:
-        return self.words[1] if self.words[:1] == ["resource"] and len(self.words) > 1 else ""
+        return (self.words[1] if self.top and self.words[:1] == ["resource"]
+                and len(self.words) > 1 else "")
 
     def value(self, key: str) -> str:
         raw = self.attrs.get(key, ("", 0))[0].strip().rstrip(",")
@@ -963,6 +1036,10 @@ class _Expr:
     key: str | None
 
 
+# Blocks that only exist at the top level: one starting in column 0 closes whatever an
+# unbalanced brace left open, so a missing `}` does not nest the rest of the file.
+TOP_LEVEL_BLOCKS = {"resource", "data", "module", "variable", "output"}
+MAX_CHAIN = 64  # blocks and expressions kept around a 0.0.0.0/0 line: the outermost and nearest
 BLOCK_RE = re.compile(r"^\s*([A-Za-z_][\w-]*)((?:\s+(?:\"[^\"]*\"|[A-Za-z_][\w-]*))*)\s*\{")
 ATTR_RE = re.compile(r"^\s*([A-Za-z_][\w-]*)\s*=(?!=)\s*(.*)$")
 
@@ -1023,6 +1100,7 @@ def parse_hcl(lines: list[str]) -> tuple[list[_Block], list[tuple[int, list[_Blo
     blocks: list[_Block] = []
     cidrs: list[tuple[int, list[_Block | _Expr]]] = []
     stack: list[_Block | _Expr] = []
+    open_blocks: list[_Block] = []  # the _Block entries of `stack`, in order
     state: dict[str, Any] = {}
     heredoc: str | None = None
     for number, raw in enumerate(lines, start=1):
@@ -1034,21 +1112,30 @@ def parse_hcl(lines: list[str]) -> tuple[list[_Block], list[tuple[int, list[_Blo
         if not masked.strip():
             continue
         clean = raw[:len(masked)] if len(masked) <= len(raw) else raw
-        if CIDR_ANY_RE.search(clean):
-            cidrs.append((number, list(stack)))
-        rest = masked
         header = BLOCK_RE.match(masked)
         attr = ATTR_RE.match(masked)
+        if (header and not attr and stack and raw[:1].strip()
+                and header.group(1) in TOP_LEVEL_BLOCKS):
+            for b in open_blocks:
+                b.end = b.end or number - 1
+            stack.clear()
+            open_blocks.clear()
+        if CIDR_ANY_RE.search(clean):
+            chain = stack if len(stack) <= MAX_CHAIN else (
+                stack[:MAX_CHAIN // 2] + stack[-(MAX_CHAIN // 2):])
+            cidrs.append((number, list(chain)))
+        rest = masked
         if header and not attr:
             labels = re.findall(r"\"([^\"]*)\"|([A-Za-z_][\w-]*)", BLOCK_RE.match(clean)
                                 .group(2) if BLOCK_RE.match(clean) else "")
             words = [header.group(1)] + [a or b for a, b in labels]
-            block = _Block(words=words, line=number)
-            parent = next((s for s in reversed(stack) if isinstance(s, _Block)), None)
+            parent = open_blocks[-1] if open_blocks else None
+            block = _Block(words=words, line=number, top=parent is None)
             (parent.children if parent else blocks).append(block)
             if parent is not None:
                 blocks.append(block)
             stack.append(block)
+            open_blocks.append(block)
             rest = masked[header.end():]
         elif attr:
             top = stack[-1] if stack else None
@@ -1063,6 +1150,7 @@ def parse_hcl(lines: list[str]) -> tuple[list[_Block], list[tuple[int, list[_Blo
                 top = stack.pop()
                 if isinstance(top, _Block):
                     top.end = number
+                    open_blocks.pop()
         if re.search(r"<<-?\s*([A-Za-z_]\w*)\s*$", masked):
             heredoc = re.search(r"<<-?\s*([A-Za-z_]\w*)\s*$", masked).group(1)
     for b in blocks:
@@ -1086,13 +1174,16 @@ def _resource_label(chain: list[_Block | _Expr]) -> str:
 
 
 def _ports(block: _Block) -> list[str]:
-    """Port attribute values of a block and its children."""
-    out = [block.attrs[k][0] for k in ("from_port", "to_port", "port", "ports",
-                                       "destination_port_range", "destination_port_ranges")
-           if k in block.attrs]
-    for child in block.children:
-        out += _ports(child)
-    return out
+    """Port attribute values of a block and its children (cached: every 0.0.0.0/0 line
+    of a resource asks again)."""
+    if block.ports is None:
+        out = [block.attrs[k][0] for k in ("from_port", "to_port", "port", "ports",
+                                           "destination_port_range", "destination_port_ranges")
+               if k in block.attrs]
+        for child in block.children:
+            out += _ports(child)
+        block.ports = out
+    return block.ports
 
 
 def _web_only(values: list[str]) -> bool:
@@ -1100,8 +1191,8 @@ def _web_only(values: list[str]) -> bool:
     ports: set[int] = set()
     for v in values:
         for m in re.finditer(r"\"?(\d+)(?:-(\d+))?\"?|(var\.|local\.|\*|\")", v):
-            if m.group(3):
-                return False
+            if m.group(3) or len(m.group(1)) > 6 or len(m.group(2) or "") > 6:
+                return False  # a variable, or no port number (int() refuses huge ones)
             lo, hi = int(m.group(1)), int(m.group(2) or m.group(1))
             if hi - lo > 1000:
                 return False

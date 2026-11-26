@@ -1834,13 +1834,27 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
   multi-pair `ENV` can hold several, and the text before one key is another's value. Values
   after any name `is_secret_name` accepts (`DB_PASS`, `AUTH_KEY`), a one-line Kubernetes
   `{name: X_PASSWORD, value: ...}` entry and a URL's user part (`https://<token>@host`) are
-  masked too. *Cost if wrong:* an excerpt shows less than the line.
+  masked too, as are a URL's whole user information up to the last `@` before the host
+  (`redis://:pw@h`, `postgres://u:p@ss@h`), the value of a secret-named command-line flag
+  (`--password x`), a one-line env entry in either order, and `#` (also straight after a
+  closing quote), `//` and `/*` comments. A secret-named `ENV`/`ARG` whose value holds a `$`
+  (`ENV DB_PASSWORD Pa$$word`) is cut after its key like a literal. Values under 8
+  characters are replaced only where they stand as a whole word, so a password `a` does not
+  turn every excerpt into `[line redacted]`. Notes are built from names (service, key,
+  container, resource) and are not searched for the file's values, only by the pattern
+  redactor: a password `postgres` on a service named `postgres` leaves the service's name
+  in the note, while the value stays masked in the excerpt. *Cost if wrong:* an excerpt
+  shows less than the line; a value that is also used as a name appears as that name.
 - **Hostile input is bounded, not trusted.** A line is cut to 800 characters before the
   masking regexes run (after known values are replaced on the whole line); `ENV`/`ARG`
   arguments over 64 KiB are split on whitespace instead of by `shlex`; YAML merge keys read
   each anchor once, and a file whose aliases and merge keys need more than 200,000 node
-  visits is reported as not parsed. *Cost if wrong:* a giant generated manifest is noted as
-  unparsed rather than checked.
+  visits is reported as not parsed. Dockerfile stages are looked up by name and an
+  instruction's lines indexed once. In Terraform, a `resource`, `data`, `module`, `variable`
+  or `output` header in column 0 closes whatever an unbalanced brace left open, only a
+  top-level `resource` block is checked as a resource (so bodies never overlap), and port
+  numbers over six digits are not ports. *Cost if wrong:* a giant generated manifest is
+  noted as unparsed rather than checked; an indented `resource` block is not checked.
 - **What was checked is recorded in the scan artifact (`coverage`, files per family)** so
   architecture.md can say which deployment files were read without reading the source again.
   No scanner text version bump: the new scanner name already changes every scan's inputs

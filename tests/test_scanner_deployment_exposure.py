@@ -961,3 +961,125 @@ def test_architecture_says_not_checked_when_every_family_is_off():
     scan = ScannerFindings(tool="t", scanners_run=[NAME], coverage={NAME: {}})
     assert deployment_exposure(SimpleNamespace(scan=scan)).startswith(
         "Not checked: every file family is turned off")
+
+
+# --- QC fixes: more redaction shapes, linear time on hostile input -----------------------------
+
+def _blob(findings, notes) -> str:
+    return json.dumps([f.model_dump(mode="json") for f in findings]) + "\n".join(notes)
+
+
+def test_legacy_env_with_a_dollar_or_a_tab_is_redacted(tmp_path: Path):
+    s, t, u, v, w = (_rand(x) for x in ("s", "t", "u", "v", "w"))
+    findings, notes = _scan(tmp_path, {"Dockerfile": (
+        "FROM a\nUSER\tapp\n"
+        f"ENV DB_PASSWORD Pa$${s}!\n"
+        f"ENV MYSQL_ROOT_PASSWORD {t}$\n"
+        f'ENV DB_PASSWORD "{u} $x"\n'
+        f"env api_key {v}$\n"
+        f"ENV\tSECRET_TOKEN={w}\n")})
+    rules = _by_rule(findings)
+    assert "dockerfile_root_user" not in rules  # `USER<tab>app` is a user
+    assert "dockerfile_secret_literal" in rules  # `ENV<tab>KEY=value` is an ENV
+    assert len(rules["dockerfile_secret_build_arg"].evidence) == 4
+    assert all("redacted" in e.excerpt for e in rules["dockerfile_secret_build_arg"].evidence)
+    blob = _blob(findings, notes)
+    for raw in (s, t, u, v, w):
+        assert raw not in blob
+
+
+def test_urls_with_an_empty_user_or_an_at_in_the_password(tmp_path: Path):
+    s, t, g = _rand("redis"), _rand("other"), _rand("git")
+    at_tail = _rand("tail")
+    files = {
+        "Dockerfile": f"FROM a\nUSER b\nENV REDIS_URL=redis://:{s}@redis:6379/0 SECRET_KEY={t}\n",
+        "compose.yaml": (
+            "services:\n"
+            f"  a:\n    environment: [\"REDIS_URL=redis://:{s}@redis\", \"SECRET_KEY={t}\"]\n"
+            f"  b: {{ports: ['80:80'], environment: {{K: 'redis://:{s}@h', "
+            f"G: 'https://{g}@github.com/o/r.git'}}}}\n"
+            "  c:\n    environment:\n"
+            f"      CELERY_BROKER_URL: redis://:{s}@redis:6379/1\n"
+            f"      DATABASE_URL: postgres://u:P@{at_tail}@h/db\n"),
+    }
+    findings, notes = _scan(tmp_path, files)
+    rules = _by_rule(findings)
+    where = {e.line_start for e in rules["compose_literal_password"].evidence}
+    assert {_line(files["compose.yaml"], "CELERY"), _line(files["compose.yaml"], "P@")} <= where
+    blob = _blob(findings, notes)
+    for raw in (s, t, g, at_tail):
+        assert raw not in blob
+    assert "[line redacted]" not in blob
+
+
+def test_other_credentials_on_a_flagged_line_are_masked(tmp_path: Path):
+    s, t, u, v = (_rand(x) for x in ("rev", "flag", "block", "hash"))
+    files = {
+        "p.yaml": ("apiVersion: v1\nkind: Pod\nmetadata: {name: p}\nspec:\n  containers:\n"
+                   f"    - {{name: a, image: x, env: [{{value: {s}, name: DB_PASSWORD}}]}}\n"
+                   f"    - {{name: b, image: y, args: ['--password', '{t}']}}\n"),
+        "m.tf": ('resource "aws_security_group_rule" "r" {\n type = "ingress"\n'
+                 f' cidr_blocks = ["0.0.0.0/0"] /* {u} */\n}}\n'),
+        "compose.yaml": f'services:\n  a:\n    ports:\n      - "80:80"# {v}\n',
+    }
+    findings, notes = _scan(tmp_path, files)
+    assert {"k8s_latest_image", "tf_open_ingress", "compose_public_port"} <= set(
+        _by_rule(findings))
+    blob = _blob(findings, notes)
+    for raw in (s, t, u, v):
+        assert raw not in blob
+
+
+def test_short_values_do_not_blank_names_or_whole_lines(tmp_path: Path):
+    compose = ("services:\n  postgres:\n    image: postgres:16\n    ports:\n"
+               '      - "5432:5432"\n    environment:\n'
+               "      POSTGRES_USER: postgres\n      POSTGRES_PASSWORD: postgres\n"
+               "      REDIS_PASSWORD: ${REDIS_PASSWORD:-a}\n")
+    findings, notes = _scan(tmp_path, {"compose.yaml": compose})
+    rules = _by_rule(findings)
+    assert rules["compose_database_port"].evidence[0].note == (
+        "service postgres publishes port 5432 on all interfaces")
+    (secret,) = rules["compose_literal_password"].evidence
+    assert secret.excerpt.startswith("POSTGRES_PASSWORD: …[redacted")
+    assert "service postgres, POSTGRES_PASSWORD" in secret.note
+    (fallback,) = rules["compose_password_default"].evidence
+    assert fallback.excerpt.startswith("REDIS_PASSWORD: ") and "redacted" in fallback.excerpt
+    assert "[line redacted]" not in _blob(findings, notes)
+
+
+def test_json_kubernetes_manifests_are_read(tmp_path: Path):
+    s = _rand("json")
+    manifest = ('{"apiVersion": "v1", "kind": "Pod", "metadata": {"name": "p"}, "spec": '
+                '{"hostNetwork": true, "containers": [{"name": "a", "image": "x:1", "env": '
+                f'[{{"name": "DB_PASSWORD", "value": "{s}"}}]}}]}}}}\n')
+    findings, notes = _scan(tmp_path, {"deploy/pod.yaml": manifest})
+    assert "k8s_host_network" in _by_rule(findings)
+    assert s not in _blob(findings, notes)
+
+
+def test_huge_port_numbers_do_not_fail_the_scanner(tmp_path: Path):
+    findings, _ = _scan(tmp_path, {
+        "compose.yaml": "services:\n  a:\n    ports: ['" + "9" * 5000 + "']\n",
+        "m.tf": ('resource "aws_security_group" "a" {\n ingress {\n  from_port = '
+                 + "9" * 5000 + '\n  cidr_blocks = ["0.0.0.0/0"]\n }\n}\n')})
+    assert {"compose_public_port", "tf_open_ingress"} <= set(_by_rule(findings))
+
+
+def test_unclosed_blocks_and_long_dockerfiles_stay_linear(tmp_path: Path):
+    import time
+
+    files = {
+        "a.tf": 'resource "google_storage_bucket" "a" {\n' * 4000,
+        "b.tf": 'resource "aws_s3_bucket_policy" "a" {\n' * 4000,
+        "Dockerfile": "FROM a\n" * 20000,
+        "env/Dockerfile": ("FROM a\nUSER b\nENV " + " ".join(f"K{i}=v" for i in range(40000))
+                           + "\n"),
+        "cont/Dockerfile": ("FROM a\nUSER b\nENV "
+                            + " \\\n ".join(f"K{i}=v" for i in range(20000)) + "\n"),
+        # Bare continuation lines join into an empty instruction.
+        "bare/Dockerfile": "FROM a\nUSER b\n" + "\\\n" * 20000,
+    }
+    start = time.monotonic()
+    findings, _ = _scan(tmp_path, files)
+    assert time.monotonic() - start < 5
+    assert "dockerfile_root_user" in _by_rule(findings)
