@@ -1852,7 +1852,26 @@ wrong. Process-only choices (branching, review mechanics) are omitted.
 - **Wording.** The section says field names "suggest" a class, that classification is by
   name alone, that no data values were read, that it is not a legal or regulatory
   classification, and what was not analysed (uninformative names, other declaration forms,
-  languages whose structures are not read with their file counts, Python files that could
-  not be parsed, tests unless `include_tests`, and the path from store to destination).
+  languages whose structures are not read with their file counts, files that could not be
+  parsed, tests unless `include_tests`, and the path from store to destination).
   This PR waits for the owner's merge because it adds data-protection wording to a client
   deliverable. *Cost if wrong:* the wording is in `requirements.md.j2`, one template edit.
+- **Data files are never opened (review).** The census counts records and exports (`.csv`,
+  `.jsonl`, `.tsv` and other data extensions, and any text file with no known language) as
+  data; the pass skips them all except `.prisma`, which has no language of its own. That
+  keeps "data files were not opened" true in the section. Only names are recorded from the
+  files that are read (`.sql` included, whose strings are blanked first). *Cost if wrong:*
+  a schema in an unrecognised text format is not read; it is not a data file's job to
+  declare one.
+- **Hostile input costs linear time (review).** The pass reads code the client wrote, so a
+  file must not be able to hang a run: the regular expressions bound the gap between a
+  declaration's name and its brace (300 characters) instead of nesting lazy repeats, one
+  file's bodies share a budget of four times its length, Python names are read from the
+  syntax tree without `ast.unparse`, and a parser error (syntax, recursion or memory limit)
+  costs that file alone, listed as not parsed. *Cost if wrong:* a generic or `extends`
+  clause over 300 characters hides that interface.
+- **No prose without model inputs (review).** With a model configured but no
+  capabilities.json (a budget stop before the tool rollup), requirements.md holds the
+  sensitive data section alone; its prose blocks are not shown there, so the render phase
+  does not ask the model for them. *Cost if wrong:* none; those blocks had no facts to
+  write from.

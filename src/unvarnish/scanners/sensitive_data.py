@@ -29,6 +29,13 @@ NAME = "sensitive_data"
 OPTION = f"scanners.{NAME}.patterns"
 MAX_FILE_BYTES = 5_000_000
 MAX_BODY_CHARS = 200_000  # how far one table or type body is followed
+# Characters one file's table and type bodies may take in all, as a multiple of its length:
+# bodies that never close (or nest without end) would otherwise be followed once per opener,
+# which is quadratic in the file's size.
+SCAN_BUDGET_FACTOR = 4
+# How far a pattern looks between a declaration's name and its opening brace (generics,
+# `extends`, a type annotation), so that a declaration that never opens costs a bounded scan.
+_GAP = 300
 PYTHON_SUFFIXES = {".py", ".pyi"}
 TS_SUFFIXES = {".ts", ".tsx", ".mts", ".cts"}
 JS_SUFFIXES = {".js", ".jsx", ".mjs", ".cjs"}
@@ -166,10 +173,27 @@ class _Struct:
 
 class _Lines:
     def __init__(self, text: str) -> None:
-        self._starts = [i for i, c in enumerate(text) if c == "\n"]
+        self._starts = [m.start() for m in re.finditer("\n", text)]
 
     def line(self, offset: int) -> int:
         return bisect.bisect_left(self._starts, offset) + 1
+
+
+class _Budget:
+    """The characters left for following one file's bodies (SCAN_BUDGET_FACTOR)."""
+
+    def __init__(self, text: str) -> None:
+        self.left = SCAN_BUDGET_FACTOR * len(text) + MAX_BODY_CHARS
+        self.spent = False
+
+    def end(self, text: str, start: int) -> int:
+        """Where a body that opens at `start` stops being followed."""
+        return min(len(text), start + MAX_BODY_CHARS, start + max(self.left, 0))
+
+    def take(self, start: int, stop: int) -> None:
+        self.left -= stop - start
+        if self.left <= 0:
+            self.spent = True
 
 
 # SQL ---------------------------------------------------------------------------------------
@@ -210,15 +234,15 @@ def _unquote(name: str) -> str:
     return part.strip('"`[]')
 
 
-def _sql_columns(text: str, start: int) -> list[tuple[str, int]]:
+def _sql_columns(text: str, start: int, budget: _Budget) -> list[tuple[str, int]]:
     """Column names and offsets in the parenthesised list that opens at `start`."""
     out: list[tuple[str, int]] = []
     depth, i, seg = 1, start + 1, start + 1
-    end = min(len(text), start + MAX_BODY_CHARS)
+    end = budget.end(text, start)
     while i < end and depth:
         c = text[i]
         if c in "\"'`":
-            close = text.find(c, i + 1)
+            close = text.find(c, i + 1, end)
             i = end if close < 0 else close + 1
             continue
         if c == "(":
@@ -231,12 +255,14 @@ def _sql_columns(text: str, start: int) -> list[tuple[str, int]]:
                 out.append((m.group(1), m.start(1)))
             seg = i + 1
         i += 1
+    budget.take(start, i)
     return out
 
 
 def _sql_structures(text: str, embedded: bool) -> list[_Struct]:
     code = text if embedded else SQL_SKIP_RE.sub(_blank, text)
     lines = _Lines(code)
+    budget = _Budget(code)
     tables: dict[str, _Struct] = {}
 
     def table(name: str) -> _Struct:
@@ -244,8 +270,10 @@ def _sql_structures(text: str, embedded: bool) -> list[_Struct]:
         return tables.setdefault(store.lower(), _Struct(store, "SQL table", True))
 
     for m in CREATE_RE.finditer(code):
+        if budget.spent:
+            break
         t = table(m.group(1))
-        t.fields += [(n, lines.line(o)) for n, o in _sql_columns(code, m.end() - 1)]
+        t.fields += [(n, lines.line(o)) for n, o in _sql_columns(code, m.end() - 1, budget)]
     for m in (ALTER_EMBEDDED_RE if embedded else ALTER_SQL_RE).finditer(code):
         for add in ADD_RE.finditer(m.group(2)):
             name = add.group(1).strip('"`[]')
@@ -258,14 +286,18 @@ def _sql_structures(text: str, embedded: bool) -> list[_Struct]:
 # Python ------------------------------------------------------------------------------------
 
 def _dotted(node: ast.expr) -> str:
+    """`a.b.c` for a name, attribute chain, call or subscript of one; a part that is not a
+    name (a call in a chain, say) is `?`. Iterative, so a long method chain is linear."""
     if isinstance(node, ast.Call):
         node = node.func
     if isinstance(node, ast.Subscript):
         node = node.value
-    try:
-        return ast.unparse(node)
-    except Exception:  # pragma: no cover - ast.unparse handles every expression
-        return ""
+    parts: list[str] = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    parts.append(node.id if isinstance(node, ast.Name) else "?")
+    return ".".join(reversed(parts))
 
 
 def _str(node: ast.AST | None) -> str | None:
@@ -345,7 +377,7 @@ def _columns(nodes: list[ast.expr]) -> list[tuple[str, int]]:
 def _python_structures(text: str) -> list[_Struct] | None:
     try:
         tree = ast.parse(text)
-    except (SyntaxError, ValueError):
+    except (SyntaxError, ValueError, RecursionError, MemoryError):  # too deep: CPython's limits
         return None
     django = "django" in text
     sqla_bases = {t.id for n in ast.walk(tree) if isinstance(n, ast.Assign)
@@ -423,15 +455,15 @@ def _prisma_structures(text: str) -> list[_Struct]:
 JS_SKIP_RE = re.compile(r"//[^\n]*|/\*.*?(?:\*/|\Z)|\"(?:\\.|[^\"\\\n])*\"?"
                         r"|'(?:\\.|[^'\\\n])*'?|`(?:\\.|[^`\\])*`?", re.DOTALL)
 _JS_NAME = r"[A-Za-z_$][\w$]*"
-_BINDING = rf"(?:(?:const|let|var)\s+({_JS_NAME})\s*(?::[^=\n]+)?=\s*)?"
+_BINDING = rf"(?:(?:const|let|var)\s+({_JS_NAME})\s*(?::[^=\n]{{1,{_GAP}}})?=\s*)?"
 # (pattern, kind, persistent, nested fields count, TypeScript only)
 JS_OPENERS: list[tuple[re.Pattern[str], str, bool, bool, bool]] = [
-    (re.compile(rf"\binterface\s+({_JS_NAME})(?:\s*<[^{{]*?>)?(?:\s+extends\s+[^{{]+?)?\s*\{{"),
+    (re.compile(rf"\binterface\s+({_JS_NAME})(?![\w$])[^{{;]{{0,{_GAP}}}\{{"),
      "TypeScript interface", False, True, True),
-    (re.compile(rf"\btype\s+({_JS_NAME})(?:\s*<[^=]*?>)?\s*=\s*\{{"),
+    (re.compile(rf"\btype\s+({_JS_NAME})(?:\s*<[^=;{{]{{0,{_GAP}}}>)?\s*=\s*\{{"),
      "TypeScript type", False, True, True),
-    (re.compile(rf"@Entity\s*\([^)]*\)\s*(?:export\s+)?(?:default\s+)?(?:abstract\s+)?"
-                rf"class\s+({_JS_NAME})[^{{]*\{{"),
+    (re.compile(rf"@Entity\s*\([^)]{{0,{_GAP}}}\)\s*(?:export\s+)?(?:default\s+)?"
+                rf"(?:abstract\s+)?class\s+({_JS_NAME})[^{{]{{0,{_GAP}}}\{{"),
      "TypeORM entity", True, False, True),
     (re.compile(rf"{_BINDING}\bnew\s+(?:mongoose\.)?Schema\s*(?:<[^>]*>)?\s*\(\s*\{{"),
      "Mongoose schema", True, False, False),
@@ -454,12 +486,12 @@ def _js_skip(match: re.Match[str]) -> str:
     return text
 
 
-def _js_fields(code: str, start: int, nested: bool) -> list[tuple[str, int]]:
+def _js_fields(code: str, start: int, nested: bool, budget: _Budget) -> list[tuple[str, int]]:
     """Property names and offsets in the object body that opens at `start`."""
     out: list[tuple[str, int]] = []
     depth = paren = bracket = 0
     seg = False
-    i, end = start, min(len(code), start + MAX_BODY_CHARS)
+    i, end = start, budget.end(code, start)
     while i < end:
         c = code[i]
         if seg and not c.isspace():
@@ -493,19 +525,24 @@ def _js_fields(code: str, start: int, nested: bool) -> list[tuple[str, int]]:
         elif c in ";,\n":
             seg = True
         i += 1
+    budget.take(start, min(i, end))
     return out
 
 
 def _js_structures(text: str, typescript: bool) -> list[_Struct]:
     code = JS_SKIP_RE.sub(_js_skip, text)
     lines = _Lines(code)
+    budget = _Budget(code)
     found: list[tuple[int, _Struct]] = []
     for pattern, kind, persistent, nested, ts_only in JS_OPENERS:
         if ts_only and not typescript:
             continue
         for m in pattern.finditer(code):
+            if budget.spent:
+                break
             store = m.group(1) or DEFAULT_STORE.get(kind, kind)
-            fields = [(n, lines.line(o)) for n, o in _js_fields(code, m.end() - 1, nested)]
+            fields = [(n, lines.line(o))
+                      for n, o in _js_fields(code, m.end() - 1, nested, budget)]
             found.append((m.start(), _Struct(store, kind, persistent, fields)))
     return [s for _, s in sorted(found, key=lambda x: x[0])]
 
@@ -530,9 +567,18 @@ class SensitiveDataScanner:
         for rec in ctx.census.files:
             if rec.excluded or rec.classification not in classes or rec.bytes > MAX_FILE_BYTES:
                 continue
+            # Data files are records and exports, never opened; a Prisma schema has no
+            # language of its own, so the census counts it as data.
+            if rec.classification == Classification.data \
+                    and Path(rec.path).suffix.lower() != ".prisma":
+                continue
             if rec.classification == Classification.source and rec.language in UNREAD_LANGUAGES:
                 not_read[rec.language] = not_read.get(rec.language, 0) + 1
-            structs = self._structures(ctx.source_root, rec.path, out)
+            try:
+                structs = self._structures(ctx.source_root, rec.path, out)
+            except Exception:  # a parser broken by one file costs that file, not the pass
+                out.unparsed.append(rec.path)
+                continue
             if structs is None:
                 continue
             out.files_read += 1

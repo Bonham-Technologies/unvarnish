@@ -16,7 +16,10 @@ Every gap accepted at a slice's final review was addressed in the known-issues b
   `__tablename__`). A TypeScript body is followed by counting brackets outside strings, so
   a bracket in a regular expression inside a type body can end it early. The destinations
   table joins stores to destinations by file and by the tool model's data-flow names, not
-  by tracing the code.
+  by tracing the code. One file's table and type bodies are followed for at most four times
+  the file's length in all (bodies that never close), and a declaration's name and its
+  opening brace may be at most 300 characters apart (generics, `extends`), so a file built
+  to defeat the parser is read in part without saying so.
 - [UNVAR-91] The `ai_usage` checks follow data within one file, by assignment: request input
   passed through a function parameter, or a prompt built in one file and sent from another,
   is missed (a FastAPI or Gradio handler's parameters are not request input to it). A value

@@ -8,7 +8,7 @@ Field names suggest the tool holds {{ sensitive.classes | plural("class", "class
 Field names suggest none of the sensitive data classes: no field of the tables, models and types read ({{ sensitive.structures | fmt_int }}) matched the pattern set.
 {% endif %}
 
-Classification is by name alone: the names of columns, model fields and typed-structure properties in SQL, ORM models, migrations, schemas and type definitions were matched against {{ "the bundled pattern set with this engagement's changes" if sensitive.overridden else "the bundled pattern set" }} (`unvarnish scanners list` shows it). No data values were read: no database, export or record was opened, and no value written in the code was recorded. A name can mislead either way (a `notes` column can hold health data; an `ssn` column can be empty), so confirm each class with the people who own the data. This is an inventory to start that conversation, not a legal or regulatory classification.
+Classification is by name alone: the names of columns, model fields and typed-structure properties in SQL, ORM models, migrations, schemas and type definitions were matched against {{ "the bundled pattern set with this engagement's changes" if sensitive.overridden else "the bundled pattern set" }} (`unvarnish scanners list` shows it). No data values were read: no database was queried, data files (exports, spreadsheets, database files) were not opened, and only names were recorded, never a value written in the code. A name can mislead either way (a `notes` column can hold health data; an `ssn` column can be empty), so confirm each class with the people who own the data. This is an inventory to start that conversation, not a legal or regulatory classification.
 {% if sensitive.rows %}
 
 | Data class | Field names | Where declared | Evidence |
@@ -52,7 +52,7 @@ AI model providers are not included because the ai_usage scanner did not run for
 - Source files in languages whose structures this pass does not read (SQL in their strings was read): {% for lang, n in sensitive.not_read.items() %}{{ lang }} {{ n | fmt_int }}{{ "; " if not loop.last }}{% endfor %}.
 {% endif %}
 {% if sensitive.unparsed %}
-- {{ sensitive.unparsed | length | plural("Python file") }} that could not be parsed: {% for p in sensitive.unparsed | cap(10) %}`{{ p }}`{{ ", " if not loop.last }}{% endfor %}{% if sensitive.unparsed | length > 10 %}, and {{ sensitive.unparsed | length - 10 }} more{% endif %}.
+- {{ sensitive.unparsed | length | plural("file") }} that could not be parsed: {% for p in sensitive.unparsed | cap(10) %}`{{ p }}`{{ ", " if not loop.last }}{% endfor %}{% if sensitive.unparsed | length > 10 %}, and {{ sensitive.unparsed | length - 10 }} more{% endif %}.
 {% endif %}
 - Test code, unless `scanners.sensitive_data.include_tests` is set, and vendored, generated and excluded files.
 - Which fields reach which destination: the code paths between stores and destinations were not traced.
@@ -148,9 +148,10 @@ Raised directly by the analysis:
 {% endif %}
 {% endif %}
 {% else %}
-> No model was configured, so this document holds only the sensitive data section, which comes
-> from field names alone. The actors, capabilities, data inventory, business rules and open
-> questions need a model-assisted run.
+> No model analysis is available for this tool (no model was configured, or the model phases
+> did not finish), so this document holds only the sensitive data section, which comes from
+> field names alone. The actors, capabilities, data inventory, business rules and open questions
+> need a completed model-assisted run.
 
 ## Sensitive data
 

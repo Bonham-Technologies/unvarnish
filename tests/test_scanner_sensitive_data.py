@@ -532,7 +532,7 @@ def test_without_a_model_requirements_md_renders_the_section(engagement):
     assert ctx.paths.requirements_doc in RenderPhase().outputs(ctx)
     doc = ctx.paths.requirements_doc.read_text(encoding="utf-8")
     assert doc.startswith("# app: Requirements Inventory")
-    assert "No model was configured" in doc
+    assert "no model was configured" in doc
     assert "## 1. Actors" not in doc and "PROSE" not in doc
     section = _section(doc)
     # criterion 3: name-based, no values read, what was not analysed; never a legal conclusion
@@ -675,3 +675,79 @@ def test_large_and_unreadable_files_are_skipped(tmp_path, monkeypatch):
     monkeypatch.setattr(sensitive_data, "MAX_FILE_BYTES", 5)
     SensitiveDataScanner().run(ctx)
     assert ctx.inventory.fields == []
+
+
+# --- review fixes: hostile input, data files, one bad file, no wasted prose ------------------
+
+HOSTILE = {
+    "a.ts": "interface X<a> extends b" + "> extends c" * 20_000,
+    "b.ts": "type X<" * 20_000,
+    "c.ts": "@Entity() class X " * 20_000,
+    "d.ts": "interface A {" * 20_000,
+    "e.js": ("const a: " + "x" * 50) * 5_000,
+    "f.sql": "CREATE TABLE a (" * 20_000,
+    "g.py": "x = '''CREATE TABLE a (''' + '''CREATE TABLE a (''' * 1\n" + "# CREATE TABLE a (\n"
+            * 20_000,
+    "h.py": "x = a" + ".b()" * 5_000 + "\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(HOSTILE))
+def test_hostile_input_cannot_hang_the_pass(tmp_path, name):
+    """Unclosed bodies, unterminated generics and long lines are linear, not quadratic:
+    each of these took from seconds to minutes before the per-file scan budget and the
+    bounded patterns."""
+    import time
+
+    start = time.perf_counter()
+    _run(tmp_path, {name: HOSTILE[name]})
+    assert time.perf_counter() - start < 5
+
+
+def test_data_files_are_never_opened(tmp_path):
+    """Exports and records (CSV, JSON Lines, ...) are data, not declarations: the section
+    says no data file was opened, so none is."""
+    sd = _run(tmp_path, {"export.csv": "note\nCREATE TABLE leak (ssn text);\n",
+                         "rows.jsonl": '{"q": "CREATE TABLE leak2 (email text)"}\n',
+                         "schema.prisma": "model User {\n  email String\n}\n"})
+    assert _triples(sd) == {("contact", "User", "email")}
+    assert sd.files_read == 1
+
+
+def test_a_file_that_breaks_a_parser_costs_that_file_alone(tmp_path, monkeypatch):
+    from unvarnish.scanners import sensitive_data
+
+    def boom(text):
+        raise RecursionError("deep")
+
+    monkeypatch.setattr(sensitive_data, "_prisma_structures", boom)
+    sd = _run(tmp_path, {"schema.prisma": "model U {\n  email String\n}\n",
+                         "a.sql": "CREATE TABLE t (phone text);\n"})
+    assert _triples(sd) == {("contact", "t", "phone")}
+    assert sd.unparsed == ["schema.prisma"]
+
+
+@pytest.mark.parametrize("source", ["x = " + "-" * 200_000 + "1\n",  # MemoryError
+                                    "x = a" + ".b" * 300_000 + "\n"])  # RecursionError
+def test_python_too_deep_to_parse_is_unparsed(tmp_path, source):
+    sd = _run(tmp_path, {"deep.py": source, "a.sql": "CREATE TABLE t (phone text);\n"})
+    assert _triples(sd) == {("contact", "t", "phone")}
+    assert sd.unparsed == ["deep.py"]
+
+
+def test_a_model_without_capabilities_asks_for_no_requirements_prose(engagement):
+    """A model is configured but its phases did not produce capabilities.json (a budget stop):
+    requirements.md holds the sensitive data section alone, and its prose blocks, which that
+    page never shows, are not requested."""
+    from tests.stub_backend import StubBackend
+    from unvarnish.phases.render import RenderPhase
+    from unvarnish.render.markdown import prose_block_names
+
+    ctx = _engagement_run(engagement, "app", APP_FILES, _scan_phases())
+    stub = StubBackend(default="Prose.")
+    assert RenderPhase(backend=stub).run(ctx).status == PhaseStatus.ok
+    doc = ctx.paths.requirements_doc.read_text(encoding="utf-8")
+    assert "No model was configured" not in doc
+    assert "holds only the sensitive data section" in doc
+    env = RenderPhase()._env(ctx)
+    assert stub.count("prose") == len(prose_block_names(env, "findings.md.j2"))

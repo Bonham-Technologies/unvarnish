@@ -178,7 +178,8 @@ class RenderPhase:
                 continue
             try:
                 context = builder(ctx, inp)
-                names = prose_block_names(env, template)
+                # A document built without its model inputs shows no prose (UNVAR-100).
+                names = [] if context.get("no_prose") else prose_block_names(env, template)
                 prepared[template] = (context, {n: context["prose_facts"].get(n, {})
                                                 for n in names})
             except BackendUnavailable:

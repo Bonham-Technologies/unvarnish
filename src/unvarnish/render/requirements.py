@@ -96,9 +96,10 @@ def build_requirements_context(ctx: ToolContext, inp: RenderInputs) -> dict:
     base = {"tool": ctx.meta, "client": ctx.config.client, "consultant": ctx.config.consultant,
             "generated_at": generated_at(), "req": req, "analysis_mode": analysis_mode(inp),
             "sensitive": sensitive_context(inp), "diagrams": {}}
-    if req is None:  # no model: the sensitive data section alone (UNVAR-100)
+    if req is None:  # no model analysis: the sensitive data section alone (UNVAR-100)
         assert inp.sensitive_data is not None, "requirements.md needs capabilities.json"
-        return {**base, "prose_facts": {}}
+        # That page shows none of the template's prose blocks: never ask a model for them.
+        return {**base, "prose_facts": {}, "no_prose": True}
     caps = sorted(req.capabilities,
                   key=lambda c: (c.actor.lower(), c.action.lower(), c.object.lower()))
     labels = {c.id: capability_label(c.actor, c.action, c.object) for c in caps}
