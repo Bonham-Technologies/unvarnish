@@ -271,3 +271,11 @@ def test_stylesheet_carries_both_themes_and_the_parent_action_colour():
     for rel in PAGES:
         text = (SITE / rel).read_text(encoding="utf-8")
         assert 'media="(prefers-color-scheme: dark)"' in text, f"{rel}: no Night theme-color"
+
+
+def test_the_home_page_names_this_weeks_features():
+    """UNVAR-118: the leadership brief, the CycloneDX SBOM, KEV and EPSS exploit data, the
+    AI-usage record and hidden-text detection are named on the home page."""
+    html = (SITE / "index.html").read_text(encoding="utf-8")
+    for term in ("leadership brief", "CycloneDX", "KEV", "EPSS", "ai_usage", "hidden_text"):
+        assert term in html, term

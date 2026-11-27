@@ -125,7 +125,7 @@
                     <thead><tr><th scope="col">Scanner</th><th scope="col">Finds</th></tr></thead>
                     <tbody>
                         <tr><td><code>secrets</code></td><td>Keys, tokens, passwords, connection strings and private keys, in the working tree and the full git history, plus gitleaks results when it is installed. Always redacted.</td></tr>
-                        <tr><td><code>dependencies</code></td><td>Published advisories through osv-scanner (offline by default), and unpinned dependencies without a lockfile.</td></tr>
+                        <tr><td><code>dependencies</code></td><td>Published advisories through osv-scanner (offline by default), and unpinned dependencies without a lockfile. With the offline exploit data from <code>unvarnish vulndata refresh</code>, advisories known to be exploited (CISA KEV) are raised to critical and ordered by EPSS.</td></tr>
                         <tr><td><code>hardcoded_infra</code></td><td>URLs, internal hostnames, IP addresses, absolute paths and emails, with credentials masked.</td></tr>
                         <tr><td><code>oversized_files</code></td><td>Files and functions over size thresholds, and large inline scripts in HTML.</td></tr>
                         <tr><td><code>hygiene</code></td><td>Missing tests, CI, README, licence or linter config; TODO density; swallowed errors.</td></tr>
@@ -177,7 +177,8 @@
                     <span class="step-text">Architecture, findings and requirements documents,
                     with diagrams, exportable to Word, HTML and PDF in your own branding.
                     Findings also export to SARIF for GitHub code scanning and to CSV for a
-                    Jira import.</span></li>
+                    Jira import, and each tool's inventory to a CycloneDX SBOM, written offline
+                    (licences are listed only when the scan ran online).</span></li>
             </ol>
             <div class="grid three after-steps">
                 <article class="card">
@@ -185,7 +186,9 @@
                     <p><code>unvarnish compare</code> groups every tool's capabilities into one
                         matrix, maps their shared data and integrations, compares their risk, and
                         proposes a consolidation, listing every place it conflicts with the
-                        constraints you give it.</p>
+                        constraints you give it. It also writes a leadership brief: portfolio
+                        totals, one line per tool, the ten most severe findings and an action
+                        plan, every number counted from the results.</p>
                 </article>
                 <article class="card">
                     <h3>Ask</h3>
