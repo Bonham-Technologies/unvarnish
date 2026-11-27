@@ -1,0 +1,1 @@
+- Tagged releases now publish the wheel and sdist with the repository SBOM, `SHA256SUMS` and a build provenance attestation for each file, from a tag that names the package version on a main commit whose CI passed; the notes are the version's changelog section. (UNVAR-124)
