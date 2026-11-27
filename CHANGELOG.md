@@ -6,7 +6,13 @@ along the way are in [docs/decisions.md](docs/decisions.md); accepted minor gaps
 [docs/known-issues.md](docs/known-issues.md); operating lessons are in
 [docs/operations.md](docs/operations.md).
 
-## [Unreleased] — 0.1.1
+## Unreleased
+
+## [0.1.1] — 2026-11-27
+
+### A leadership brief across every tool
+
+- `unvarnish compare` writes `comparison/brief.md`, a leadership brief across every tool (portfolio totals, one line per tool, the ten most severe findings, an action plan in three buckets from severity and effort band), exported with `export --doc brief`. (UNVAR-99)
 
 ### Batch mode for verify and prose
 
