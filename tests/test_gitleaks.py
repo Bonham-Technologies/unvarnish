@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import shutil
 import stat
@@ -193,3 +194,16 @@ def test_real_gitleaks_ignores_a_gitleaksignore_in_the_working_directory(tmp_pat
     # The scanned tree's own .gitleaksignore still applies (the suppression finding names it).
     (repo / ".gitleaksignore").write_text("\n".join(fingerprints) + "\n", encoding="utf-8")
     assert run_gitleaks(repo, history=True) == ([], [], None)
+
+
+def test_opt_out_log_says_built_in_rules_still_ran(engagement, synthetic_repo, monkeypatch,
+                                                   caplog):
+    # UNVAR-121: "secrets: disabled" read as if the whole secrets scanner was off
+    monkeypatch.setenv("UNVARNISH_DISABLE_GITLEAKS", "1")
+    with caplog.at_level(logging.INFO, logger="unvarnish"):
+        _, after = _scan(engagement, synthetic_repo, monkeypatch, None,
+                         {"keys.py": f'AWS_ACCESS_KEY_ID = "{LEAKED_KEY}"\n'})
+    assert after
+    assert ("secrets: gitleaks disabled by UNVARNISH_DISABLE_GITLEAKS; built-in rules still ran"
+            in caplog.messages)
+    assert "secrets: disabled by UNVARNISH_DISABLE_GITLEAKS" not in caplog.messages
