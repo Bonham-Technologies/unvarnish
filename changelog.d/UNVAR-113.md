@@ -1,0 +1,1 @@
+- A damaged exploit-data bundle (a valid gzip header over a corrupted body) no longer stops `run` with a traceback; it costs one "exploit data bundle unreadable" note like any other unreadable bundle. (UNVAR-113)

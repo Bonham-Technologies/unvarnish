@@ -577,3 +577,34 @@ def test_kev_join_reads_aliases_of_a_report_without_groups(tmp_path: Path):
     out, _, _ = vulndata.annotate(advisories, _bundle(tmp_path / "data"))
     assert out[0]["kev"] is True and out[0]["severity"] == "critical"
     assert out[0]["epss"] == 0.94358
+
+
+def test_damaged_bundle_body_is_one_note_not_a_crash(tmp_path: Path):
+    # UNVAR-113: a valid gzip header over a damaged body raised zlib.error out of `run`
+    path = _bundle(tmp_path)
+    data = bytearray(path.read_bytes())
+    for i in range(12, 41):
+        data[i] ^= 0xFF
+    path.write_bytes(bytes(data))
+    bundle, why = vulndata.load_bundle(path)
+    assert bundle is None and why.startswith("exploit data bundle unreadable (")
+    advisories, dated, note = vulndata.annotate(_advisories(), path)
+    assert advisories == ADVISORIES and dated is None and "unreadable" in note
+    _, scanner = _scan(_deps(path))
+    assert len(scanner.notes) == 1 and "unreadable" in scanner.notes[0]
+
+
+def test_damaged_scores_are_unreadable_not_a_crash(tmp_path: Path):
+    # the header line reads, but the scores after it are damaged (UNVAR-113): a second gzip
+    # member with a valid header and a damaged body, which gzip reads on from the first
+    lines = gzip.decompress(_bundle(tmp_path / "good").read_bytes()).splitlines(keepends=True)
+    rest = bytearray(gzip.compress(b"".join(lines[1:])))
+    for i in range(12, 41):
+        rest[i] ^= 0xFF
+    path = tmp_path / vulndata.BUNDLE_NAME
+    path.write_bytes(gzip.compress(lines[0]) + bytes(rest))
+    assert vulndata.load_bundle(path)[0] is not None
+    scores, why = vulndata.epss_scores(path, {"CVE-2021-44228"})
+    assert scores is None and why.startswith("exploit data bundle unreadable (")
+    advisories, dated, note = vulndata.annotate(_advisories(), path)
+    assert advisories == ADVISORIES and dated is None and "unreadable" in note

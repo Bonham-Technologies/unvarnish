@@ -19,6 +19,7 @@ import os
 import re
 import time
 import urllib.request
+import zlib
 from collections.abc import Callable, Iterable
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -68,7 +69,7 @@ def load_bundle(path: Path | None = None) -> tuple[VulnBundle | None, str | None
             first = fh.readline()
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
         return None, NO_BUNDLE
-    except (OSError, EOFError, UnicodeDecodeError) as exc:
+    except (OSError, EOFError, UnicodeDecodeError, zlib.error) as exc:
         return None, _unreadable(type(exc).__name__)
     try:
         raw = json.loads(first)
@@ -101,7 +102,7 @@ def epss_scores(path: Path, wanted: set[str]) -> tuple[Scores | None, str | None
                 if cve in wanted:
                     score, _, pct = rest.partition(",")
                     found[cve] = (float(score), float(pct))
-    except (OSError, EOFError, UnicodeDecodeError, ValueError) as exc:
+    except (OSError, EOFError, UnicodeDecodeError, ValueError, zlib.error) as exc:
         return None, _unreadable(type(exc).__name__)
     return found, None
 
