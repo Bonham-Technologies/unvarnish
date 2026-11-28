@@ -13,6 +13,7 @@ from pathlib import PurePosixPath
 from unvarnish.analysis.languages import Classification, tool_cache_dir
 from unvarnish.scanners.base import ScanContext
 from unvarnish.scanners.effort import rule_effort
+from unvarnish.scanners.gitleaks import DISABLE_ENV as GITLEAKS_DISABLE_ENV
 from unvarnish.scanners.gitleaks import run_gitleaks
 from unvarnish.schemas.finding import Category, Evidence, Finding, Severity, Source
 from unvarnish.util.gitcmd import GitError, git, git_lines, is_git_repo
@@ -517,7 +518,11 @@ class SecretsScanner:
     def _gitleaks(self, ctx: ScanContext, tree_seen: set, history_seen: set) -> list[Finding]:
         tree, history, note = run_gitleaks(ctx.source_root, history=is_git_repo(ctx.source_root))
         if note:
-            log.info("secrets: %s", note)
+            if note == f"disabled by {GITLEAKS_DISABLE_ENV}":
+                # only gitleaks is off; the built-in rules above have already run (UNVAR-121)
+                log.info("secrets: gitleaks %s; built-in rules still ran", note)
+            else:
+                log.info("secrets: %s", note)
             self.notes.append(f"gitleaks: {note}")
             return []
         skipped = {r.path for r in ctx.census.files

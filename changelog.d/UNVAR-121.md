@@ -1,0 +1,1 @@
+- With `UNVARNISH_DISABLE_GITLEAKS` set, the log now says "secrets: gitleaks disabled by UNVARNISH_DISABLE_GITLEAKS; built-in rules still ran" instead of a line that read as if the secrets scanner was off. (UNVAR-121)
